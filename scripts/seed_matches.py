@@ -99,17 +99,17 @@ async def seed():
 
         for i,(date,time) in enumerate(QF_DATES):
             await db.execute("INSERT INTO matches (match_number,phase,match_date,kickoff_time,team1_name,team2_name,is_top_match,weight) VALUES (?,?,?,?,?,?,?,?)",
-                (n,"quarter",date,time,f"QF {i+1}A",f"QF {i+1}B",0,3)); n+=1
+                (n,"quarter",date,time,f"QF {i+1}A",f"QF {i+1}B",0,2)); n+=1
 
         for i,(date,time) in enumerate(SF_DATES):
             await db.execute("INSERT INTO matches (match_number,phase,match_date,kickoff_time,team1_name,team2_name,is_top_match,weight) VALUES (?,?,?,?,?,?,?,?)",
-                (n,"semi",date,time,f"SF {i+1}A",f"SF {i+1}B",0,3)); n+=1
+                (n,"semi",date,time,f"SF {i+1}A",f"SF {i+1}B",0,2)); n+=1
 
         await db.execute("INSERT INTO matches (match_number,phase,match_date,kickoff_time,team1_name,team2_name,is_top_match,weight) VALUES (?,?,?,?,?,?,?,?)",
             (n,"third_place","2026-07-17","21:00","3e place A","3e place B",0,2)); n+=1
 
         await db.execute("INSERT INTO matches (match_number,phase,match_date,kickoff_time,team1_name,team2_name,is_top_match,weight) VALUES (?,?,?,?,?,?,?,?)",
-            (n,"final","2026-07-19","19:00","Finaliste A","Finaliste B",1,3))
+            (n,"final","2026-07-19","19:00","Finaliste A","Finaliste B",1,2))
 
         await db.commit()
         row = await db.execute("SELECT COUNT(*) as cnt FROM matches")
