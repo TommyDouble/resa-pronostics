@@ -1,6 +1,7 @@
 """JSON API endpoints called by the frontend JS."""
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -29,8 +30,8 @@ def _is_locked(match: dict) -> bool:
 class PredictionIn(BaseModel):
     match_id: int
     prediction: str
-    exact_score_team1: int | None = None
-    exact_score_team2: int | None = None
+    exact_score_team1: Optional[int] = None
+    exact_score_team2: Optional[int] = None
 
 
 @router.post("/predictions")
