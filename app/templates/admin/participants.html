@@ -1,0 +1,102 @@
+{% extends "admin/base.html" %}
+{% block title %}Participants — Admin RESA{% endblock %}
+{% block admin_content %}
+
+<h1>Participants</h1>
+
+<div class="toolbar2">
+  <input type="text" id="participant-search" class="input-search" placeholder="⌕ Rechercher…">
+  <button class="btn sm" onclick="document.getElementById('add-modal').style.display='flex'">+ Ajouter</button>
+  <button class="btn ghost sm" onclick="document.getElementById('csv-modal').style.display='flex'">Import CSV</button>
+</div>
+
+<div class="card p0">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>Nom</th>
+        <th>Email</th>
+        <th>Statut</th>
+        <th>Pré-t.</th>
+        <th>≥1 prono</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in participants %}
+      <tr class="participant-row">
+        <td style="font-weight:600;">{{ p.name }}</td>
+        <td class="muted">{{ p.email }}</td>
+        <td>
+          {% if p.is_confirmed %}
+            <span class="chip ok">confirmé</span>
+          {% else %}
+            <span class="chip warn">invité</span>
+          {% endif %}
+        </td>
+        <td>{{ '✓' if p.pt_submitted else '—' }}</td>
+        <td>{{ '✓' if p.pred_count > 0 else '—' }}</td>
+        <td>
+          <button class="btn ghost sm" style="font-size:11px;padding:4px 8px;"
+                  onclick="copyToken('{{ base_url }}p/{{ p.token }}')">⧉ Lien</button>
+          <form method="post" action="/admin/participants/{{ p.id }}/delete"
+                style="display:inline;" onsubmit="return confirm('Supprimer {{ p.name }} ?')">
+            <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;color:var(--error);">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--n400);">Aucun participant.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Add modal -->
+<div id="add-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:50;align-items:center;justify-content:center;">
+  <div class="card" style="width:400px;max-width:90vw;padding:20px;">
+    <h2 style="margin:0 0 14px;font-family:var(--display);font-weight:800;">Ajouter un participant</h2>
+    <form method="post" action="/admin/participants/add" style="display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Nom complet</div>
+        <div class="field"><input type="text" name="name" placeholder="Prénom Nom" required></div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Email</div>
+        <div class="field"><input type="email" name="email" placeholder="email@exemple.com" required></div>
+      </div>
+      <div class="row2">
+        <button type="button" class="btn ghost" onclick="document.getElementById('add-modal').style.display='none'">Annuler</button>
+        <button type="submit" class="btn">Ajouter</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- CSV modal -->
+<div id="csv-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:50;align-items:center;justify-content:center;">
+  <div class="card" style="width:420px;max-width:90vw;padding:20px;">
+    <h2 style="margin:0 0 8px;font-family:var(--display);font-weight:800;">Import CSV</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 14px;">Colonnes attendues : <code>nom, email</code></p>
+    <form id="csv-import-form" method="post" action="/admin/participants/import" enctype="multipart/form-data"
+          style="display:flex;flex-direction:column;gap:12px;">
+      <input type="file" name="csv_file" accept=".csv" required style="font-size:13px;">
+      <div id="csv-preview" class="muted" style="font-size:12px;"></div>
+      <div class="row2">
+        <button type="button" class="btn ghost" onclick="document.getElementById('csv-modal').style.display='none'">Annuler</button>
+        <button type="submit" class="btn">Importer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+function copyToken(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    alert('Lien copié : ' + url);
+  });
+}
+</script>
+{% endblock %}

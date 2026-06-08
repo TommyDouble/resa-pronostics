@@ -1,0 +1,58 @@
+{% extends "admin/base.html" %}
+{% block title %}Communications — Admin RESA{% endblock %}
+{% block admin_content %}
+
+<h1>Communications</h1>
+
+<div class="card">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div style="flex:1;">
+      <b style="font-size:13px;">Rappel pré-tournoi</b>
+      <div class="muted" style="font-size:11px;margin-top:2px;">→ {{ no_pt }} participant(s) n'ont pas encore soumis</div>
+    </div>
+    <form method="post" action="/admin/communications/send-pt-reminder">
+      <button type="submit" class="btn sm" {% if no_pt == 0 %}disabled{% endif %}>Envoyer</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div style="flex:1;">
+      <b style="font-size:13px;">Rappel avant un match (24h)</b>
+      <div class="muted" style="font-size:11px;margin-top:2px;">Aux participants n'ayant pas pronostiqué ce match</div>
+    </div>
+    <form method="post" action="/admin/communications/send-match-reminder" style="display:flex;gap:8px;align-items:center;">
+      <div class="field" style="width:220px;">
+        <select name="match_id" style="flex:1;">
+          {% for m in upcoming_matches %}
+          <option value="{{ m.id }}">#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn sm">Envoyer</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="lbl" style="margin-bottom:12px;">Configuration SMTP</div>
+  <form style="display:flex;flex-direction:column;gap:10px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="field"><input type="text" placeholder="smtp.host" name="smtp_host" value="{{ smtp_host or '' }}"></div>
+      <div class="field"><input type="number" placeholder="port 587" name="smtp_port" value="587"></div>
+      <div class="field"><input type="text" placeholder="Utilisateur" name="smtp_user"></div>
+      <div class="field"><input type="password" placeholder="Mot de passe" name="smtp_pass"></div>
+    </div>
+    <div class="row2">
+      <button type="button" class="btn ghost sm">Tester</button>
+      <button type="submit" class="btn sm">Enregistrer</button>
+    </div>
+  </form>
+</div>
+
+<p class="muted" style="font-size:11px;">
+  Si SMTP non configuré, les envois sont journalisés dans les logs serveur.
+</p>
+
+{% endblock %}

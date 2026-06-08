@@ -1,0 +1,115 @@
+{% extends "participant_base.html" %}
+{% block title %}Pré-tournoi — RESA Pronostics{% endblock %}
+{% block page_content %}
+
+<div class="page-head">
+  <div class="row1">
+    <h1>Pré-tournoi</h1>
+    <span class="sp"></span>
+    {% if pt.submitted %}
+      <span class="chip ok">Soumis ✓</span>
+    {% else %}
+      <span class="chip warn">Brouillon</span>
+    {% endif %}
+  </div>
+  <div class="sub1">Verrouillé au coup d'envoi · 11 juin 2026</div>
+</div>
+
+<div class="page-content">
+
+  {% if not pt.submitted %}
+  <div class="banner acc"><span>✎</span> Brouillon non soumis — pense à valider !</div>
+  {% endif %}
+
+  {% if pt.submitted %}
+  <div class="banner" style="background:#E6F0E6;color:var(--success);border-color:rgba(46,125,50,.25);">
+    <span>✓</span> Tes pronostics pré-tournoi sont soumis et verrouillés.
+  </div>
+  {% endif %}
+
+  <form method="post" action="/p/{{ token }}/pre-tournoi" id="pt-form">
+
+    <div class="card flat" style="padding:13px;margin-bottom:12px;">
+      <div class="lbl">① Vainqueur · +8 pts</div>
+      <div class="field" style="margin-top:8px;">
+        <select name="winner" {% if pt.submitted %}disabled{% endif %}>
+          <option value="">Choisir parmi les 48 équipes…</option>
+          {% for team in teams %}
+          <option value="{{ team }}" {{ 'selected' if pt.winner == team else '' }}>{{ team }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="card flat" style="padding:13px;margin-bottom:12px;">
+      <div class="lbl">② Finaliste · +5 pts</div>
+      <div class="field" style="margin-top:8px;">
+        <select name="finalist" {% if pt.submitted %}disabled{% endif %}>
+          <option value="">Sélectionner (≠ vainqueur)…</option>
+          {% for team in teams %}
+          <option value="{{ team }}" {{ 'selected' if pt.finalist == team else '' }}>{{ team }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="card flat" style="padding:13px;margin-bottom:12px;">
+      <div class="lbl">③ Meilleur buteur · +5 pts</div>
+      <div class="autocomplete-wrap" style="margin-top:8px;">
+        <div class="field">
+          <input type="text" name="top_scorer" id="top-scorer-input"
+                 placeholder="Saisir un nom (≥ 2 car.)…"
+                 value="{{ pt.top_scorer or '' }}"
+                 {% if pt.submitted %}disabled{% endif %}
+                 autocomplete="off">
+        </div>
+        <ul class="autocomplete-list" id="scorer-list" style="display:none;"></ul>
+      </div>
+    </div>
+
+    <div class="card flat" style="padding:13px;margin-bottom:12px;">
+      <div class="lbl">④ Révélation du tournoi · +5 pts</div>
+      <div class="outsider-chips">
+        {% for o in outsiders %}
+        <div class="outsider-chip {{ 'on' if pt.revelation == o else '' }}"
+             data-value="{{ o }}"
+             {% if pt.submitted %}style="pointer-events:none"{% endif %}>
+          {{ o }}
+        </div>
+        {% endfor %}
+      </div>
+      <input type="hidden" name="revelation" id="revelation-input" value="{{ pt.revelation or '' }}">
+    </div>
+
+    <div class="card flat" style="padding:13px;margin-bottom:16px;">
+      <div class="lbl">⑤ Total buts en groupes · +8 pts (exact) / +4 pts (±3)</div>
+      <div id="goals-stepper" class="stepper" style="margin-top:10px;">
+        <div class="b" data-action="minus">–</div>
+        <input type="number" name="total_goals" min="50" max="300"
+               value="{{ pt.total_goals or 140 }}"
+               {% if pt.submitted %}disabled{% endif %}>
+        <div class="b" data-action="plus">+</div>
+        <span class="muted" style="font-size:12px;margin-left:4px;">50–300</span>
+      </div>
+    </div>
+
+    {% if not pt.submitted %}
+    <div class="row2">
+      <button type="submit" name="action" value="draft" class="btn ghost">Brouillon</button>
+      <button type="submit" name="action" value="submit" class="btn"
+              onclick="return confirm('Soumettre définitivement ? Cette action est irréversible.')">
+        Soumettre définitivement
+      </button>
+    </div>
+    {% endif %}
+
+  </form>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var SCORERS = {{ scorers | tojson }};
+</script>
+{% endblock %}

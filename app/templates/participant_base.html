@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="page-wrap">
+
+  <!-- Desktop top nav -->
+  <nav class="top-nav" style="display:none" id="top-nav">
+    <div class="brand">RESA <b>Pronos</b></div>
+    <a href="/p/{{ token }}" class="{{ 'on' if active_nav == 'home' else '' }}">Accueil</a>
+    <a href="/p/{{ token }}/pronos" class="{{ 'on' if active_nav == 'pronos' else '' }}">Pronos</a>
+    <a href="/p/{{ token }}/classement" class="{{ 'on' if active_nav == 'rank' else '' }}">Rank</a>
+    <a href="/p/{{ token }}/profil" class="{{ 'on' if active_nav == 'profil' else '' }}">Profil</a>
+    <a href="/p/{{ token }}/bonus"
+       class="{{ 'on' if active_nav == 'bonus' else '' }}{% if pending_bonus > 0 %} bdg-link{% endif %}">Bonus</a>
+  </nav>
+
+  {% block page_content %}{% endblock %}
+
+  <!-- Mobile bottom nav -->
+  <nav class="bnav">
+    <a href="/p/{{ token }}" class="{{ 'on' if active_nav == 'home' else '' }}">
+      <span class="nicon-wrap"><i class="nicon ic-home"></i></span>
+      <span>Accueil</span>
+    </a>
+    <a href="/p/{{ token }}/pronos" class="{{ 'on' if active_nav == 'pronos' else '' }}">
+      <span class="nicon-wrap"><i class="nicon ic-pronos"></i></span>
+      <span>Pronos</span>
+    </a>
+    <a href="/p/{{ token }}/classement" class="{{ 'on' if active_nav == 'rank' else '' }}">
+      <span class="nicon-wrap"><i class="nicon ic-rank"></i></span>
+      <span>Rank</span>
+    </a>
+    <a href="/p/{{ token }}/profil" class="{{ 'on' if active_nav == 'profil' else '' }}">
+      <span class="nicon-wrap"><i class="nicon ic-user"></i></span>
+      <span>Profil</span>
+    </a>
+    <a href="/p/{{ token }}/bonus" class="{{ 'on' if active_nav == 'bonus' else '' }}">
+      <span class="nicon-wrap{% if pending_bonus > 0 %} bdg{% endif %}"><i class="nicon ic-bonus"></i></span>
+      <span>Bonus</span>
+    </a>
+  </nav>
+</div>
+
+<script>
+// Show top nav on desktop
+if (window.innerWidth >= 768) {
+  document.getElementById('top-nav').style.display = 'flex';
+}
+window.addEventListener('resize', function() {
+  document.getElementById('top-nav').style.display = window.innerWidth >= 768 ? 'flex' : 'none';
+});
+</script>
+{% endblock %}

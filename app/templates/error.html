@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} — RESA Pronostics{% endblock %}
+{% block body %}
+<div class="error-wrap">
+  <div class="error-card">
+    <div class="code">{{ code }}</div>
+    <h2>{{ 'Page introuvable' if code == 404 else 'Accès refusé' if code == 403 else 'Erreur serveur' }}</h2>
+    <p>{{ message }}</p>
+    {% if code == 403 and 'pas encore joué' in message %}
+    <p style="font-size:13px;color:var(--n600);">Les pronostics des autres ne sont visibles qu'après le coup de sifflet.</p>
+    {% elif code == 404 and 'Token' in message %}
+    <p style="font-size:13px;color:var(--n600);">Ce lien n'est pas valide. Contactez l'organisateur.</p>
+    {% endif %}
+    <a href="/" class="btn" style="margin-top:16px;">Retour à l'accueil</a>
+  </div>
+</div>
+{% endblock %}

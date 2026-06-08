@@ -1,0 +1,123 @@
+{% extends "participant_base.html" %}
+{% block title %}{{ profile.name }} — Profil{% endblock %}
+{% block page_content %}
+
+<div class="page-head">
+  <div class="row1">
+    {% if not is_own %}
+    <a href="/p/{{ token }}/classement" style="font-family:var(--display);font-weight:800;font-size:14px;color:var(--n600);text-decoration:none;">‹ Classement</a>
+    {% else %}
+    <h1>Mon profil</h1>
+    {% endif %}
+    <span class="sp"></span>
+    <span class="chip acc">{{ 'Mon profil' if is_own else 'Profil public' }}</span>
+  </div>
+</div>
+
+<div class="page-content">
+
+  <!-- Header -->
+  <div class="phead">
+    <div class="av {{ profile.color_class }}" style="width:60px;height:60px;font-size:22px;">
+      {{ profile.initials }}
+    </div>
+    <div>
+      <h1 style="font-family:var(--display);font-weight:800;font-size:22px;margin:0;">{{ profile.name }}</h1>
+      <div class="meta">
+        <span class="chip acc">Rang #{{ profile.rank }}</span>
+        <b style="color:var(--primary);font-family:var(--display);">{{ profile.total_points }} pts</b>
+        · {{ profile.match_count }} matchs
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 Metrics -->
+  <div class="metrics">
+    <div class="metric">
+      <div class="big">{{ profile.success_rate }}%</div>
+      <div class="cap">Taux de réussite<br>(issues correctes)</div>
+    </div>
+    <div class="metric">
+      <div class="big">{{ profile.exact_count }}</div>
+      <div class="cap">Scores exacts<br>trouvés</div>
+    </div>
+    <div class="metric">
+      <div class="big">{{ profile.streak }}{% if profile.streak >= 4 %}&nbsp;🔥{% endif %}</div>
+      <div class="cap">Série en cours<br>de bons pronos</div>
+    </div>
+    <div class="metric">
+      <div class="big">{{ profile.best_day or '—' }}</div>
+      <div class="cap">Meilleure journée<br>{{ profile.best_day_pts }} pts</div>
+    </div>
+  </div>
+
+  <!-- Phase 2 stubs -->
+  <div class="card flat" style="background:var(--n50);border:1px dashed var(--n300);padding:13px;text-align:center;">
+    <div style="font-family:var(--sketch);font-size:18px;color:var(--n400);">
+      Radar tactique, archétype & stats fun — Phase 2 🚀
+    </div>
+  </div>
+
+  <!-- Direct comparison (if viewing other) -->
+  {% if profile.comparison %}
+  <div class="card" style="padding:13px;">
+    <div class="lbl" style="margin-bottom:8px;">Toi vs. {{ profile.name }}</div>
+    {% set me_pct = [profile.comparison.viewer_pts / (profile.comparison.viewer_pts + profile.comparison.target_pts + 1) * 100, 20] | max %}
+    <div class="cmpbar">
+      <span class="me" style="width:{{ me_pct|int }}%;">Toi · {{ profile.comparison.viewer_pts }}</span>
+      <span class="ot">{{ profile.name.split()[0] }} · {{ profile.comparison.target_pts }}</span>
+    </div>
+    <p class="muted" style="font-size:12px;margin:8px 0 0;line-height:1.4;">
+      {% if profile.comparison.diff > 0 %}
+        <b style="color:var(--n900)">+{{ profile.comparison.diff }} pts</b> d'avance sur {{ profile.name.split()[0] }}.
+      {% elif profile.comparison.diff < 0 %}
+        {{ profile.name.split()[0] }} a <b style="color:var(--n900)">{{ -profile.comparison.diff }} pts</b> d'avance.
+      {% else %}
+        À égalité !
+      {% endif %}
+    </p>
+  </div>
+  {% endif %}
+
+  <!-- Last 5 matches -->
+  {% if profile.last5 %}
+  <div class="card p0">
+    <div style="padding:9px 12px 2px;"><div class="lbl">5 derniers matchs</div></div>
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Match</th>
+          <th>Résultat</th>
+          <th style="text-align:right;">Pts</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in profile.last5 %}
+        <tr>
+          <td>{{ m.team1_name[:3] }} – {{ m.team2_name[:3] }}</td>
+          <td>
+            {% if m.result_chip == 'exact' %}
+              <span class="chip acc">Score exact</span>
+            {% elif m.result_chip == 'ok' %}
+              <span class="chip ok">Bonne issue</span>
+            {% else %}
+              <span class="chip gr">Raté</span>
+            {% endif %}
+          </td>
+          <td class="s" style="text-align:right;">{{ m.points }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Phase 3 badges stub -->
+  <div class="card flat" style="background:var(--n50);border:1px dashed var(--n300);padding:13px;text-align:center;">
+    <div style="font-family:var(--sketch);font-size:18px;color:var(--n400);">
+      Badges — Phase 3 🏅
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Admin — RESA Pronostics{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/resa.css">
+</head>
+<body>
+
+{% if flashes is defined and flashes %}
+<div class="flash">
+  {% for f in flashes %}
+  <div class="flash-msg {{ f.kind }}">{{ f.msg }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="admin-wrap">
+
+  <!-- Sidebar -->
+  <aside class="admin-sidebar">
+    <div class="logo">RESA <b>·</b></div>
+    <a href="/admin/dashboard" class="{{ 'on' if active == 'dashboard' else '' }}">📊 Tableau de bord</a>
+    <a href="/admin/participants" class="{{ 'on' if active == 'participants' else '' }}">👥 Participants</a>
+    <a href="/admin/matches" class="{{ 'on' if active == 'matches' else '' }}">🏟 Matchs</a>
+    <a href="/admin/resultats" class="{{ 'on' if active == 'resultats' else '' }}">⚽ Résultats</a>
+    <a href="/admin/bonus" class="{{ 'on' if active == 'bonus' else '' }}">★ Questions bonus</a>
+    <a href="/admin/communications" class="{{ 'on' if active == 'communications' else '' }}">✉ Communications</a>
+    <a href="/admin/export/rankings" download>↓ Exports CSV</a>
+    <div style="margin-top:auto;padding-top:20px;border-top:1px solid var(--line);">
+      <form method="post" action="/admin/logout">
+        <button type="submit" class="btn ghost sm" style="width:100%;font-size:12px;">Déconnexion</button>
+      </form>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="admin-main admin-dashboard">
+    {% block admin_content %}{% endblock %}
+  </main>
+
+</div>
+
+<script src="/static/js/resa.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

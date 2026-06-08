@@ -1,0 +1,60 @@
+{% extends "admin/base.html" %}
+{% block title %}Matchs — Admin RESA{% endblock %}
+{% block admin_content %}
+
+<h1>Gestion des matchs</h1>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+  {% for ph, label in phase_labels.items() %}
+  <a href="/admin/matches?phase={{ ph }}"
+     class="fchips {{ 'on' if current_phase == ph else '' }}"
+     style="text-decoration:none;padding:5px 11px;border-radius:999px;font-size:11px;font-weight:700;
+            background:{{ 'var(--n900)' if current_phase == ph else 'var(--n100)' }};
+            color:{{ '#fff' if current_phase == ph else 'var(--n600)' }};">
+    {{ label }} ({{ phase_counts.get(ph, 0) }})
+  </a>
+  {% endfor %}
+</div>
+
+<div class="card p0">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Match</th>
+        <th>Date</th>
+        <th>Top ★</th>
+        <th>Statut</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in matches %}
+      <tr>
+        <td style="color:var(--n600);">{{ m.match_number }}</td>
+        <td style="font-weight:600;">{{ m.team1_name }} – {{ m.team2_name }}</td>
+        <td class="muted" style="font-size:12px;">{{ m.match_date }} {{ m.kickoff_time[:5] }}</td>
+        <td>
+          <button class="chip {{ 'acc' if m.is_top_match else 'gr' }}"
+                  data-toggle-top="{{ m.id }}"
+                  style="cursor:pointer;border:none;background:none;padding:4px 9px;">
+            {{ '★ ×2' if m.is_top_match else '○ ×1' }}
+          </button>
+        </td>
+        <td>
+          {% if m.result is not none %}
+            <span class="chip lock">🔒 joué {{ m.score_team1 }}–{{ m.score_team2 }}</span>
+          {% elif m.team1_name.startswith('Équipe') or m.team2_name.startswith('Équipe') %}
+            <span class="chip gr">équipes TBD</span>
+          {% else %}
+            <span class="chip ok">à venir</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--n400);">Aucun match.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

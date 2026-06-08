@@ -1,0 +1,99 @@
+{% extends "participant_base.html" %}
+{% block title %}{{ match.team1_name }} – {{ match.team2_name }} — RESA Pronostics{% endblock %}
+{% block page_content %}
+
+<div class="page-head">
+  <div class="row1">
+    <a href="/p/{{ token }}/pronos" style="font-family:var(--display);font-weight:800;font-size:14px;color:var(--n600);text-decoration:none;">‹ Pronostics</a>
+    <span class="sp"></span>
+    <span class="chip gr">{{ match_phase_label }}</span>
+  </div>
+</div>
+
+<div class="page-content">
+
+  <div class="scoreboard">
+    <div class="ph">{{ match_phase_label }} · {{ match.match_date }}</div>
+    <div class="grid">
+      <div class="t">
+        <span class="flag">{{ match.team1_name[:2] }}</span>
+        <span>{{ match.team1_name }}</span>
+      </div>
+      <div class="sc">
+        {{ match.score_team1 }} – {{ match.score_team2 }}
+        <small>TEMPS PLEIN</small>
+      </div>
+      <div class="t">
+        <span class="flag">{{ match.team2_name[:2] }}</span>
+        <span>{{ match.team2_name }}</span>
+      </div>
+    </div>
+  </div>
+
+  {% if my_pred %}
+  <div class="card" style="padding:13px;">
+    <div class="lbl">Mon pronostic</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+      <div style="font-weight:700;font-size:14px;">
+        {% if my_pred.prediction == 'team1' %}{{ match.team1_name }}{% elif my_pred.prediction == 'team2' %}{{ match.team2_name }}{% else %}Nul{% endif %}
+        {% if my_pred.exact_score_team1 is not none %}
+        · <span class="muted" style="font-weight:500;">{{ my_pred.exact_score_team1 }}–{{ my_pred.exact_score_team2 }}</span>
+        {% endif %}
+      </div>
+      {% if my_score and my_score.points > 0 %}
+      <span class="chip ok">{{ '+' + my_score.points|string if my_score else '+0' }} pts</span>
+      {% else %}
+      <span class="chip gr">0 pts</span>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="card" style="padding:13px;">
+    <div class="lbl">Mon pronostic</div>
+    <p class="muted" style="margin:8px 0 0;font-size:13px;">Tu n'avais pas pronostiqué ce match.</p>
+  </div>
+  {% endif %}
+
+  <div>
+    <div class="lbl" style="margin-bottom:8px;">Répartition de la communauté</div>
+    {% set t1 = dist.get('team1', {}).get('pct', 0) %}
+    {% set dr = dist.get('draw', {}).get('pct', 0) %}
+    {% set t2 = dist.get('team2', {}).get('pct', 0) %}
+    <div class="combar">
+      <span class="a" style="width:{{ t1 }}%">{{ dist.get('team1', {}).get('cnt', 0) }}</span>
+      <span class="b" style="width:{{ dr }}%">{{ dist.get('draw', {}).get('cnt', 0) }}</span>
+      <span class="c" style="width:{{ t2 }}%">{{ dist.get('team2', {}).get('cnt', 0) }}</span>
+    </div>
+    <div class="com-legend">
+      <span>{{ match.team1_name }}</span>
+      <span>Nul</span>
+      <span>{{ match.team2_name }}</span>
+    </div>
+  </div>
+
+  <div class="card p0">
+    <div style="padding:9px 12px 2px;"><div class="lbl">Tous les pronostics</div></div>
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Joueur</th>
+          <th>Issue</th>
+          <th>Exact</th>
+          <th style="text-align:right;">Pts</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pr in all_preds %}
+        <tr>
+          <td>{{ pr.name }}</td>
+          <td>{% if pr.prediction == 'team1' %}{{ match.team1_name }}{% elif pr.prediction == 'team2' %}{{ match.team2_name }}{% else %}<span class="muted">Nul</span>{% endif %}</td>
+          <td>{% if pr.exact_score_team1 is not none %}<span style="color:var(--primary);font-weight:700;">{{ pr.exact_score_team1 }}–{{ pr.exact_score_team2 }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="s" style="text-align:right;">{{ pr.points or 0 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

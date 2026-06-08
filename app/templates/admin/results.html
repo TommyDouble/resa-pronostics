@@ -1,0 +1,68 @@
+{% extends "admin/base.html" %}
+{% block title %}Résultats — Admin RESA{% endblock %}
+{% block admin_content %}
+
+<h1>Encoder les résultats</h1>
+<p class="muted" style="margin:0 0 8px;font-size:13px;">Matchs joués sans résultat · ordre chronologique</p>
+
+{% if pending %}
+{% for m in pending %}
+<div class="card">
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:160px;">
+      <b style="font-size:14px;">#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</b>
+      <div class="muted" style="font-size:11px;margin-top:2px;">
+        {{ m.match_date }} {{ m.kickoff_time[:5] }}
+        {% if m.is_top_match %} · ★ Top ×2{% endif %}
+      </div>
+    </div>
+    <form class="result-form" method="post" action="/admin/resultats/{{ m.id }}"
+          data-phase="{{ m.phase }}"
+          style="display:flex;align-items:center;gap:8px;">
+      <input class="score-input" type="number" name="score_team1" min="0" max="30"
+             placeholder="0" required>
+      <span style="font-family:var(--sketch);font-size:20px;color:var(--n600);">–</span>
+      <input class="score-input" type="number" name="score_team2" min="0" max="30"
+             placeholder="0" required>
+      <button type="submit" class="btn sm">Valider</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="card" style="text-align:center;padding:32px;">
+  <p style="font-family:var(--sketch);font-size:22px;color:var(--n600);">
+    ✓ Tous les matchs joués ont un résultat encodé.
+  </p>
+</div>
+{% endif %}
+
+{% if done %}
+<h2 style="font-family:var(--display);font-weight:700;font-size:16px;color:var(--n600);margin:20px 0 8px;">
+  Récemment encodés
+</h2>
+{% for m in done %}
+<div class="card flat" style="display:flex;align-items:center;gap:14px;padding:10px 13px;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:8px;background:var(--n50);">
+  <div style="flex:1;">
+    <b style="font-size:13px;">#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</b>
+    <span style="color:var(--primary);font-weight:800;font-family:var(--display);margin-left:10px;">
+      {{ m.score_team1 }}–{{ m.score_team2 }}
+    </span>
+    <span style="font-size:10px;color:var(--n400);margin-left:6px;">recalcul ✓</span>
+  </div>
+  <button class="btn ghost sm" style="font-size:11px;"
+          onclick="document.getElementById('correct-{{ m.id }}').style.display='flex'">Corriger</button>
+  <form id="correct-{{ m.id }}" method="post" action="/admin/resultats/{{ m.id }}/correct"
+        style="display:none;align-items:center;gap:6px;">
+    <input class="score-input" type="number" name="score_team1" min="0" max="30"
+           value="{{ m.score_team1 }}" style="width:40px;">
+    <span style="font-family:var(--sketch);">–</span>
+    <input class="score-input" type="number" name="score_team2" min="0" max="30"
+           value="{{ m.score_team2 }}" style="width:40px;">
+    <button type="submit" class="btn sm" style="font-size:11px;">OK</button>
+  </form>
+</div>
+{% endfor %}
+{% endif %}
+
+{% endblock %}

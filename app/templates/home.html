@@ -1,0 +1,101 @@
+{% extends "participant_base.html" %}
+{% block title %}Accueil — RESA Pronostics{% endblock %}
+{% block page_content %}
+
+<div class="page-head">
+  <div class="row1">
+    <div>
+      <h1 style="font-family:var(--sketch);font-size:26px;font-weight:700;">
+        Salut {{ participant.name.split()[0] }} 👋
+      </h1>
+      <div class="sub1">Tu es {{ user_rank }}ème · {{ total_points }} pts</div>
+    </div>
+  </div>
+</div>
+
+<div class="page-content">
+
+  {% if urgency %}
+  <div class="urgency">
+    <div class="lbl">À pronostiquer · ça arrive</div>
+    <h2>{{ urgency.team1_name }} – {{ urgency.team2_name }}</h2>
+    <div class="sub">
+      {% if urgency.is_top_match %}⏳ <span class="countdown" data-countdown="{{ urgency.kickoff_ts }}">...</span> · ★ Top Match ×2{% else %}⏳ <span class="countdown" data-countdown="{{ urgency.kickoff_ts }}">...</span>{% endif %}
+    </div>
+    <a href="/p/{{ token }}/pronos" class="btn white full" style="margin-top:10px;">Pronostiquer maintenant</a>
+  </div>
+  {% endif %}
+
+  {% if unpredicted_today > 0 %}
+  <div class="banner red">
+    <span>⚠</span>
+    {{ unpredicted_today }} match{{ 's' if unpredicted_today > 1 else '' }} d'aujourd'hui pas encore pronostiqué{{ 's' if unpredicted_today > 1 else '' }}
+  </div>
+  {% endif %}
+
+  {% if today_matches %}
+  <div>
+    <div class="lbl" style="margin-bottom:8px;">Matchs du jour</div>
+    <div class="card p0">
+      {% for m in today_matches %}
+      <div class="match-list-item">
+        {% if m.is_locked %}
+          <span class="dot r"></span>
+        {% elif m.prediction %}
+          <span class="dot g"></span>
+        {% else %}
+          <span class="dot gr"></span>
+        {% endif %}
+        <div class="info">
+          <div class="name">{{ m.team1_name }} – {{ m.team2_name }}</div>
+          <div class="sub">
+            {% if m.is_locked and m.result %}
+              Terminé
+            {% elif m.is_top_match %}
+              {{ m.kickoff_time[:5] }} · ★ Top ×2
+            {% else %}
+              {{ m.kickoff_time[:5] }} · ×{{ m.weight }}
+            {% endif %}
+          </div>
+        </div>
+        <div class="right">
+          {% if m.is_locked and m.result is not none and m.score_team1 is not none %}
+            <div class="score">{{ m.score_team1 }}–{{ m.score_team2 }}</div>
+            {% if m.get('points') is not none %}
+            <div class="pts">+{{ m.get('points', 0) }} pts</div>
+            {% endif %}
+          {% elif m.prediction %}
+            <span class="chip ok">enregistré ✓</span>
+          {% else %}
+            <span class="chip gr">à faire</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div>
+    <div class="lbl" style="margin-bottom:8px;">Mini classement</div>
+    <div class="card p0">
+      {% for r in mini_rank %}
+      <div class="rrow {% if r.id == participant.id %}me{% endif %}">
+        <span class="rk">{{ r.rank }}</span>
+        <div class="av {{ 'c' + ((r.id - 1) % 8 + 1)|string }}">
+          {{ r.name[:2].upper() }}
+        </div>
+        <div class="nm">{{ r.name }}{% if r.id == participant.id %}<small>c'est toi</small>{% endif %}</div>
+        <span class="sc">{{ r.total_points }}</span>
+      </div>
+      {% endfor %}
+      <a href="/p/{{ token }}/classement" class="mini-rank-link">Voir tout le classement →</a>
+    </div>
+  </div>
+
+  <div style="text-align:center;font-size:11px;color:var(--n600);padding-bottom:8px;">
+    {{ encoded_count }} match{{ 's' if encoded_count != 1 else '' }} encodé{{ 's' if encoded_count != 1 else '' }}
+  </div>
+
+</div>
+{% endblock %}

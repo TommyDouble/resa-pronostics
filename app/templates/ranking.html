@@ -1,0 +1,62 @@
+{% extends "participant_base.html" %}
+{% block title %}Classement — RESA Pronostics{% endblock %}
+{% block page_content %}
+
+<div class="page-head">
+  <div class="row1">
+    <h1>Classement</h1>
+  </div>
+</div>
+
+<div class="page-content">
+
+  {% if rankings|length >= 3 %}
+  <div class="podium">
+    <div class="pod p2">
+      <span class="medal">🥈</span>
+      <div class="av {{ rankings[1].color_class }}">{{ rankings[1].name[:2].upper() }}</div>
+      <div class="bar">2</div>
+      <span class="pts">{{ rankings[1].total_points }}</span>
+    </div>
+    <div class="pod p1">
+      <span class="medal">🥇</span>
+      <div class="av {{ rankings[0].color_class }}">{{ rankings[0].name[:2].upper() }}</div>
+      <div class="bar">1</div>
+      <span class="pts">{{ rankings[0].total_points }}</span>
+    </div>
+    <div class="pod p3">
+      <span class="medal">🥉</span>
+      <div class="av {{ rankings[2].color_class }}">{{ rankings[2].name[:2].upper() }}</div>
+      <div class="bar">3</div>
+      <span class="pts">{{ rankings[2].total_points }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card p0">
+    {% for r in rankings %}
+    <div class="rrow {{ 'me' if r.is_me else '' }}">
+      <span class="rk">{{ r.rank }}</span>
+      <div class="av {{ r.color_class }}">{{ r.name[:2].upper() }}</div>
+      <div class="nm">
+        {{ r.name }}
+        {% if r.is_me %}<small>c'est toi</small>{% endif %}
+      </div>
+      <span class="sc">{{ r.total_points }}</span>
+    </div>
+    {% else %}
+    <div style="padding:24px;text-align:center;color:var(--n600);">
+      <p style="font-family:var(--sketch);font-size:20px;">Aucun score encore.</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card flat" style="display:flex;align-items:center;gap:11px;padding:13px;">
+    <span style="font-size:22px;">🏆</span>
+    <div style="font-size:11px;" class="muted">
+      Cagnotte <b style="color:var(--primary);">500 €</b> — 1er 180 € · 2e 100 € · 3e 60 €
+    </div>
+  </div>
+
+</div>
+{% endblock %}

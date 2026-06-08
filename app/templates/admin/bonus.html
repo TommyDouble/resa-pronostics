@@ -1,0 +1,79 @@
+{% extends "admin/base.html" %}
+{% block title %}Questions bonus — Admin RESA{% endblock %}
+{% block admin_content %}
+
+<h1>Questions bonus</h1>
+
+<!-- Create question -->
+<div class="card">
+  <div class="lbl" style="margin-bottom:12px;">Créer une question mid-tournoi</div>
+  <form method="post" action="/admin/bonus/create" style="display:flex;flex-direction:column;gap:10px;">
+    <div>
+      <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
+      <div class="field"><input type="text" name="question_text" placeholder="Ex: Combien de buts lors des 1/8 ?" required style="flex:1;"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Type</div>
+        <div class="field">
+          <select name="answer_type" style="flex:1;">
+            <option value="number">Numérique</option>
+            <option value="text">Texte libre</option>
+            <option value="choice">Choix unique</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Phase</div>
+        <div class="field">
+          <select name="phase" style="flex:1;">
+            <option value="round_of_32">Huitièmes</option>
+            <option value="quarter">Quarts</option>
+            <option value="semi">Demies</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Points (3–10)</div>
+        <div class="field"><input type="number" name="points_value" min="3" max="10" value="6" required></div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl" style="margin-bottom:5px;">Deadline (ISO, UTC)</div>
+      <div class="field"><input type="datetime-local" name="deadline" required style="flex:1;"></div>
+    </div>
+    <div class="row2">
+      <button type="button" class="btn ghost">Aperçu</button>
+      <button type="submit" class="btn">Publier</button>
+    </div>
+  </form>
+</div>
+
+<!-- Existing questions -->
+{% if questions %}
+<h2 style="font-family:var(--display);font-weight:700;font-size:16px;color:var(--n600);margin:4px 0 8px;">
+  Questions créées
+</h2>
+{% for q in questions %}
+<div class="card">
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+    <div style="flex:1;">
+      <b style="font-size:13px;">{{ q.question_text }}</b>
+      <div class="muted" style="font-size:11px;margin-top:3px;">
+        {{ phase_labels.get(q.phase, q.phase) }} · {{ q.answer_type }} · {{ q.points_value }} pts · deadline: {{ q.deadline[:16] }}
+      </div>
+    </div>
+    {% if q.correct_answer is none %}
+    <form method="post" action="/admin/bonus/{{ q.id }}/answer" style="display:flex;gap:8px;align-items:center;">
+      <div class="field" style="width:160px;"><input type="text" name="correct_answer" placeholder="Réponse correcte" required></div>
+      <button type="submit" class="btn sm">Valider → calcul auto</button>
+    </form>
+    {% else %}
+    <span class="chip ok">Réponse: {{ q.correct_answer }}</span>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% endblock %}

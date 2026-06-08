@@ -1,0 +1,124 @@
+import aiosqlite
+import os
+from contextlib import asynccontextmanager
+from app.config import settings
+
+DB_PATH = settings.DATABASE_URL.replace("./", "")
+
+
+@asynccontextmanager
+async def get_db():
+    """Async context manager yielding a configured db connection."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA foreign_keys = ON")
+        yield db
+
+
+async def init_db():
+    """Initialize database schema."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA foreign_keys = ON")
+
+        await db.executescript("""
+CREATE TABLE IF NOT EXISTS participants (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT    NOT NULL,
+  email      TEXT    NOT NULL UNIQUE,
+  token      TEXT    NOT NULL UNIQUE,
+  is_admin   INTEGER NOT NULL DEFAULT 0,
+  is_confirmed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS matches (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  match_number INTEGER NOT NULL UNIQUE,
+  phase        TEXT    NOT NULL CHECK(phase IN ('group','round_of_32','quarter','semi','third_place','final')),
+  group_name   TEXT,
+  match_date   TEXT    NOT NULL,
+  kickoff_time TEXT    NOT NULL,
+  team1_name   TEXT    NOT NULL,
+  team2_name   TEXT    NOT NULL,
+  is_top_match INTEGER NOT NULL DEFAULT 0,
+  weight       INTEGER NOT NULL DEFAULT 1 CHECK(weight IN (1,2)),
+  score_team1  INTEGER,
+  score_team2  INTEGER,
+  result       TEXT    CHECK(result IN ('team1','draw','team2') OR result IS NULL),
+  created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS predictions (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id      INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  match_id            INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  prediction          TEXT    NOT NULL CHECK(prediction IN ('team1','draw','team2')),
+  exact_score_team1   INTEGER,
+  exact_score_team2   INTEGER,
+  submitted_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+  is_locked           INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(participant_id, match_id)
+);
+
+CREATE TABLE IF NOT EXISTS pre_tournament_predictions (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL UNIQUE REFERENCES participants(id) ON DELETE CASCADE,
+  winner         TEXT,
+  finalist       TEXT,
+  top_scorer     TEXT,
+  revelation     TEXT,
+  total_goals    INTEGER,
+  submitted      INTEGER NOT NULL DEFAULT 0,
+  submitted_at   TEXT,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS bonus_questions (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  question_text  TEXT    NOT NULL,
+  phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','round_of_32','quarter','semi')),
+  answer_type    TEXT    NOT NULL CHECK(answer_type IN ('choice','number','text')),
+  options        TEXT,
+  points_value   INTEGER NOT NULL DEFAULT 5,
+  correct_answer TEXT,
+  deadline       TEXT    NOT NULL,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS bonus_answers (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  question_id    INTEGER NOT NULL REFERENCES bonus_questions(id) ON DELETE CASCADE,
+  answer         TEXT    NOT NULL,
+  submitted_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(participant_id, question_id)
+);
+
+CREATE TABLE IF NOT EXISTS scores (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id    INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  match_id          INTEGER REFERENCES matches(id) ON DELETE CASCADE,
+  bonus_question_id INTEGER REFERENCES bonus_questions(id) ON DELETE CASCADE,
+  points            INTEGER NOT NULL DEFAULT 0,
+  calculated_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+  CHECK(
+    (match_id IS NOT NULL AND bonus_question_id IS NULL) OR
+    (match_id IS NULL     AND bonus_question_id IS NOT NULL)
+  ),
+  UNIQUE(participant_id, match_id, bonus_question_id)
+);
+
+CREATE TABLE IF NOT EXISTS admin_users (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  username      TEXT    NOT NULL UNIQUE,
+  password_hash TEXT    NOT NULL,
+  created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_participants_token ON participants(token);
+CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id);
+CREATE INDEX IF NOT EXISTS idx_predictions_participant ON predictions(participant_id);
+CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
+        """)
+        await db.commit()

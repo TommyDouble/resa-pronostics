@@ -1,0 +1,70 @@
+{% extends "admin/base.html" %}
+{% block title %}Tableau de bord — Admin RESA{% endblock %}
+{% block admin_content %}
+
+<h1>Tableau de bord</h1>
+
+{% if late_matches > 0 %}
+<div class="admin-alert">
+  <span>⏱</span> {{ late_matches }} match{{ 's' if late_matches > 1 else '' }} joué{{ 's' if late_matches > 1 else '' }}
+  depuis &gt; 2h sans résultat encodé.
+  <a href="/admin/resultats" style="margin-left:8px;font-weight:700;color:var(--error);">Encoder →</a>
+</div>
+{% endif %}
+
+<div class="kpis">
+  <div class="kpi">
+    <div class="big">{{ confirmed }}/{{ total_participants }}</div>
+    <div class="cap">Participants confirmés</div>
+  </div>
+  <div class="kpi">
+    <div class="big">{{ pt_submitted }}</div>
+    <div class="cap">Pré-tournoi soumis</div>
+  </div>
+  <div class="kpi">
+    <div class="big">{{ has_pred }}</div>
+    <div class="cap">≥ 1 pronostic</div>
+  </div>
+  <div class="kpi">
+    <div class="big">{% if next_match %}#{{ next_match.match_number }}{% else %}—{% endif %}</div>
+    <div class="cap">
+      {% if next_match %}
+        {{ next_match.team1_name[:8] }} – {{ next_match.team2_name[:8] }}
+      {% else %}
+        Prochain match sans résultat
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="lbl" style="margin-bottom:10px;">5 derniers résultats encodés</div>
+  {% if last_encoded %}
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Match</th>
+        <th>Score</th>
+        <th>Encodé</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in last_encoded %}
+      <tr>
+        <td>{{ m.match_number }}</td>
+        <td>{{ m.team1_name }} – {{ m.team2_name }}</td>
+        <td style="color:var(--primary);font-weight:700;font-family:var(--display);">{{ m.score_team1 }}–{{ m.score_team2 }}</td>
+        <td class="muted" style="font-size:11px;">{{ m.created_at[:16] if m.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted" style="font-size:13px;">Aucun résultat encodé pour l'instant.</p>
+  {% endif %}
+</div>
+
+<p class="muted" style="font-size:11px;">Rafraîchissement auto toutes les 60s</p>
+
+{% endblock %}
