@@ -17,6 +17,7 @@
         <th>Nom</th>
         <th>Email</th>
         <th>Statut</th>
+        <th>Payé</th>
         <th>Pré-t.</th>
         <th>≥1 prono</th>
         <th>Actions</th>
@@ -33,6 +34,14 @@
           {% else %}
             <span class="chip warn">invité</span>
           {% endif %}
+        </td>
+        <td>
+          <form method="post" action="/admin/participants/{{ p.id }}/toggle-paid" style="display:inline;">
+            <button type="submit" class="chip {% if p.has_paid %}ok{% else %}gr{% endif %}"
+                    style="cursor:pointer;border:none;background:none;padding:4px 9px;font-size:11px;">
+              {{ '✓ payé' if p.has_paid else '— en att.' }}
+            </button>
+          </form>
         </td>
         <td>{{ '✓' if p.pt_submitted else '—' }}</td>
         <td>{{ '✓' if p.pred_count > 0 else '—' }}</td>

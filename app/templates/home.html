@@ -15,6 +15,16 @@
 
 <div class="page-content">
 
+  {% if not participant.has_paid %}
+  <div class="banner" style="background:var(--warn-l,#FFF8E1);border-left:3px solid #F59E0B;color:#92400E;font-size:12px;padding:10px 14px;border-radius:8px;display:flex;gap:8px;align-items:center;">
+    <span>💳</span> Paiement en attente — contacte l'organisateur pour régulariser.
+  </div>
+  {% else %}
+  <div class="banner" style="background:#F0FDF4;border-left:3px solid #22C55E;color:#166534;font-size:12px;padding:10px 14px;border-radius:8px;display:flex;gap:8px;align-items:center;">
+    <span>✅</span> Paiement reçu — bonne chance !
+  </div>
+  {% endif %}
+
   {% if urgency %}
   <div class="urgency">
     <div class="lbl">À pronostiquer · ça arrive</div>

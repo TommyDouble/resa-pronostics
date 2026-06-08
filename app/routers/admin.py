@@ -186,6 +186,20 @@ async def add_participant(request: Request, name: str = Form(...), email: str = 
     return RedirectResponse("/admin/participants", status_code=303)
 
 
+@router.post("/participants/{participant_id}/toggle-paid")
+async def toggle_paid(request: Request, participant_id: int):
+    await require_admin(request)
+    async with get_db() as db:
+        row = await db.execute("SELECT has_paid FROM participants WHERE id=?", (participant_id,))
+        p = await row.fetchone()
+        if not p:
+            raise HTTPException(404)
+        new_val = 0 if p["has_paid"] else 1
+        await db.execute("UPDATE participants SET has_paid=? WHERE id=?", (new_val, participant_id))
+        await db.commit()
+    return RedirectResponse("/admin/participants", status_code=303)
+
+
 @router.post("/participants/{participant_id}/delete")
 async def delete_participant(request: Request, participant_id: int):
     await require_admin(request)

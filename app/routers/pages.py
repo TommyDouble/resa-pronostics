@@ -1,5 +1,6 @@
 """Participant-facing HTML page routes."""
 import logging
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Form
@@ -90,6 +91,40 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
         "active_nav": active_nav,
         "token": token,
     }
+
+
+@router.get("/rejoindre", response_class=HTMLResponse)
+async def register_page(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request, "error": None})
+
+
+@router.post("/rejoindre", response_class=HTMLResponse)
+async def register_post(request: Request, name: str = Form(...), email: str = Form(...)):
+    name = name.strip()
+    email = email.strip().lower()
+    if not name or not email or "@" not in email:
+        return templates.TemplateResponse("register.html", {
+            "request": request, "error": "Nom et email valides requis."
+        })
+    token = str(uuid.uuid4())
+    async with get_db() as db:
+        # Check if email already registered
+        existing = await (await db.execute(
+            "SELECT token FROM participants WHERE email=?", (email,)
+        )).fetchone()
+        if existing:
+            return RedirectResponse(url=f"/p/{existing['token']}", status_code=303)
+        try:
+            await db.execute(
+                "INSERT INTO participants (name, email, token, is_confirmed) VALUES (?,?,?,1)",
+                (name, email, token)
+            )
+            await db.commit()
+        except Exception:
+            return templates.TemplateResponse("register.html", {
+                "request": request, "error": "Une erreur est survenue, réessaie."
+            })
+    return RedirectResponse(url=f"/p/{token}", status_code=303)
 
 
 @router.get("/p/{token}", response_class=HTMLResponse)

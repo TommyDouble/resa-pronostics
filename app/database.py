@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS participants (
   token      TEXT    NOT NULL UNIQUE,
   is_admin   INTEGER NOT NULL DEFAULT 0,
   is_confirmed INTEGER NOT NULL DEFAULT 0,
+  has_paid   INTEGER NOT NULL DEFAULT 0,
   created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -122,3 +123,10 @@ CREATE INDEX IF NOT EXISTS idx_predictions_participant ON predictions(participan
 CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
         """)
         await db.commit()
+
+        # Migration: add has_paid if DB existed before this column
+        try:
+            await db.execute("ALTER TABLE participants ADD COLUMN has_paid INTEGER NOT NULL DEFAULT 0")
+            await db.commit()
+        except Exception:
+            pass
