@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RESA Pronostics 2026 — Hi-Fi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="resa-hifi.css">
+</head>
+<body data-accent="brand">
+
+<div class="toolbar">
+  <div class="brand">RESA <b>Pronos</b></div>
+  <nav class="jump">
+    <a href="#part">Participant</a>
+    <a href="#profil">Profil</a>
+  </nav>
+  <div class="tw">
+    <div class="grp">Accent
+      <button class="swatch sw-brand" data-acc="brand" aria-pressed="true" title="Brique (marque)"></button>
+      <button class="swatch sw-blue" data-acc="blue" aria-pressed="false" title="Bleu"></button>
+      <button class="swatch sw-green" data-acc="green" aria-pressed="false" title="Vert"></button>
+    </div>
+    <button class="tg" id="tg-paper" aria-pressed="true">Grain papier</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="lead">Haute fidélité — <b>RESA Pronostics 2026</b></div>
+  <p class="sub">Le parcours participant et le profil, montés en haute fidélité dans le design system RESA (Nunito + Inter, palette <b>#D3450D</b>, ombres &amp; rayons de la spec) — tout en gardant l'âme « brouillon » : le grain papier, les accents manuscrits Caveat et les petits traits faits main. Mobile-first. <em style="font-family:var(--sketch);font-size:19px;color:var(--primary)">Le backoffice suit si la direction te plaît.</em></p>
+
+  <section class="sec" id="part">
+    <div class="sec-h">
+      <span class="n">A</span><h2>Parcours participant</h2>
+      <span class="d">Onboarding → pronostics → classement → détail → bonus</span>
+      <svg class="squig" viewBox="0 0 160 12" fill="none"><path d="M2 7C30 2 50 10 80 6s50-6 78-2" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+    </div>
+
+    <div class="row">
+
+      <!-- ONBOARDING -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"></div>
+          <div class="statusbar"><span>9:41</span><span class="r">5G&nbsp;&nbsp;100%&nbsp;▮</span></div>
+          <div class="app"><div class="content center" style="gap:18px;text-align:center;padding:28px 22px;">
+            <div style="width:74px;height:74px;border-radius:22px;margin:0 auto;background:linear-gradient(150deg,var(--primary),var(--primary-d));display:flex;align-items:center;justify-content:center;box-shadow:var(--sh2);">
+              <span style="font-family:var(--sketch);font-weight:700;font-size:34px;color:#fff;line-height:1;">R</span>
+            </div>
+            <div>
+              <div class="scrib-h" style="font-size:34px;color:var(--primary);">Salut Camille&nbsp;👋</div>
+              <p class="muted" style="margin:6px 0 0;font-size:14px;line-height:1.5;">Bienvenue dans les pronos RESA de la Coupe du Monde&nbsp;2026. On confirme deux infos&nbsp;?</p>
+            </div>
+            <div style="text-align:left;display:flex;flex-direction:column;gap:14px;margin-top:2px;">
+              <div><div class="lbl" style="margin-bottom:6px;">Prénom</div><div class="field">Camille</div></div>
+              <div><div class="lbl" style="margin-bottom:6px;">Nom</div><div class="field">Dubois</div></div>
+            </div>
+            <button class="btn full" style="margin-top:4px;">Je participe ⚽</button>
+            <p class="muted" style="font-size:11px;margin:0;">Ton lien est personnel — ne le partage pas.</p>
+          </div></div>
+        </div></div>
+        <figcaption><span class="no">A1 ·</span> Onboarding<small>Accueil personnalisé via le token · sauté ensuite</small></figcaption>
+      </figure>
+
+      <!-- PRÉ-TOURNOI -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"></div>
+          <div class="statusbar"><span>9:41</span><span class="r">5G&nbsp;&nbsp;100%&nbsp;▮</span></div>
+          <div class="app">
+            <div class="head"><div class="row1"><div><h1>Pré-tournoi</h1><div class="sub1">Verrouillé au coup d'envoi · 11 juin</div></div><span class="sp"></span><span class="chip warn">2 / 5</span></div></div>
+            <div class="content" style="gap:11px;">
+              <div class="banner acc"><span>✎</span> Brouillon non soumis — pense à valider !</div>
+              <div class="card flat" style="padding:12px;"><div class="lbl">① Vainqueur · +8 pts</div>
+                <div class="field" style="margin-top:7px;"><span class="flag">🇫🇷</span> France <span class="ca">▾</span></div></div>
+              <div class="card flat" style="padding:12px;"><div class="lbl">② Finaliste · +5 pts</div>
+                <div class="field" style="margin-top:7px;"><span class="flag">🇧🇷</span> Brésil <span class="ca">▾</span></div></div>
+              <div class="card flat" style="padding:12px;"><div class="lbl">③ Meilleur buteur · +5 pts</div>
+                <div class="field" style="margin-top:7px;"><span class="pl">Saisir un nom…</span><span class="ca">⌕</span></div></div>
+              <div class="card flat" style="padding:12px;"><div class="lbl">④ Révélation · +5 pts</div>
+                <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;">
+                  <span class="chip gr">🇲🇦 Maroc</span><span class="chip acc">🇯🇵 Japon</span><span class="chip gr">🇺🇸 USA</span><span class="chip gr">🇸🇳 Sénégal</span></div></div>
+              <div class="card flat" style="padding:12px;"><div class="lbl">⑤ Total buts en groupes · +8 / +4 pts</div>
+                <div class="stepper" style="margin-top:8px;"><div class="b">–</div><div class="v">140</div><div class="b">+</div><span class="muted" style="font-size:11px;margin-left:4px;">50–300</span></div></div>
+            </div>
+            <div style="padding:10px 16px 14px;border-top:1px solid var(--line);background:var(--paper);display:flex;gap:9px;">
+              <button class="btn ghost sm" style="flex:1;">Brouillon</button><button class="btn sm" style="flex:1.4;">Soumettre définitivement</button>
+            </div>
+          </div>
+        </div></div>
+        <figcaption><span class="no">A2 ·</span> Pronostics pré-tournoi<small>5 questions · brouillon réversible, soumission irréversible</small></figcaption>
+      </figure>
+
+      <!-- PRONOSTICS MATCHS — HÉRO -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"></div>
+          <div class="statusbar"><span>9:41</span><span class="r">5G&nbsp;&nbsp;100%&nbsp;▮</span></div>
+          <div class="app">
+            <div class="head">
+              <div class="row1"><h1>Pronostics</h1><span class="sp"></span><span class="chip ok">Enregistré ✓</span></div>
+              <div class="fchips" style="margin-top:11px;"><b class="on">Groupes</b><b>1/8</b><b>Quarts</b><b>Demies</b><b>Finale</b></div>
+            </div>
+            <div class="content" style="gap:12px;">
+              <div class="daybar">JOURNÉE 1 · MER. 11 JUIN</div>
+              <!-- active top match -->
+              <div class="match top">
+                <div class="mtop"><span class="dot o"></span> 18:00 <span class="sp"></span><span class="chip warn"><span class="star">★</span> Top Match ×2</span></div>
+                <div class="teams"><div class="team"><span class="flag">🇫🇷</span> France</div><span class="vs">vs</span><div class="team r">Maroc <span class="flag">🇲🇦</span></div></div>
+                <div class="pills"><div class="p on">France<span class="s">issue</span></div><div class="p">Nul</div><div class="p">Maroc</div></div>
+                <div class="exact"><span class="lbl">Score exact</span><span class="muted" style="font-size:11px;">(+2 pts)</span><div class="mini">2</div><span class="vs">–</span><div class="mini">1</div></div>
+              </div>
+              <!-- to do -->
+              <div class="match">
+                <div class="mtop"><span class="dot gr"></span> 21:00 <span class="sp"></span><span class="chip gr">×1</span></div>
+                <div class="teams"><div class="team"><span class="flag">🇧🇷</span> Brésil</div><span class="vs">vs</span><div class="team r">Croatie <span class="flag">🇭🇷</span></div></div>
+                <div class="pills"><div class="p">Brésil</div><div class="p">Nul</div><div class="p">Croatie</div></div>
+              </div>
+              <div class="daybar">JOUÉS</div>
+              <!-- past -->
+              <div class="match past">
+                <div class="mtop"><span class="dot r"></span> Terminé <span class="sp"></span><span class="chip lock">🔒</span></div>
+                <div class="teams"><div class="team" style="font-size:14px;"><span class="flag">🇧🇪</span> Belgique</div><span class="score-real">2&nbsp;–&nbsp;0</span><div class="team r" style="font-size:14px;">Canada <span class="flag">🇨🇦</span></div></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;" class="muted"><span>Ton prono : <b style="color:var(--n900)">Belgique · 1–1</b></span><span class="chip ok">Bonne issue · +2</span></div>
+              </div>
+            </div>
+            <nav class="bnav">
+              <a class="on"><i class="nicon ic-pronos"></i><span>Pronos</span></a>
+              <a><i class="nicon ic-rank"></i><span>Classt</span></a>
+              <a><i class="nicon ic-user"></i><span>Profil</span></a>
+              <a class="bdg"><i class="nicon ic-bonus"></i><span>Bonus</span></a>
+            </nav>
+          </div>
+        </div></div>
+        <figcaption><span class="no">A3 ·</span> Saisie des pronostics <em>— l'écran vedette</em><small>Pills · expansion score exact · sauvegarde auto · états par match</small></figcaption>
+      </figure>
+
+      <!-- CLASSEMENT -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"></div>
+          <div class="statusbar"><span>9:41</span><span class="r">5G&nbsp;&nbsp;100%&nbsp;▮</span></div>
+          <div class="app">
+            <div class="head">
+              <div class="row1"><h1>Classement</h1></div>
+              <div class="segs"><b class="on">Général</b><b>Finale</b><b>Bonus</b><b>Remontada</b></div>
+            </div>
+            <div class="content" style="gap:13px;">
+              <div class="podium">
+                <div class="pod p2"><span class="medal">🥈</span><div class="av c3">AL</div><div class="bar">2</div><span class="pts">138</span></div>
+                <div class="pod p1"><span class="medal">🥇</span><div class="av c1">MC</div><div class="bar">1</div><span class="pts">142</span></div>
+                <div class="pod p3"><span class="medal">🥉</span><div class="av c2">JD</div><div class="bar">3</div><span class="pts">131</span></div>
+              </div>
+              <div class="card p0">
+                <div class="rrow"><span class="rk">4</span><div class="av c4">SM</div><div class="nm">Sophie Martin</div><span class="sc">128</span><span class="chip up">↑2</span></div>
+                <div class="rrow"><span class="rk">5</span><div class="av c5">TL</div><div class="nm">Thomas Leroy</div><span class="sc">121</span><span class="chip dn">↓1</span></div>
+                <div class="rrow"><span class="rk">6</span><div class="av c3">NR</div><div class="nm">Nadia Reyes</div><span class="sc">117</span><span class="chip fl">–</span></div>
+                <div class="rrow me"><span class="rk">7</span><div class="av c1">CD</div><div class="nm">Camille Dubois<small>c'est toi</small></div><span class="sc">112</span><span class="chip up">↑3</span></div>
+                <div class="rrow"><span class="rk">8</span><div class="av c2">PM</div><div class="nm">Paul Mercier</div><span class="sc">109</span><span class="chip dn">↓2</span></div>
+              </div>
+              <div class="card flat" style="display:flex;align-items:center;gap:11px;padding:11px;">
+                <span style="font-size:22px;">🏆</span>
+                <div style="font-size:11px;" class="muted">Cagnotte <b style="color:var(--primary)">500&nbsp;€</b> — 1er&nbsp;180&nbsp;€ · 2e&nbsp;100&nbsp;€ · 3e&nbsp;60&nbsp;€</div>
+              </div>
+            </div>
+            <nav class="bnav">
+              <a><i class="nicon ic-pronos"></i><span>Pronos</span></a>
+              <a class="on"><i class="nicon ic-rank"></i><span>Classt</span></a>
+              <a><i class="nicon ic-user"></i><span>Profil</span></a>
+              <a class="bdg"><i class="nicon ic-bonus"></i><span>Bonus</span></a>
+            </nav>
+          </div>
+        </div></div>
+        <figcaption><span class="no">A4 ·</span> Classement<small>4 onglets · podium top 3 · ta ligne surlignée</small></figcaption>
+      </figure>
+
+      <!-- DÉTAIL MATCH -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"></div>
+          <div class="statusbar"><span>9:41</span><span class="r">5G&nbsp;&nbsp;100%&nbsp;▮</span></div>
+          <div class="app">
+            <div class="head"><div class="row1"><span style="font-family:var(--display);font-weight:800;font-size:14px;color:var(--n600);">‹ Pronostics</span><span class="sp"></span><span class="chip gr">Groupe A · J1</span></div></div>
+            <div class="content" style="gap:13px;">
+              <div class="scoreboard">
+                <div class="ph">Phase de groupes · 11 juin</div>
+                <div class="grid">
+                  <div class="t"><span class="flag">🇫🇷</span> France</div>
+                  <div class="sc">2 – 0<small>TEMPS PLEIN</small></div>
+                  <div class="t"><span class="flag">🇲🇦</span> Maroc</div>
+                </div>
+              </div>
+              <div class="card" style="padding:12px;"><div class="lbl">Mon pronostic</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+                  <div style="font-weight:700;font-size:14px;">France · <span class="muted" style="font-weight:500;">score 1–0</span></div>
+                  <span class="chip ok">Bonne issue · +4 pts</span>
+                </div>
+              </div>
+              <div><div class="lbl" style="margin-bottom:7px;">Répartition de la communauté</div>
+                <div class="combar"><span class="a" style="width:64%">32</span><span class="b" style="width:24%">12</span><span class="c" style="width:12%">6</span></div>
+                <div class="com-legend"><span>France</span><span>Nul</span><span>Maroc</span></div>
+              </div>
+              <div class="card p0"><div style="padding:9px 12px 2px;"><div class="lbl">Tous les pronostics</div></div>
+                <table class="tbl">
+                  <thead><tr><th>Joueur</th><th>Issue</th><th>Exact</th><th style="text-align:right;">Pts</th></tr></thead>
+                  <tbody>
+                    <tr><td>Alex L.</td><td>France</td><td style="color:var(--primary);font-weight:700;">2–0</td><td class="s" style="text-align:right;">6</td></tr>
+                    <tr><td>Camille D.</td><td>France</td><td class="muted">1–0</td><td class="s" style="text-align:right;">4</td></tr>
+                    <tr><td>Julien D.</td><td class="muted">Nul</td><td class="muted">—</td><td class="s muted" style="text-align:right;">0</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div></div>
+        <figcaption><span class="no">A5 ·</span> Détail d'un match<small>Visible après le coup de sifflet · pronos des autres révélés</small></figcaption>
+      </figure>
+
+      <!-- BONUS -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"></div>
+          <div class="statusbar"><span>9:41</span><span class="r">5G&nbsp;&nbsp;100%&nbsp;▮</span></div>
+          <div class="app">
+            <div style="padding:10px 14px;"><div class="banner red"><span>🔔</span> Question 1/8 à répondre <span class="cd">⏳ 02:14:00</span></div></div>
+            <div class="head" style="border-top:1px solid var(--line);"><div class="row1"><h1>Questions bonus</h1></div></div>
+            <div class="content" style="gap:13px;">
+              <div class="card" style="padding:14px;">
+                <span class="chip acc">Avant les huitièmes · 6 pts</span>
+                <p style="font-family:var(--sketch);font-weight:600;font-size:24px;line-height:1.1;margin:9px 0 12px;">Combien de buts seront marqués lors des 8es de finale ?</p>
+                <div class="stepper"><div class="b">–</div><div class="v">38</div><div class="b">+</div><span class="muted" style="font-size:12px;margin-left:6px;">réponse numérique</span></div>
+              </div>
+              <button class="btn full">Valider ma réponse</button>
+              <div class="card p0"><div style="padding:9px 12px 2px;"><div class="lbl">Historique</div></div>
+                <table class="tbl"><tbody>
+                  <tr><td>Pré-tournoi · Vainqueur</td><td style="text-align:right;"><span class="chip gr">en attente</span></td></tr>
+                  <tr><td>Pré-tournoi · Total buts</td><td style="text-align:right;"><span class="chip ok">+8 pts</span></td></tr>
+                </tbody></table>
+              </div>
+            </div>
+            <nav class="bnav">
+              <a><i class="nicon ic-pronos"></i><span>Pronos</span></a>
+              <a><i class="nicon ic-rank"></i><span>Classt</span></a>
+              <a><i class="nicon ic-user"></i><span>Profil</span></a>
+              <a class="on bdg"><i class="nicon ic-bonus"></i><span>Bonus</span></a>
+            </nav>
+          </div>
+        </div></div>
+        <figcaption><span class="no">A6 ·</span> Questions bonus mid-tournoi<small>Bannière non-dismissible + compte à rebours · badge sur l'onglet</small></figcaption>
+      </figure>
+
+    </div>
+  </section>
+
+  <!-- PROFIL -->
+  <section class="sec" id="profil">
+    <div class="sec-h">
+      <span class="n">B</span><h2>Profil joueur</h2>
+      <span class="d">Page publique entre collègues · style de jeu, archétype, badges</span>
+      <svg class="squig" viewBox="0 0 160 12" fill="none"><path d="M2 7C30 2 50 10 80 6s50-6 78-2" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+    </div>
+
+    <div class="row">
+
+      <!-- PROFIL A -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"></div>
+          <div class="statusbar"><span>9:41</span><span class="r">5G&nbsp;&nbsp;100%&nbsp;▮</span></div>
+          <div class="app">
+            <div class="head"><div class="row1"><span style="font-family:var(--display);font-weight:800;font-size:14px;color:var(--n600);">‹ Classement</span><span class="sp"></span><span class="chip acc">Profil public</span></div></div>
+            <div class="content" style="gap:13px;">
+              <div class="phead">
+                <div class="av c1">CD</div>
+                <div><h1>Camille Dubois</h1><div class="meta"><span class="chip acc">Rang #7</span> <b style="color:var(--primary);font-family:var(--display);">112 pts</b> · 38 matchs · depuis le 2 juin</div></div>
+              </div>
+              <div class="arche">
+                <div class="lbl">Archétype du parieur</div>
+                <div class="name">L'Outsider Hunter 🎯</div>
+                <div class="desc">Tu adores miser sur les surprises. Audace au-dessus de la moyenne — quand ça passe, ça rapporte gros.</div>
+              </div>
+              <div class="metrics">
+                <div class="metric"><div class="big">61%</div><div class="cap">Taux de réussite<br>(issues correctes)</div></div>
+                <div class="metric"><div class="big">7</div><div class="cap">Scores exacts<br>trouvés</div></div>
+                <div class="metric"><div class="big">4&nbsp;🔥</div><div class="cap">Série en cours<br>de bons pronos</div></div>
+                <div class="metric"><div class="big">J2</div><div class="cap">Meilleure journée<br>14 pts</div></div>
+              </div>
+              <div class="card radar" style="padding:12px;">
+                <div class="lbl" style="margin-bottom:4px;">Profil tactique</div>
+                <svg width="190" height="180" viewBox="0 0 190 184">
+                  <defs><linearGradient id="rg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary)" stop-opacity=".38"/><stop offset="1" stop-color="var(--primary)" stop-opacity=".14"/></linearGradient></defs>
+                  <polygon points="95,17 166.3,68.8 139.1,152.7 50.9,152.7 23.7,68.8" fill="none" stroke="#E0DAD0" stroke-width="1.5"/>
+                  <polygon points="95,54.5 130.6,80.4 117,122.4 73,122.4 59.4,80.4" fill="none" stroke="#E0DAD0" stroke-width="1.2"/>
+                  <g stroke="#E7E1D6"><line x1="95" y1="92" x2="95" y2="17"/><line x1="95" y1="92" x2="166.3" y2="68.8"/><line x1="95" y1="92" x2="139.1" y2="152.7"/><line x1="95" y1="92" x2="50.9" y2="152.7"/><line x1="95" y1="92" x2="23.7" y2="68.8"/></g>
+                  <polygon points="95,30.5 130.6,80.4 126.8,135.7 68.5,128.4 40.8,74.4" fill="url(#rg)" stroke="var(--primary)" stroke-width="2.4" stroke-linejoin="round"/>
+                  <g fill="var(--n600)" font-size="9.5" font-weight="700" font-family="Inter">
+                    <text x="95" y="11" text-anchor="middle">Précision</text>
+                    <text x="180" y="66" text-anchor="middle">Exact.</text>
+                    <text x="146" y="170" text-anchor="middle">Audace</text>
+                    <text x="44" y="170" text-anchor="middle">Régul.</text>
+                    <text x="12" y="66" text-anchor="middle">Finales</text>
+                  </g>
+                </svg>
+                <div class="fw"><span class="up">↑ Force : Audace</span><span class="dn">↓ Faille : Exactitude</span></div>
+              </div>
+            </div>
+            <nav class="bnav">
+              <a><i class="nicon ic-pronos"></i><span>Pronos</span></a>
+              <a><i class="nicon ic-rank"></i><span>Classt</span></a>
+              <a class="on"><i class="nicon ic-user"></i><span>Profil</span></a>
+              <a class="bdg"><i class="nicon ic-bonus"></i><span>Bonus</span></a>
+            </nav>
+          </div>
+        </div></div>
+        <figcaption><span class="no">B1 ·</span> Profil — identité &amp; style de jeu<small>En-tête · archétype · 4 métriques · radar 5 axes</small></figcaption>
+      </figure>
+
+      <!-- PROFIL B -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"></div>
+          <div class="statusbar"><span>9:41</span><span class="r">5G&nbsp;&nbsp;100%&nbsp;▮</span></div>
+          <div class="app">
+            <div class="head"><div class="row1"><h1 style="font-size:19px;">Camille Dubois</h1><span class="sp"></span><span class="muted" style="font-size:11px;">suite ▾</span></div></div>
+            <div class="content" style="gap:13px;">
+              <div class="card" style="padding:12px;">
+                <div class="lbl" style="margin-bottom:8px;">Forme récente · 10 derniers</div>
+                <div class="bars"><i class="hi" style="height:100%"></i><i style="height:16%"></i><i class="mid" style="height:50%"></i><i class="hi" style="height:84%"></i><i style="height:16%"></i><i class="hi" style="height:70%"></i><i class="mid" style="height:50%"></i><i style="height:16%"></i><i class="hi" style="height:100%"></i><i class="mid" style="height:50%"></i></div>
+                <div style="display:flex;gap:12px;font-size:9.5px;margin-top:7px;" class="muted"><span><i class="dot o" style="width:8px;height:8px;"></i> ≥4 pts</span><span><i class="dot" style="width:8px;height:8px;background:rgba(211,69,13,.32)"></i> 1–3 pts</span><span><i class="dot gr" style="width:8px;height:8px;"></i> 0 pt</span></div>
+              </div>
+              <div class="card" style="padding:8px 13px;">
+                <div class="lbl" style="margin:5px 0 2px;">Statistiques fun</div>
+                <div class="funlist">
+                  <div class="it"><span class="ico">⚽</span> Équipe la plus soutenue <span class="v">🇫🇷 ×6</span></div>
+                  <div class="it"><span class="ico">🤝</span> Nuls tentés / réussis <span class="v">8&nbsp;/&nbsp;2</span></div>
+                  <div class="it"><span class="ico">📉</span> Pire journée <span class="v">J3 · 2 pts</span></div>
+                  <div class="it"><span class="ico">⏱</span> Délai moyen de soumission <span class="v">34 min</span></div>
+                  <div class="it"><span class="ico">🐎</span> Outsider favori <span class="v">🇯🇵 ×4</span></div>
+                  <div class="it"><span class="ico">⚔️</span> Rival naturel <span class="v">Sophie M.</span></div>
+                </div>
+              </div>
+              <div class="card" style="padding:12px;">
+                <div class="lbl" style="margin-bottom:8px;">Toi vs. Sophie</div>
+                <div class="cmpbar"><span class="me" style="width:51%;">Toi · 112</span><span class="ot">Sophie · 109</span></div>
+                <p class="muted" style="font-size:11.5px;margin:8px 0 0;line-height:1.4;">+3 pts d'avance. <b style="color:var(--n900)">Il lui faudrait 4 pts de plus que toi</b> sur les prochains matchs pour repasser devant.</p>
+              </div>
+              <div class="card" style="padding:13px;">
+                <div class="lbl" style="margin-bottom:11px;">Badges débloqués · 3/7</div>
+                <div class="badges">
+                  <div class="bdg"><div class="ic">🎯</div><div class="nm">Sniper</div></div>
+                  <div class="bdg"><div class="ic">🐎</div><div class="nm">Chasseur d'upset</div></div>
+                  <div class="bdg off"><div class="ic">⏰</div><div class="nm">Dernière minute</div></div>
+                  <div class="bdg"><div class="ic">🔥</div><div class="nm">En série</div></div>
+                  <div class="bdg off"><div class="ic">📌</div><div class="nm">Fidèle au poste</div></div>
+                  <div class="bdg off"><div class="ic">👑</div><div class="nm">Roi des bonus</div></div>
+                  <div class="bdg off"><div class="ic">🚀</div><div class="nm">Remontada</div></div>
+                  <div class="bdg off"><div class="ic">🔒</div><div class="nm">à venir</div></div>
+                </div>
+              </div>
+            </div>
+            <nav class="bnav">
+              <a><i class="nicon ic-pronos"></i><span>Pronos</span></a>
+              <a><i class="nicon ic-rank"></i><span>Classt</span></a>
+              <a class="on"><i class="nicon ic-user"></i><span>Profil</span></a>
+              <a class="bdg"><i class="nicon ic-bonus"></i><span>Bonus</span></a>
+            </nav>
+          </div>
+        </div></div>
+        <figcaption><span class="no">B2 ·</span> Profil — forme, stats &amp; badges<small>Suite du scroll · comparaison directe · badges grisés à débloquer</small></figcaption>
+      </figure>
+
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  // accent swatches
+  var sw = document.querySelectorAll('.swatch');
+  sw.forEach(function(b){
+    b.addEventListener('click', function(){
+      sw.forEach(function(x){ x.setAttribute('aria-pressed','false'); });
+      b.setAttribute('aria-pressed','true');
+      document.body.setAttribute('data-accent', b.dataset.acc);
+    });
+  });
+  // paper toggle
+  var pg = document.getElementById('tg-paper');
+  pg.addEventListener('click', function(){
+    var on = pg.getAttribute('aria-pressed')!=='true';
+    pg.setAttribute('aria-pressed', String(on));
+    document.body.classList.toggle('no-paper', !on);
+  });
+})();
+</script>
+</body>
+</html>

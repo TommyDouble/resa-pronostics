@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RESA Pronostics 2026 — Wireframes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#2b2b2b; --ink2:#6b6b66;
+  --paper:#fdfdfb; --board:#eceae3;
+  --g1:#dedbd4; --g2:#cfccc4; --g3:#bcb9b0;
+  --accent:#D3450D; --accent-l:#F5E8E3;
+  --green:#2E7D32; --warn:#F59E0B; --err:#DC2626;
+  --sketch:'Caveat',cursive; --ui:'Inter',system-ui,sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Menlo,monospace;
+  --rough:14px 9px 15px 8px/9px 15px 8px 14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:var(--ui); color:var(--ink); background:var(--board);
+  background-image:radial-gradient(var(--g2) 1.1px, transparent 1.1px);
+  background-size:22px 22px;
+  -webkit-font-smoothing:antialiased; padding-bottom:80px;
+}
+body.no-accent{ --accent:#7a7771; --accent-l:#e9e7e1; }
+body.flat{ --rough:10px; }
+body.flat .phone{ border-radius:24px; }
+
+/* ---------- toolbar ---------- */
+.toolbar{
+  position:sticky; top:0; z-index:50;
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  padding:10px 22px; background:rgba(253,253,251,.92); backdrop-filter:blur(6px);
+  border-bottom:2px solid var(--ink);
+}
+.toolbar .brand{ font-family:var(--sketch); font-weight:700; font-size:26px; line-height:1; }
+.toolbar .brand b{ color:var(--accent); }
+.toolbar .jump{ display:flex; gap:6px; flex-wrap:wrap; }
+.toolbar .jump a{
+  font-family:var(--sketch); font-size:19px; text-decoration:none; color:var(--ink);
+  padding:2px 12px; border:2px solid var(--ink); border-radius:var(--rough); background:var(--paper);
+}
+.toolbar .jump a:hover{ background:var(--accent); color:#fff; border-color:var(--accent); }
+.toolbar .tw{ margin-left:auto; display:flex; gap:8px; }
+.tg{ font-family:var(--ui); font-weight:600; font-size:12px; cursor:pointer; user-select:none; white-space:nowrap; line-height:1;
+  padding:7px 13px; border:2px solid var(--ink); border-radius:999px; background:var(--paper); color:var(--ink);}
+.tg[aria-pressed="true"]{ background:var(--ink); color:#fff; }
+
+/* ---------- layout ---------- */
+.wrap{ max-width:1500px; margin:0 auto; padding:30px 22px 60px; }
+.lead{ font-family:var(--sketch); font-size:40px; font-weight:700; margin:8px 0 2px; }
+.lead b{ color:var(--accent); }
+.sub{ color:var(--ink2); font-size:14px; max-width:640px; line-height:1.5; }
+.legend{ display:flex; gap:18px; flex-wrap:wrap; margin:18px 0 4px; font-size:12.5px; color:var(--ink2); }
+.legend span{ display:flex; align-items:center; gap:7px; }
+.sw{ width:16px; height:16px; border:2px solid var(--ink); border-radius:5px; display:inline-block; }
+.sw.acc{ background:var(--accent); border-color:var(--accent); }
+.sw.pl{ background:repeating-linear-gradient(45deg,var(--g1) 0 6px,var(--g2) 6px 12px); }
+.sw.txt{ background:repeating-linear-gradient(var(--g2) 0 4px,transparent 4px 8px); }
+
+.sec{ margin-top:46px; }
+.sec-h{ display:flex; align-items:flex-end; flex-wrap:wrap; gap:6px 14px; border-bottom:3px solid var(--ink); padding-bottom:8px; margin-bottom:6px; }
+.sec-h .n{ font-family:var(--sketch); font-size:46px; font-weight:700; color:var(--accent); line-height:.7; }
+.sec-h h2{ font-family:var(--sketch); font-size:34px; font-weight:700; margin:0; line-height:.9; white-space:nowrap; }
+.sec-h .d{ color:var(--ink2); font-size:13px; margin-left:auto; max-width:380px; line-height:1.35; }
+
+.row{ display:flex; flex-wrap:wrap; gap:34px 26px; align-items:flex-start; margin-top:32px; }
+figure{ margin:0; }
+figcaption{ font-family:var(--sketch); font-size:21px; margin-top:9px; max-width:300px; }
+figcaption .ph-no{ color:var(--accent); font-weight:700; }
+figcaption small{ display:block; font-family:var(--ui); font-size:11.5px; color:var(--ink2); line-height:1.4; margin-top:1px; }
+
+/* ---------- phone ---------- */
+.phone{
+  width:300px; background:var(--ink); border:2.5px solid var(--ink); border-radius:34px;
+  padding:9px; box-shadow:5px 6px 0 rgba(0,0,0,.10);
+}
+.phone.tall{ }
+.scr{ background:var(--paper); border-radius:26px; overflow:hidden; position:relative; display:flex; flex-direction:column; min-height:560px; }
+.notch{ height:20px; display:flex; align-items:center; justify-content:space-between; padding:0 16px; font-size:9px; color:var(--ink2); font-family:var(--mono); }
+.notch::before{ content:""; position:absolute; left:50%; top:6px; transform:translateX(-50%); width:64px; height:6px; border-radius:99px; background:var(--ink); }
+.body{ flex:1; padding:12px 13px 14px; display:flex; flex-direction:column; gap:11px; overflow:hidden; }
+.body.pad0{ padding:0; }
+
+/* app chrome */
+.appbar{ display:flex; align-items:center; gap:8px; }
+.appbar .t{ font-family:var(--sketch); font-size:24px; font-weight:700; line-height:1; }
+.appbar .t small{ display:block; font-family:var(--ui); font-size:10px; color:var(--ink2); }
+.appbar .sp{ margin-left:auto; }
+.tabs{ display:flex; gap:6px; }
+.tabs b{ font-size:11px; font-weight:600; color:var(--ink2); padding:4px 8px; border-radius:999px; background:var(--g1); white-space:nowrap; }
+.tabs b.on{ background:var(--ink); color:#fff; }
+
+/* bottom nav */
+.bnav{ display:flex; border-top:2px solid var(--ink); background:var(--paper); }
+.bnav b{ flex:1; text-align:center; font-size:10px; font-weight:600; color:var(--ink2); padding:8px 2px 9px; position:relative; }
+.bnav b::before{ content:""; display:block; width:18px; height:18px; margin:0 auto 3px; border:2px solid var(--ink2); border-radius:5px; }
+.bnav b.on{ color:var(--accent); }
+.bnav b.on::before{ border-color:var(--accent); }
+.bnav b.on::after{ content:""; position:absolute; top:-2px; left:50%; transform:translateX(-50%); width:26px; height:2px; background:var(--accent); }
+.bnav b.bdg::after{ content:""; position:absolute; top:5px; right:24px; width:8px; height:8px; border-radius:99px; background:var(--accent); border:1.5px solid var(--paper); }
+
+/* generic blocks */
+.card{ border:2px solid var(--ink); border-radius:var(--rough); background:var(--paper); padding:11px; }
+.card.s{ padding:9px; }
+.muted{ border-color:var(--g3); background:#f6f5f1; }
+.lbl{ font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink2); }
+.h3{ font-family:var(--sketch); font-size:20px; font-weight:700; line-height:1; }
+.txt{ background:repeating-linear-gradient(var(--g2) 0 5px,transparent 5px 10px); border-radius:3px; height:30px; }
+.txt.l1{ height:10px; } .txt.l2{ height:20px; } .txt.l4{ height:40px; }
+.txt.w7{ width:70%; } .txt.w5{ width:50%; } .txt.w8{ width:82%; }
+.ph{ background:repeating-linear-gradient(45deg,var(--g1) 0 7px,var(--g2) 7px 14px); display:flex; align-items:center; justify-content:center; color:#8d8a82; font:600 10px var(--mono); text-align:center; border-radius:8px; }
+.field{ border:2px solid var(--g3); border-radius:8px; height:30px; display:flex; align-items:center; padding:0 10px; font-size:12px; color:var(--ink2); background:#fff; }
+.field .ca{ margin-left:auto; color:var(--ink2); }
+.field.num{ width:48px; justify-content:center; padding:0; font-weight:700; color:var(--ink); }
+
+.btn{ font-family:var(--sketch); font-size:19px; font-weight:700; text-align:center; padding:8px 14px; border-radius:999px; border:2px solid var(--accent); background:var(--accent); color:#fff; }
+.btn.full{ display:block; }
+.btn.ghost{ background:var(--paper); color:var(--ink); border-color:var(--ink); }
+.btn.sm{ font-size:15px; padding:5px 12px; }
+
+.row2{ display:flex; gap:8px; }
+.row2>*{ flex:1; }
+.grid2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.grid3{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+
+/* prono pills */
+.pills{ display:flex; gap:6px; }
+.pills .p{ flex:1; text-align:center; font-size:11px; font-weight:600; padding:7px 4px; border-radius:999px; background:var(--g1); border:2px solid var(--g3); color:var(--ink2); }
+.pills .p.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
+.pills .p.lock{ color:var(--g3); }
+
+/* dots */
+.dot{ width:10px; height:10px; border-radius:99px; display:inline-block; flex:none; }
+.dot.g{ background:var(--green); } .dot.gr{ background:var(--g3); } .dot.r{ background:var(--err); } .dot.o{ background:var(--accent); }
+
+.star{ color:var(--warn); font-size:14px; }
+.chip{ font-size:10px; font-weight:700; padding:3px 8px; border-radius:999px; display:inline-flex; align-items:center; gap:4px; }
+.chip.ok{ background:#e6f0e6; color:var(--green); }
+.chip.acc{ background:var(--accent-l); color:var(--accent); }
+.chip.warn{ background:#fdf0d8; color:#9a6a00; }
+.chip.gr{ background:var(--g1); color:var(--ink2); }
+.chip.lock{ background:#fbe3e3; color:var(--err); }
+
+.banner{ border:2px solid var(--accent); background:var(--accent-l); border-radius:8px; padding:8px 10px; display:flex; gap:8px; align-items:center; font-size:11px; color:var(--accent); font-weight:600; }
+.banner.red{ border-color:var(--err); background:#fbe6e6; color:var(--err); }
+
+/* annotation */
+.annot{ font-family:var(--sketch); font-size:17px; color:var(--accent); line-height:1.05; display:flex; gap:6px; align-items:flex-start; }
+.annot::before{ content:"↳"; font-size:18px; }
+body.no-annot .annot{ display:none; }
+.note{ font-family:var(--sketch); font-size:18px; color:var(--ink2); }
+body.no-annot .note{ display:none; }
+
+/* match row */
+.mrow{ border:2px solid var(--ink); border-radius:var(--rough); padding:9px; display:flex; flex-direction:column; gap:7px; }
+.mrow.past{ border-color:var(--g3); background:#f6f5f1; color:var(--ink2); }
+.mhead{ display:flex; align-items:center; gap:6px; font-size:11px; }
+.mteams{ display:flex; align-items:center; justify-content:center; gap:8px; font-weight:700; font-size:13px; }
+.mteams .vs{ font-family:var(--sketch); color:var(--ink2); font-weight:600; }
+.flag{ width:16px; height:12px; border-radius:2px; background:var(--g2); display:inline-block; }
+.expand{ display:flex; align-items:center; justify-content:center; gap:6px; padding-top:6px; border-top:1.5px dashed var(--g3); }
+.expand .lbl{ font-size:9px; }
+
+/* ranking */
+.podium{ display:flex; align-items:flex-end; justify-content:center; gap:8px; padding:6px 0 2px; }
+.pod{ display:flex; flex-direction:column; align-items:center; gap:4px; }
+.pod .av{ width:34px; height:34px; border-radius:99px; border:2px solid var(--ink); background:var(--g1); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; }
+.pod .bar{ width:46px; border:2px solid var(--ink); border-top:none; border-radius:0 0 7px 7px; background:var(--g1); display:flex; align-items:flex-start; justify-content:center; padding-top:3px; font-family:var(--sketch); font-weight:700; font-size:18px; }
+.pod.p1 .bar{ height:46px; background:var(--accent-l); } .pod.p2 .bar{ height:34px; } .pod.p3 .bar{ height:26px; }
+.medal{ font-size:15px; }
+.rrow{ display:flex; align-items:center; gap:9px; padding:7px 8px; border-bottom:1.5px solid var(--g1); font-size:12px; }
+.rrow .rk{ font-family:var(--sketch); font-weight:700; font-size:18px; width:20px; }
+.rrow .nm{ flex:1; }
+.rrow .sc{ font-weight:700; color:var(--accent); }
+.rrow .ev{ font-size:11px; font-weight:700; width:30px; text-align:right; }
+.rrow .ev.up{ color:var(--green);} .rrow .ev.dn{ color:var(--err);} .rrow .ev.fl{ color:var(--ink2);}
+.rrow.me{ background:var(--accent-l); border-left:3px solid var(--accent); border-radius:6px; }
+
+/* community bar */
+.combar{ display:flex; height:22px; border:2px solid var(--ink); border-radius:6px; overflow:hidden; font-size:10px; font-weight:700; color:#fff; }
+.combar .a{ background:var(--accent); display:flex; align-items:center; justify-content:center; }
+.combar .b{ background:var(--g3); display:flex; align-items:center; justify-content:center; color:var(--ink); }
+.combar .c{ background:var(--ink2); display:flex; align-items:center; justify-content:center; }
+
+/* table */
+.tbl{ width:100%; border-collapse:collapse; font-size:11px; }
+.tbl th{ text-align:left; font-size:9px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink2); border-bottom:2px solid var(--ink); padding:5px 6px; }
+.tbl td{ border-bottom:1.5px solid var(--g1); padding:6px 6px; }
+
+/* profile metrics */
+.metric{ border:2px solid var(--ink); border-radius:var(--rough); padding:9px; display:flex; flex-direction:column; gap:2px; }
+.metric .big{ font-family:var(--sketch); font-size:28px; font-weight:700; line-height:.9; color:var(--accent); }
+.metric .cap{ font-size:9.5px; color:var(--ink2); line-height:1.15; }
+.bars{ display:flex; align-items:flex-end; gap:3px; height:46px; }
+.bars i{ flex:1; border:1.5px solid var(--ink); border-bottom:none; border-radius:3px 3px 0 0; background:var(--g1); }
+.bars i.hi{ background:var(--accent); }
+.bars i.mid{ background:var(--accent-l); }
+.badgegrid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.bdg2{ display:flex; flex-direction:column; align-items:center; gap:3px; text-align:center; }
+.bdg2 .ic{ width:38px; height:38px; border-radius:99px; border:2px solid var(--ink); display:flex; align-items:center; justify-content:center; font-size:16px; background:var(--accent-l); }
+.bdg2.off{ color:var(--g3); }
+.bdg2.off .ic{ border-color:var(--g3); color:var(--g3); background:#f4f3ef; filter:grayscale(1); opacity:.7; }
+.bdg2 .nm{ font-size:8.5px; font-weight:600; line-height:1.05; }
+
+.cmpbar{ display:flex; height:26px; border:2px solid var(--ink); border-radius:6px; overflow:hidden; font-size:11px; font-weight:700; }
+.cmpbar .me{ background:var(--accent); color:#fff; display:flex; align-items:center; padding:0 8px; }
+.cmpbar .ot{ background:var(--g1); color:var(--ink); display:flex; align-items:center; justify-content:flex-end; padding:0 8px; flex:1; }
+
+/* radar */
+.radar svg{ display:block; margin:0 auto; }
+
+/* desktop frame (admin) */
+.win{ width:560px; border:2.5px solid var(--ink); border-radius:14px; background:var(--paper); box-shadow:5px 6px 0 rgba(0,0,0,.10); overflow:hidden; }
+.win .top{ height:30px; background:var(--g1); border-bottom:2px solid var(--ink); display:flex; align-items:center; gap:6px; padding:0 12px; }
+.win .top i{ width:10px; height:10px; border-radius:99px; border:1.5px solid var(--ink); display:inline-block; }
+.win .top .u{ margin-left:8px; font-size:10px; color:var(--ink2); font-family:var(--mono); }
+.win .layout{ display:flex; min-height:300px; }
+.side{ width:130px; border-right:2px solid var(--ink); padding:12px 8px; display:flex; flex-direction:column; gap:4px; background:#f6f5f1; }
+.side .logo{ font-family:var(--sketch); font-weight:700; font-size:20px; margin-bottom:6px; }
+.side .logo b{ color:var(--accent); }
+.side a{ font-size:11px; font-weight:600; color:var(--ink2); padding:6px 8px; border-radius:6px; }
+.side a.on{ background:var(--accent-l); color:var(--accent); }
+.main{ flex:1; padding:14px; display:flex; flex-direction:column; gap:11px; min-width:0; }
+.kpis{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.kpi{ border:2px solid var(--ink); border-radius:8px; padding:8px; }
+.kpi .big{ font-family:var(--sketch); font-size:26px; font-weight:700; color:var(--accent); line-height:.9; }
+.kpi .cap{ font-size:9px; color:var(--ink2); }
+.win figcaption{ max-width:560px; }
+.toolbar2{ display:flex; gap:8px; align-items:center; }
+.input{ border:2px solid var(--g3); border-radius:6px; height:28px; display:flex; align-items:center; padding:0 8px; font-size:11px; color:var(--ink2); background:#fff; flex:1; }
+
+@media(max-width:640px){
+  .toolbar .jump{ display:none; }
+  .win,.phone{ box-shadow:3px 4px 0 rgba(0,0,0,.10); }
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="brand">RESA <b>Pronos</b></div>
+  <nav class="jump">
+    <a href="#part">Participant</a>
+    <a href="#profil">Profil</a>
+    <a href="#admin">Backoffice</a>
+  </nav>
+  <div class="tw">
+    <button class="tg" id="tg-annot" aria-pressed="true">✎ Annotations</button>
+    <button class="tg" id="tg-accent" aria-pressed="true">● Accent</button>
+    <button class="tg" id="tg-flat" aria-pressed="false">▢ Lisser</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="lead">Wireframes — <b>RESA Pronostics 2026</b></div>
+  <p class="sub">Esquisses basse fidélité des écrans décrits dans la spec v1.1. Mobile-first pour l'expérience participant et le profil, desktop pour le backoffice. L'orange <b style="color:var(--accent)">#D3450D</b> n'apparaît que sur les éléments interactifs et les chiffres clés, comme prévu par le design system.</p>
+  <div class="legend">
+    <span><i class="sw acc"></i> Action / sélection / chiffre clé</span>
+    <span><i class="sw txt"></i> Texte (contenu réel à venir)</span>
+    <span><i class="sw pl"></i> Image / média à fournir</span>
+    <span><i class="dot g"></i> Enregistré <i class="dot gr"></i> À faire <i class="dot r"></i> Verrouillé</span>
+  </div>
+
+  <!-- ============ PARTICIPANT ============ -->
+  <section class="sec" id="part">
+    <div class="sec-h"><span class="n">A</span><h2>Expérience participant</h2><span class="d">Auth par token dans l'URL · nav bas 56px · Phases 1→3</span></div>
+
+    <div class="row">
+
+      <!-- 1 Onboarding -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"><span>9:41</span><span>▢ ▢ ▮</span></div>
+          <div class="body" style="justify-content:center; gap:14px; text-align:center; padding:22px 18px;">
+            <div class="ph" style="width:60px;height:60px;border-radius:14px;margin:0 auto;">LOGO</div>
+            <div class="h3" style="font-size:28px;">Bienvenue !</div>
+            <p class="note" style="margin:0;color:var(--ink2);font-size:18px;">Quelques infos avant de pronostiquer ⚽</p>
+            <div style="text-align:left;display:flex;flex-direction:column;gap:8px;margin-top:4px;">
+              <div class="lbl">Prénom</div><div class="field">Camille</div>
+              <div class="lbl">Nom</div><div class="field">Dubois</div>
+            </div>
+            <div class="btn full" style="margin-top:4px;">Je participe</div>
+            <div class="annot">Token invalide → « Ce lien n'est pas valide. Contactez l'organisateur. »</div>
+          </div>
+        </div></div>
+        <figcaption><span class="ph-no">A1 ·</span> Onboarding 1er accès<small>Page dédiée · sautée aux visites suivantes</small></figcaption>
+      </figure>
+
+      <!-- 2 Pré-tournoi -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"><span>9:41</span><span>▢ ▢ ▮</span></div>
+          <div class="body">
+            <div class="appbar"><div class="t">Pré-tournoi<small>À soumettre avant le 11 juin</small></div><span class="sp"></span><span class="chip warn">0 / 5</span></div>
+            <div class="banner"><span>⚠</span> Pronostics non soumis</div>
+            <div class="card s"><div class="lbl">1 · Vainqueur</div><div class="field">Choisir parmi 48 équipes <span class="ca">▾</span></div></div>
+            <div class="card s"><div class="lbl">2 · Finaliste</div><div class="field">Sélectionner <span class="ca">▾</span></div><div class="note" style="font-size:14px;margin-top:3px;">≠ vainqueur</div></div>
+            <div class="card s"><div class="lbl">3 · Meilleur buteur</div><div class="field">Sai… <span class="ca">⌕</span></div><div class="note" style="font-size:14px;margin-top:3px;">autocomplétion ≥ 2 car.</div></div>
+            <div class="card s"><div class="lbl">4 · Révélation</div><div class="grid3" style="margin-top:5px;"><span class="chip gr">Maroc</span><span class="chip acc">Japon</span><span class="chip gr">USA</span></div></div>
+            <div class="card s"><div class="lbl">5 · Total buts (groupes)</div><div class="row2" style="margin-top:5px;align-items:center;"><span class="field num">–</span><span class="field num" style="border-color:var(--accent);color:var(--accent)">140</span><span class="field num">+</span><span class="note" style="font-size:13px;flex:1;">50–300</span></div></div>
+            <div class="row2"><div class="btn ghost sm">Brouillon</div><div class="btn sm">Soumettre</div></div>
+            <div class="annot">« Soumettre » → modale de confirmation, irréversible</div>
+          </div>
+          <nav class="bnav"><b>Pronos</b><b>Classt</b><b>Profil</b><b>Bonus</b></nav>
+        </div></div>
+        <figcaption><span class="ph-no">A2 ·</span> Pronostics pré-tournoi<small>5 cards numérotées · brouillon + soumission</small></figcaption>
+      </figure>
+
+      <!-- 3A Match list - cards -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"><span>9:41</span><span>▢ ▢ ▮</span></div>
+          <div class="body">
+            <div class="appbar"><div class="t">Pronostics</div><span class="sp"></span><span class="chip ok">Enregistré ✓</span></div>
+            <div class="tabs"><b class="on">Groupes</b><b>1/8</b><b>Quarts</b><b>+</b></div>
+            <!-- active match with expand -->
+            <div class="mrow">
+              <div class="mhead"><span class="dot o"></span><span>J1 · 11 juin · 18:00</span><span class="sp" style="margin-left:auto"></span><span class="star">★</span><span class="chip warn">×2</span></div>
+              <div class="mteams"><span class="flag"></span>France <span class="vs">vs</span> Maroc <span class="flag"></span></div>
+              <div class="pills"><span class="p on">France</span><span class="p">Nul</span><span class="p">Maroc</span></div>
+              <div class="expand"><span class="lbl">Score exact</span><span class="field num">2</span><span class="vs" style="font-family:var(--sketch)">–</span><span class="field num">1</span></div>
+            </div>
+            <!-- to do -->
+            <div class="mrow">
+              <div class="mhead"><span class="dot gr"></span><span>J1 · 11 juin · 21:00</span></div>
+              <div class="mteams"><span class="flag"></span>Brésil <span class="vs">vs</span> Croatie <span class="flag"></span></div>
+              <div class="pills"><span class="p">Brésil</span><span class="p">Nul</span><span class="p">Croatie</span></div>
+            </div>
+            <!-- past / locked -->
+            <div class="mrow past">
+              <div class="mhead"><span class="dot r"></span><span>J1 · joué</span><span style="margin-left:auto" class="chip lock">🔒 1–1</span></div>
+              <div class="mteams"><span class="flag"></span>Belgique <span class="vs">2–0</span> Canada <span class="flag"></span></div>
+              <div style="display:flex;justify-content:space-between;font-size:10px;"><span>Mon prono : Belgique 1–1</span><span class="sc" style="color:var(--green);font-weight:700;">+2 pts</span></div>
+            </div>
+          </div>
+          <nav class="bnav"><b class="on">Pronos</b><b>Classt</b><b>Profil</b><b>Bonus</b></nav>
+        </div></div>
+        <figcaption><span class="ph-no">A3 ·</span> Saisie pronostics <em>— Variante A : cartes</em><small>Pills · expansion score exact (300ms) · sauvegarde auto</small></figcaption>
+      </figure>
+
+      <!-- 3B Match list - compact -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"><span>9:41</span><span>▢ ▢ ▮</span></div>
+          <div class="body pad0">
+            <div style="padding:12px 13px 8px;"><div class="appbar"><div class="t">Pronostics</div><span class="sp"></span><span class="tabs"><b class="on">Groupes</b></span></div></div>
+            <div style="background:var(--g1);padding:4px 13px;font-size:10px;font-weight:700;color:var(--ink2);border-top:1.5px solid var(--g3);border-bottom:1.5px solid var(--g3);">JOURNÉE 1 · 11 JUIN</div>
+            <div style="padding:9px 13px;display:flex;align-items:center;gap:9px;border-bottom:1.5px solid var(--g1);">
+              <span class="dot o"></span>
+              <div style="flex:1;"><div style="font-weight:700;font-size:12px;">France – Maroc</div><div style="font-size:9px;color:var(--ink2);">18:00 · ★ Top ×2</div></div>
+              <div class="pills" style="width:118px;"><span class="p on" style="font-size:9px;padding:5px 2px;">1</span><span class="p" style="font-size:9px;padding:5px 2px;">N</span><span class="p" style="font-size:9px;padding:5px 2px;">2</span></div>
+            </div>
+            <div style="padding:9px 13px;display:flex;align-items:center;gap:9px;border-bottom:1.5px solid var(--g1);">
+              <span class="dot gr"></span>
+              <div style="flex:1;"><div style="font-weight:700;font-size:12px;">Brésil – Croatie</div><div style="font-size:9px;color:var(--ink2);">21:00 · ×1</div></div>
+              <div class="pills" style="width:118px;"><span class="p" style="font-size:9px;padding:5px 2px;">1</span><span class="p" style="font-size:9px;padding:5px 2px;">N</span><span class="p" style="font-size:9px;padding:5px 2px;">2</span></div>
+            </div>
+            <div style="background:var(--g1);padding:4px 13px;font-size:10px;font-weight:700;color:var(--ink2);border-bottom:1.5px solid var(--g3);">JOURNÉE 2 · 14 JUIN</div>
+            <div style="padding:9px 13px;display:flex;align-items:center;gap:9px;border-bottom:1.5px solid var(--g1);opacity:.55;">
+              <span class="dot gr"></span>
+              <div style="flex:1;"><div style="font-weight:700;font-size:12px;">Espagne – Japon</div><div style="font-size:9px;color:var(--ink2);">18:00 · ×1</div></div>
+              <div class="pills" style="width:118px;"><span class="p" style="font-size:9px;padding:5px 2px;">1</span><span class="p" style="font-size:9px;padding:5px 2px;">N</span><span class="p" style="font-size:9px;padding:5px 2px;">2</span></div>
+            </div>
+            <div class="annot" style="padding:9px 13px;">Tap sur une issue → la ligne se déplie pour le score exact</div>
+          </div>
+          <nav class="bnav"><b class="on">Pronos</b><b>Classt</b><b>Profil</b><b>Bonus</b></nav>
+        </div></div>
+        <figcaption><span class="ph-no">A3 ·</span> Saisie pronostics <em>— Variante B : liste compacte</em><small>Groupé par journée · plus dense, scan rapide</small></figcaption>
+      </figure>
+
+      <!-- 4A Classement -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"><span>9:41</span><span>▢ ▢ ▮</span></div>
+          <div class="body">
+            <div class="appbar"><div class="t">Classement</div></div>
+            <div class="tabs"><b class="on">Général</b><b>Phase finale</b><b>Bonus</b><b>Remontada</b></div>
+            <div class="podium">
+              <div class="pod p2"><div class="medal">🥈</div><div class="av">AL</div><div class="bar">2</div></div>
+              <div class="pod p1"><div class="medal">🥇</div><div class="av">CM</div><div class="bar">1</div></div>
+              <div class="pod p3"><div class="medal">🥉</div><div class="av">JD</div><div class="bar">3</div></div>
+            </div>
+            <div class="card" style="padding:0;">
+              <div class="rrow"><span class="rk">1</span><span class="nm">Alex L.</span><span class="sc">142</span><span class="ev up">↑3</span></div>
+              <div class="rrow"><span class="rk">2</span><span class="nm">Marie C.</span><span class="sc">138</span><span class="ev dn">↓1</span></div>
+              <div class="rrow"><span class="rk">3</span><span class="nm">Julien D.</span><span class="sc">131</span><span class="ev fl">–</span></div>
+              <div class="rrow me"><span class="rk">7</span><span class="nm">Toi · Camille</span><span class="sc">112</span><span class="ev up">↑2</span></div>
+              <div class="rrow"><span class="rk">8</span><span class="nm">Sophie M.</span><span class="sc">109</span><span class="ev dn">↓2</span></div>
+            </div>
+            <div class="note">Ta ligne surlignée · fond #F5E8E3, bord gauche orange</div>
+          </div>
+          <nav class="bnav"><b>Pronos</b><b class="on">Classt</b><b>Profil</b><b>Bonus</b></nav>
+        </div></div>
+        <figcaption><span class="ph-no">A4 ·</span> Classement <em>— Variante A : podium + onglets</em><small>Phase 2 · 4 classements · médailles top 3</small></figcaption>
+      </figure>
+
+      <!-- 4B Classement basique phase1 -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"><span>9:41</span><span>▢ ▢ ▮</span></div>
+          <div class="body">
+            <div class="appbar"><div class="t">Classement<small>Phase 1 · général</small></div></div>
+            <table class="tbl">
+              <thead><tr><th>Rang</th><th>Nom</th><th>Score</th><th>Évo.</th></tr></thead>
+              <tbody>
+                <tr><td style="font-family:var(--sketch);font-weight:700;font-size:16px;">1</td><td>Alex L.</td><td style="color:var(--accent);font-weight:700;">142</td><td style="color:var(--green);font-weight:700;">↑3</td></tr>
+                <tr><td style="font-family:var(--sketch);font-weight:700;font-size:16px;">2</td><td>Marie C.</td><td style="color:var(--accent);font-weight:700;">138</td><td style="color:var(--err);font-weight:700;">↓1</td></tr>
+                <tr><td style="font-family:var(--sketch);font-weight:700;font-size:16px;">3</td><td>Julien D.</td><td style="color:var(--accent);font-weight:700;">131</td><td style="color:var(--ink2);font-weight:700;">–</td></tr>
+                <tr><td style="font-family:var(--sketch);font-weight:700;font-size:16px;">…</td><td colspan="3"></td></tr>
+                <tr style="background:var(--accent-l);"><td style="font-family:var(--sketch);font-weight:700;font-size:16px;border-left:3px solid var(--accent);">7</td><td>Toi · Camille</td><td style="color:var(--accent);font-weight:700;">112</td><td style="color:var(--green);font-weight:700;">↑2</td></tr>
+              </tbody>
+            </table>
+            <div class="card muted s" style="display:flex;gap:8px;align-items:center;">
+              <span style="font-size:18px;">🎁</span>
+              <div style="font-size:10px;color:var(--ink2);">Cagnotte 500 € · 1er 180 € · 2e 100 € · 3e 60 €</div>
+            </div>
+            <div class="annot">Page publique (accessible sans token) · skeleton shimmer pendant le fetch</div>
+          </div>
+          <nav class="bnav"><b>Pronos</b><b class="on">Classt</b><b>Profil</b><b>Bonus</b></nav>
+        </div></div>
+        <figcaption><span class="ph-no">A4 ·</span> Classement <em>— Variante B : tableau Phase 1</em><small>Général seul · colonnes simples</small></figcaption>
+      </figure>
+
+      <!-- 5 match detail -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"><span>9:41</span><span>▢ ▢ ▮</span></div>
+          <div class="body">
+            <div class="appbar" style="font-size:11px;"><span style="font-family:var(--sketch);font-size:18px;">‹ retour</span></div>
+            <div class="card" style="text-align:center;">
+              <div class="lbl">Phase de groupes · J1 · 11 juin</div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:6px;">
+                <div><div class="flag" style="width:30px;height:22px;margin:0 auto 3px;"></div><b style="font-size:12px;">France</b></div>
+                <div style="font-family:var(--sketch);font-weight:700;font-size:32px;color:var(--accent);">2–0</div>
+                <div><div class="flag" style="width:30px;height:22px;margin:0 auto 3px;"></div><b style="font-size:12px;">Maroc</b></div>
+              </div>
+            </div>
+            <div class="card s"><div class="lbl">Mon pronostic</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:12px;">
+                <span>France · 1–0</span><span class="chip ok">Bonne issue · +4 pts</span>
+              </div>
+            </div>
+            <div><div class="lbl" style="margin-bottom:5px;">Répartition communauté</div>
+              <div class="combar"><span class="a" style="width:64%">32</span><span class="b" style="width:24%">12</span><span class="c" style="width:12%">6</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--ink2);margin-top:3px;"><span>France</span><span>Nul</span><span>Maroc</span></div>
+            </div>
+            <div><div class="lbl" style="margin-bottom:4px;">Tous les pronostics</div>
+              <table class="tbl"><thead><tr><th>Joueur</th><th>Prono</th><th>Exact</th><th>Pts</th></tr></thead>
+              <tbody>
+                <tr><td>Alex L.</td><td>France</td><td style="color:var(--accent);font-weight:700;">2–0</td><td style="font-weight:700;">6</td></tr>
+                <tr><td>Marie C.</td><td>France</td><td>1–0</td><td style="font-weight:700;">4</td></tr>
+                <tr><td>Julien D.</td><td>Nul</td><td>—</td><td style="color:var(--ink2);">0</td></tr>
+              </tbody></table>
+            </div>
+            <div class="annot">Pronostics des autres cachés côté serveur jusqu'au coup de sifflet</div>
+          </div>
+        </div></div>
+        <figcaption><span class="ph-no">A5 ·</span> Détail d'un match<small>Accessible après le coup de sifflet uniquement</small></figcaption>
+      </figure>
+
+      <!-- 6 bonus mid -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"><span>9:41</span><span>▢ ▢ ▮</span></div>
+          <div class="body">
+            <div class="banner" style="border-radius:8px;"><span>🔔</span> Question bonus 1/8 · deadline 18:00 aujourd'hui</div>
+            <div class="appbar"><div class="t">Bonus</div></div>
+            <div class="card">
+              <div class="lbl">Avant les huitièmes · 6 pts</div>
+              <p style="font-family:var(--sketch);font-size:20px;margin:5px 0 8px;line-height:1.05;">Combien de buts marqués lors des 1/8 de finale ?</p>
+              <div class="row2" style="align-items:center;"><span class="field num">–</span><span class="field num" style="border-color:var(--accent);color:var(--accent);">38</span><span class="field num">+</span><span class="note" style="flex:1;font-size:13px;">réponse numérique</span></div>
+            </div>
+            <div class="card s muted">
+              <div class="lbl">Déjà répondues</div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:5px;"><span>Pré-tournoi · vainqueur</span><span class="chip gr">en attente</span></div>
+            </div>
+            <div class="btn full">Valider ma réponse</div>
+            <div class="annot">Bannière orange non-dismissible tant que pas de réponse · badge sur l'onglet Bonus</div>
+          </div>
+          <nav class="bnav"><b>Pronos</b><b>Classt</b><b>Profil</b><b class="on bdg">Bonus</b></nav>
+        </div></div>
+        <figcaption><span class="ph-no">A6 ·</span> Questions bonus mid-tournoi<small>Phase 3 · 1 question avant chaque phase éliminatoire</small></figcaption>
+      </figure>
+
+    </div>
+  </section>
+
+  <!-- ============ PROFIL ============ -->
+  <section class="sec" id="profil">
+    <div class="sec-h"><span class="n">B</span><h2>Page profil joueur</h2><span class="d">Publique entre participants · engagement social · enrichie en Phases 2 & 3</span></div>
+
+    <div class="row">
+
+      <!-- Profil partie 1 -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"><span>9:41</span><span>▢ ▢ ▮</span></div>
+          <div class="body">
+            <div class="appbar" style="font-size:11px;"><span style="font-family:var(--sketch);font-size:18px;">‹</span><span class="sp"></span><span class="chip acc">Profil public</span></div>
+            <div style="display:flex;gap:11px;align-items:center;">
+              <div class="av" style="width:54px;height:54px;border-radius:99px;border:2px solid var(--ink);background:var(--accent-l);color:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--sketch);font-weight:700;font-size:22px;">CD</div>
+              <div><div class="h3" style="font-size:22px;">Camille Dubois</div><div style="font-size:11px;color:var(--ink2);">Rang #7 · 112 pts · 38 matchs · depuis le 2 juin</div></div>
+            </div>
+            <div class="card s" style="background:var(--accent-l);border-color:var(--accent);text-align:center;">
+              <div class="lbl" style="color:var(--accent);">Archétype</div>
+              <div class="h3" style="font-size:22px;color:var(--accent);">L'Outsider Hunter 🎯</div>
+              <div style="font-size:11px;color:var(--ink2);margin-top:2px;">Tu mises sur les surprises — audace élevée, gros coups.</div>
+            </div>
+            <div class="grid2">
+              <div class="metric"><div class="big">61%</div><div class="cap">Taux de réussite</div></div>
+              <div class="metric"><div class="big">7</div><div class="cap">Scores exacts</div></div>
+              <div class="metric"><div class="big">4</div><div class="cap">Série en cours 🔥</div></div>
+              <div class="metric"><div class="big">J2</div><div class="cap">Meilleure journée · 14 pts</div></div>
+            </div>
+            <div class="card s radar">
+              <div class="lbl" style="margin-bottom:2px;">Profil tactique</div>
+              <svg width="180" height="170" viewBox="0 0 180 180">
+                <polygon points="90,20 156.6,68.4 131.1,146.6 48.9,146.6 23.4,68.4" fill="none" stroke="#cfccc4" stroke-width="1.5"/>
+                <polygon points="90,55 123.3,79.2 110.7,128.3 69.3,128.3 56.7,79.2" fill="none" stroke="#cfccc4" stroke-width="1"/>
+                <line x1="90" y1="90" x2="90" y2="20" stroke="#cfccc4"/><line x1="90" y1="90" x2="156.6" y2="68.4" stroke="#cfccc4"/><line x1="90" y1="90" x2="131.1" y2="146.6" stroke="#cfccc4"/><line x1="90" y1="90" x2="48.9" y2="146.6" stroke="#cfccc4"/><line x1="90" y1="90" x2="23.4" y2="68.4" stroke="#cfccc4"/>
+                <polygon points="90,34 123.3,79.2 118.8,129.6 65.3,124 40,73.8" fill="rgba(211,69,13,.22)" stroke="#D3450D" stroke-width="2"/>
+                <text x="90" y="14" font-size="9" text-anchor="middle" fill="#6b6b66">Précision</text>
+                <text x="170" y="66" font-size="9" text-anchor="middle" fill="#6b6b66">Exact.</text>
+                <text x="138" y="162" font-size="9" text-anchor="middle" fill="#6b6b66">Audace</text>
+                <text x="42" y="162" font-size="9" text-anchor="middle" fill="#6b6b66">Régul.</text>
+                <text x="12" y="66" font-size="9" text-anchor="middle" fill="#6b6b66">Finales</text>
+              </svg>
+              <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px;">
+                <span style="color:var(--green);font-weight:700;">↑ Force : Audace</span>
+                <span style="color:var(--err);font-weight:700;">↓ Faille : Exactitude</span>
+              </div>
+            </div>
+          </div>
+        </div></div>
+        <figcaption><span class="ph-no">B1 ·</span> Profil — en-tête, archétype, radar<small>Métriques 4 cards · radar 5 axes · force/faiblesse</small></figcaption>
+      </figure>
+
+      <!-- Profil partie 2 -->
+      <figure>
+        <div class="phone"><div class="scr">
+          <div class="notch"><span>9:41</span><span>▢ ▢ ▮</span></div>
+          <div class="body">
+            <div class="card s">
+              <div class="lbl" style="margin-bottom:5px;">Forme récente · 10 derniers</div>
+              <div class="bars"><i class="hi" style="height:100%"></i><i style="height:18%"></i><i class="mid" style="height:50%"></i><i class="hi" style="height:88%"></i><i style="height:18%"></i><i class="hi" style="height:72%"></i><i class="mid" style="height:50%"></i><i style="height:18%"></i><i class="hi" style="height:100%"></i><i class="mid" style="height:50%"></i></div>
+              <div style="display:flex;gap:10px;font-size:8.5px;color:var(--ink2);margin-top:5px;"><span><i class="dot o" style="width:7px;height:7px;"></i> ≥4 pts</span><span>● pâle 1-3</span><span><i class="dot gr" style="width:7px;height:7px;"></i> 0 pt</span></div>
+            </div>
+            <div class="card s">
+              <div class="lbl" style="margin-bottom:5px;">Statistiques fun</div>
+              <div style="display:flex;flex-direction:column;gap:5px;font-size:11px;">
+                <div style="display:flex;justify-content:space-between;"><span>⚽ Équipe la + soutenue</span><b>France ×6</b></div>
+                <div style="display:flex;justify-content:space-between;"><span>🤝 Nuls tentés / réussis</span><b>8 / 2</b></div>
+                <div style="display:flex;justify-content:space-between;"><span>📉 Pire journée</span><b>J3 · 2 pts</b></div>
+                <div style="display:flex;justify-content:space-between;"><span>⏱ Délai moyen soumission</span><b>34 min</b></div>
+                <div style="display:flex;justify-content:space-between;"><span>🐎 Outsider favori</span><b>Japon ×4</b></div>
+                <div style="display:flex;justify-content:space-between;"><span>⚔ Rival naturel</span><b>Sophie M.</b></div>
+              </div>
+            </div>
+            <div class="card s">
+              <div class="lbl" style="margin-bottom:5px;">Vs. toi (comparaison directe)</div>
+              <div class="cmpbar"><span class="me" style="width:55%;">Toi 112</span><span class="ot">Sophie 109</span></div>
+              <div class="note" style="font-size:14px;margin-top:4px;">+3 pts d'avance · « il te faudrait 4 pts de plus sur les prochains matchs »</div>
+            </div>
+            <div class="card s">
+              <div class="lbl" style="margin-bottom:6px;">Badges</div>
+              <div class="badgegrid">
+                <div class="bdg2"><div class="ic">🎯</div><div class="nm">Sniper</div></div>
+                <div class="bdg2"><div class="ic">🐎</div><div class="nm">Chasseur upset</div></div>
+                <div class="bdg2 off"><div class="ic">⏰</div><div class="nm">Dernière min.</div></div>
+                <div class="bdg2"><div class="ic">🔥</div><div class="nm">En série</div></div>
+                <div class="bdg2 off"><div class="ic">📌</div><div class="nm">Fidèle</div></div>
+                <div class="bdg2 off"><div class="ic">👑</div><div class="nm">Roi bonus</div></div>
+                <div class="bdg2 off"><div class="ic">🚀</div><div class="nm">Remontada</div></div>
+                <div class="bdg2 off"><div class="ic">＋</div><div class="nm">…</div></div>
+              </div>
+            </div>
+            <div class="annot">Badges verrouillés grisés avec condition visible · les pronos de matchs non joués ne sont jamais montrés</div>
+          </div>
+        </div></div>
+        <figcaption><span class="ph-no">B2 ·</span> Profil — forme, stats fun, comparaison, badges<small>Suite scroll du même écran (Phases 2 & 3)</small></figcaption>
+      </figure>
+
+    </div>
+  </section>
+
+  <!-- ============ ADMIN ============ -->
+  <section class="sec" id="admin">
+    <div class="sec-h"><span class="n">C</span><h2>Backoffice organisateur</h2><span class="d">/admin · session 8h · desktop · recalcul scores &lt; 3s</span></div>
+
+    <div class="row">
+
+      <!-- dashboard -->
+      <figure>
+        <div class="win">
+          <div class="top"><i></i><i></i><i></i><span class="u">resa-pronos.app/admin</span></div>
+          <div class="layout">
+            <div class="side">
+              <div class="logo">RESA <b>·</b></div>
+              <a class="on">Tableau de bord</a><a>Participants</a><a>Matchs</a><a>Résultats</a><a>Questions bonus</a><a>Communications</a><a>Exports</a>
+            </div>
+            <div class="main">
+              <div class="banner red"><span>⏱</span> 2 matchs joués depuis &gt; 2h sans résultat encodé</div>
+              <div class="kpis">
+                <div class="kpi"><div class="big">47/50</div><div class="cap">Confirmés</div></div>
+                <div class="kpi"><div class="big">41</div><div class="cap">Pré-tournoi soumis</div></div>
+                <div class="kpi"><div class="big">46</div><div class="cap">≥ 1 pronostic</div></div>
+                <div class="kpi"><div class="big">#23</div><div class="cap">Prochain match sans résultat</div></div>
+              </div>
+              <div class="card s"><div class="lbl" style="margin-bottom:5px;">5 derniers résultats encodés</div>
+                <table class="tbl"><thead><tr><th>#</th><th>Match</th><th>Score</th><th>Encodé</th></tr></thead><tbody>
+                  <tr><td>18</td><td>France – Maroc</td><td style="color:var(--accent);font-weight:700;">2–0</td><td>il y a 12 min</td></tr>
+                  <tr><td>17</td><td>Brésil – Croatie</td><td style="color:var(--accent);font-weight:700;">1–1</td><td>il y a 40 min</td></tr>
+                  <tr><td>16</td><td>Belgique – Canada</td><td style="color:var(--accent);font-weight:700;">2–0</td><td>il y a 1 h</td></tr>
+                </tbody></table>
+              </div>
+              <div class="note">Rafraîchissement auto toutes les 60s</div>
+            </div>
+          </div>
+        </div>
+        <figcaption><span class="ph-no">C1 ·</span> Tableau de bord<small>KPIs temps réel · alerte rouge matchs en retard</small></figcaption>
+      </figure>
+
+      <!-- résultats -->
+      <figure>
+        <div class="win">
+          <div class="top"><i></i><i></i><i></i><span class="u">/admin/résultats</span></div>
+          <div class="layout">
+            <div class="side">
+              <div class="logo">RESA <b>·</b></div>
+              <a>Tableau de bord</a><a>Participants</a><a>Matchs</a><a class="on">Résultats</a><a>Questions bonus</a><a>Communications</a><a>Exports</a>
+            </div>
+            <div class="main">
+              <div class="h3" style="font-size:22px;">Encoder les résultats</div>
+              <div class="note" style="font-size:15px;margin-top:-4px;">Matchs joués sans résultat · ordre chronologique</div>
+              <div class="card s" style="display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;"><b style="font-size:12px;">#23 · Espagne – Japon</b><div style="font-size:9px;color:var(--ink2);">J2 · 14 juin 18:00 · ×1</div></div>
+                <div class="field num">2</div><span style="font-family:var(--sketch);">–</span><div class="field num">1</div>
+                <div class="btn sm">Valider</div>
+              </div>
+              <div class="card s" style="display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;"><b style="font-size:12px;">#24 · Portugal – Ghana</b><div style="font-size:9px;color:var(--ink2);">J2 · 14 juin 21:00 · ★ Top ×2</div></div>
+                <div class="field num" style="border-color:var(--accent);color:var(--accent);">0</div><span style="font-family:var(--sketch);">–</span><div class="field num" style="border-color:var(--accent);color:var(--accent);">0</div>
+                <div class="btn sm">Valider</div>
+              </div>
+              <div class="banner"><span>⚠</span> Score 0–0 sur un match éliminatoire → confirmation requise</div>
+              <div class="card s muted" style="display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;"><b style="font-size:12px;">#18 · France – Maroc</b><div style="font-size:9px;color:var(--ink2);">encodé 2–0 · recalcul 50 joueurs en 1,8s ✓</div></div>
+                <div class="btn ghost sm">Corriger</div>
+              </div>
+              <div class="annot">Après validation : recalcul &lt; 3s, confirmation inline, match retiré de la liste · historique conservé</div>
+            </div>
+          </div>
+        </div>
+        <figcaption><span class="ph-no">C2 ·</span> Encodage des résultats<small>Score → recalcul scores · garde-fou 0–0 finale · correction</small></figcaption>
+      </figure>
+
+      <!-- participants -->
+      <figure>
+        <div class="win">
+          <div class="top"><i></i><i></i><i></i><span class="u">/admin/participants</span></div>
+          <div class="layout">
+            <div class="side">
+              <div class="logo">RESA <b>·</b></div>
+              <a>Tableau de bord</a><a class="on">Participants</a><a>Matchs</a><a>Résultats</a><a>Questions bonus</a><a>Communications</a><a>Exports</a>
+            </div>
+            <div class="main">
+              <div class="toolbar2"><div class="input">⌕ Rechercher un participant…</div><div class="btn sm">+ Ajouter</div><div class="btn ghost sm">Import CSV</div></div>
+              <table class="tbl"><thead><tr><th>Nom</th><th>Email</th><th>Statut</th><th>Pré-t.</th><th>≥1 prono</th><th>Actions</th></tr></thead><tbody>
+                <tr><td>Camille Dubois</td><td>c.dubois@…</td><td><span class="chip ok">confirmé</span></td><td>✓</td><td>✓</td><td style="color:var(--accent);font-weight:600;">⧉ ✉ 🗑</td></tr>
+                <tr><td>Alex Leroy</td><td>a.leroy@…</td><td><span class="chip ok">confirmé</span></td><td>✓</td><td>✓</td><td style="color:var(--accent);font-weight:600;">⧉ ✉ 🗑</td></tr>
+                <tr><td>Sophie Martin</td><td>s.martin@…</td><td><span class="chip warn">invité</span></td><td>—</td><td>—</td><td style="color:var(--accent);font-weight:600;">⧉ ✉ 🗑</td></tr>
+                <tr><td>Julien D.</td><td>j.d@…</td><td><span class="chip gr">en attente</span></td><td>✓</td><td>—</td><td style="color:var(--accent);font-weight:600;">⧉ ✉ 🗑</td></tr>
+              </tbody></table>
+              <div class="annot">⧉ copier le lien · ✉ renvoyer l'invitation · 🗑 soft-delete (désactivé si tournoi démarré)</div>
+            </div>
+          </div>
+        </div>
+        <figcaption><span class="ph-no">C3 ·</span> Gestion des participants<small>CRUD · import CSV validé · ajout manuel → token + email</small></figcaption>
+      </figure>
+
+      <!-- matchs -->
+      <figure>
+        <div class="win">
+          <div class="top"><i></i><i></i><i></i><span class="u">/admin/matchs</span></div>
+          <div class="layout">
+            <div class="side">
+              <div class="logo">RESA <b>·</b></div>
+              <a>Tableau de bord</a><a>Participants</a><a class="on">Matchs</a><a>Résultats</a><a>Questions bonus</a><a>Communications</a><a>Exports</a>
+            </div>
+            <div class="main">
+              <div class="toolbar2"><span class="tabs"><b class="on">Groupes</b><b>1/8</b><b>Quarts</b><b>Demies</b><b>Finale</b></span><span style="margin-left:auto;font-size:10px;color:var(--ink2);">78 matchs</span></div>
+              <table class="tbl"><thead><tr><th>#</th><th>Match</th><th>Date</th><th>Top ★</th><th>Statut</th></tr></thead><tbody>
+                <tr><td>23</td><td>Espagne – Japon</td><td>14/06 18:00</td><td><span class="chip gr">○ ×1</span></td><td><span class="chip ok">à venir</span></td></tr>
+                <tr><td>24</td><td>Portugal – Ghana</td><td>14/06 21:00</td><td><span class="chip acc">★ ×2</span></td><td><span class="chip ok">à venir</span></td></tr>
+                <tr><td>25</td><td>J3 · Groupe A</td><td>17/06 18:00</td><td><span class="chip acc">★ ×2</span></td><td><span class="chip gr">équipes TBD</span></td></tr>
+                <tr><td>18</td><td>France – Maroc</td><td>11/06 18:00</td><td><span class="chip acc">★ ×2</span></td><td><span class="chip lock">🔒 joué</span></td></tr>
+              </tbody></table>
+              <div class="annot">Toggle Top Match avant le coup de sifflet · modifier date (report) · « Annuler » → 0 pt · résolution auto des équipes finales</div>
+            </div>
+          </div>
+        </div>
+        <figcaption><span class="ph-no">C4 ·</span> Gestion des matchs<small>78 matchs préchargés · filtre par phase · Top Match</small></figcaption>
+      </figure>
+
+      <!-- bonus admin -->
+      <figure>
+        <div class="win">
+          <div class="top"><i></i><i></i><i></i><span class="u">/admin/questions-bonus</span></div>
+          <div class="layout">
+            <div class="side">
+              <div class="logo">RESA <b>·</b></div>
+              <a>Tableau de bord</a><a>Participants</a><a>Matchs</a><a>Résultats</a><a class="on">Questions bonus</a><a>Communications</a><a>Exports</a>
+            </div>
+            <div class="main">
+              <div class="h3" style="font-size:22px;">Créer une question bonus</div>
+              <div class="card s">
+                <div class="lbl">Intitulé</div><div class="input" style="margin:4px 0 8px;">Combien de buts lors des 1/8 ?</div>
+                <div class="grid3">
+                  <div><div class="lbl">Type</div><div class="field" style="font-size:10px;margin-top:3px;">Numérique ▾</div></div>
+                  <div><div class="lbl">Phase</div><div class="field" style="font-size:10px;margin-top:3px;">1/8 ▾</div></div>
+                  <div><div class="lbl">Points 3–10</div><div class="field num" style="margin-top:3px;border-color:var(--accent);color:var(--accent);">6</div></div>
+                </div>
+                <div class="note" style="font-size:14px;margin-top:6px;">Deadline calculée auto = coup de sifflet du 1er match de la phase</div>
+              </div>
+              <div class="card s muted">
+                <div class="lbl" style="margin-bottom:4px;">Pré-tournoi · réponses correctes</div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;"><span>Liste outsiders « Révélation »</span><span class="chip acc">figée ✎</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span>Vainqueur · réponse correcte</span><div class="input" style="width:120px;height:22px;">—</div></div>
+              </div>
+              <div class="row2"><div class="btn ghost sm">Aperçu</div><div class="btn sm">Publier → calcul auto</div></div>
+            </div>
+          </div>
+        </div>
+        <figcaption><span class="ph-no">C5 ·</span> Questions bonus (pré + mid)<small>Type · options · points 3–10 · réponse → recalcul auto</small></figcaption>
+      </figure>
+
+      <!-- communications -->
+      <figure>
+        <div class="win">
+          <div class="top"><i></i><i></i><i></i><span class="u">/admin/communications</span></div>
+          <div class="layout">
+            <div class="side">
+              <div class="logo">RESA <b>·</b></div>
+              <a>Tableau de bord</a><a>Participants</a><a>Matchs</a><a>Résultats</a><a>Questions bonus</a><a class="on">Communications</a><a>Exports</a>
+            </div>
+            <div class="main">
+              <div class="card s" style="display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;"><b style="font-size:12px;">Rappel pré-tournoi</b><div style="font-size:9px;color:var(--ink2);">→ 9 non-soumetteurs</div></div>
+                <div class="btn sm">Envoyer</div>
+              </div>
+              <div class="card s" style="display:flex;align-items:center;gap:10px;">
+                <div style="flex:1;"><b style="font-size:12px;">Rappel match (24h)</b><div class="field" style="font-size:10px;margin-top:3px;">#24 Portugal – Ghana ▾</div></div>
+                <div class="btn sm">Envoyer</div>
+              </div>
+              <div class="card s">
+                <div class="lbl" style="margin-bottom:5px;">Configuration SMTP</div>
+                <div class="grid2" style="gap:6px;">
+                  <div class="input" style="height:24px;font-size:10px;">smtp.host</div><div class="input" style="height:24px;font-size:10px;">port 587</div>
+                  <div class="input" style="height:24px;font-size:10px;">user</div><div class="input" style="height:24px;font-size:10px;">••••••</div>
+                </div>
+                <div class="row2" style="margin-top:7px;"><div class="btn ghost sm">Tester</div><div class="btn sm">Enregistrer</div></div>
+              </div>
+              <div class="annot">Envois groupés ciblés · bouton « Tester » avant d'enregistrer la config</div>
+            </div>
+          </div>
+        </div>
+        <figcaption><span class="ph-no">C6 ·</span> Communications<small>Rappels ciblés · config SMTP testable</small></figcaption>
+      </figure>
+
+    </div>
+
+    <p class="sub" style="margin-top:40px;">Exports CSV (classement détaillé · pronostics par match) accessibles depuis l'entrée « Exports » de la barre latérale — Phase 2.</p>
+  </section>
+</div>
+
+<script>
+(function(){
+  function bind(id, cls, on){
+    var el=document.getElementById(id);
+    el.setAttribute('aria-pressed', String(on));
+    if(on) document.body.classList.toggle(cls, cls==='no-annot'?false:false);
+    el.addEventListener('click', function(){
+      var now = el.getAttribute('aria-pressed')!=='true';
+      el.setAttribute('aria-pressed', String(now));
+      apply();
+    });
+  }
+  function apply(){
+    document.body.classList.toggle('no-annot', document.getElementById('tg-annot').getAttribute('aria-pressed')!=='true');
+    document.body.classList.toggle('no-accent', document.getElementById('tg-accent').getAttribute('aria-pressed')!=='true');
+    document.body.classList.toggle('flat', document.getElementById('tg-flat').getAttribute('aria-pressed')==='true');
+  }
+  ['tg-annot','tg-accent','tg-flat'].forEach(function(id){
+    document.getElementById(id).addEventListener('click', function(){
+      var el=document.getElementById(id);
+      el.setAttribute('aria-pressed', String(el.getAttribute('aria-pressed')!=='true'));
+      apply();
+    });
+  });
+  apply();
+})();
+</script>
+<script>
+(async () => {
+  // Prepend so page-supplied @page / break rules (deck-stage's margin:0,
+  // author CSS) keep source-order precedence over the baseline.
+  const baseCss = document.createElement('style');
+  baseCss.textContent = "@media print {\n  @page { margin: 0.5cm; }\n  html, body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }\n  section, article, figure, table { break-inside: avoid; }\n  *, *::before, *::after {\n    animation-delay: -99s !important; animation-duration: .001s !important;\n    animation-iteration-count: 1 !important; animation-fill-mode: both !important;\n    animation-play-state: running !important; transition-duration: 0s !important;\n  }\n}";
+  document.head.prepend(baseCss);
+  if (document.readyState === 'loading') {
+    await new Promise((r) => document.addEventListener('DOMContentLoaded', r, { once: true }));
+  }
+  let ds = document.querySelector('deck-stage');
+  // whenDefined never resolves when nothing registers the element, so only
+  // await it when a <deck-stage> tag exists (and race a timeout regardless).
+  if (ds && !customElements.get('deck-stage')) {
+    try {
+      await Promise.race([
+        customElements.whenDefined('deck-stage'),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
+    } catch (e) {}
+    ds = document.querySelector('deck-stage');
+  }
+  // dc-runtime assigns window.DCLogic at init and mounts into #dc-root on
+  // DOMContentLoaded; settle on that subtree so React has rendered before
+  // print(). Non-DC pages fall through to weighing body.
+  const isDc = !ds && 'DCLogic' in window;
+  const settleRoot = ds || (isDc ? document.getElementById('dc-root') : null) || document.body;
+  if (settleRoot) {
+    // Weigh only content children — skip script/style/template so inline
+    // Babel/CSS doesn't register as stable "content" before the framework
+    // has mounted anything.
+    const MEDIA = 'img,svg,canvas,video,picture,iframe,embed,object';
+    const weigh = () => {
+      let text = 0, media = 0;
+      for (const c of settleRoot.children) {
+        const t = c.tagName;
+        if (t === 'SCRIPT' || t === 'STYLE' || t === 'TEMPLATE') continue;
+        text += (c.textContent || '').trim().length;
+        media += c.querySelectorAll(MEDIA).length + (c.matches(MEDIA) ? 1 : 0);
+      }
+      return text + media * 100;
+    };
+    // "Non-zero and stable" alone is not sufficient to mean rendered: generic
+    // body can carry a static shell while async main content is pending, and
+    // #dc-root can carry the root DC's static text while child refs are still
+    // .sc-placeholder boxes. Gate generic on readyState 'complete', and never
+    // accept stability while a dc-runtime placeholder is present.
+    const isGeneric = settleRoot === document.body;
+    const deadline = Date.now() + 15000;
+    let last = -1, stable = 0;
+    while (Date.now() < deadline) {
+      const n = weigh();
+      const ready =
+        (!isGeneric || document.readyState === 'complete') &&
+        !settleRoot.querySelector('.sc-placeholder');
+      if (n > 0 && n === last && ready) { if (++stable >= 2) break; } else { stable = 0; }
+      last = n;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  try { await document.fonts.ready; } catch (e) {}
+  // Jump every animation to its end state so print() never captures a slide
+  // mid-entrance. Ordering matters: the 0s-transition style must be live
+  // BEFORE data-deck-active is set so attribute-keyed transitions don't
+  // start a (now-0s) run from the pre-active base.
+  const st = document.createElement('style');
+  st.textContent = '*,*::before,*::after{animation-delay:-99s !important;animation-duration:.001s !important;animation-iteration-count:1 !important;animation-fill-mode:both !important;animation-play-state:running !important;transition-duration:0s !important}';
+  document.head.appendChild(st);
+  for (const d of document.querySelectorAll('deck-stage')) {
+    for (const c of d.children) {
+      const t = c.tagName;
+      if (t === 'SCRIPT' || t === 'STYLE' || t === 'TEMPLATE') continue;
+      c.setAttribute('data-deck-active', '');
+    }
+  }
+  try {
+    const sweep = () => {
+      for (const a of document.getAnimations()) {
+        try { a.finish(); } catch (e) {
+          try { a.currentTime = (a.effect && a.effect.getComputedTiming().duration) || 0; a.pause(); } catch (e2) {}
+        }
+      }
+    };
+    sweep();
+    await new Promise((r) => requestAnimationFrame(r));
+    sweep();
+    await new Promise((r) => requestAnimationFrame(r));
+  } catch (e) {}
+  setTimeout(() => { try { window.print(); } catch (e) {} }, 200);
+})();
+</script>
+</body>
+</html>
