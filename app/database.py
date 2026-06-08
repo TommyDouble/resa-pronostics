@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS participants (
 CREATE TABLE IF NOT EXISTS matches (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   match_number INTEGER NOT NULL UNIQUE,
-  phase        TEXT    NOT NULL CHECK(phase IN ('group','round_of_32','quarter','semi','third_place','final')),
+  phase        TEXT    NOT NULL CHECK(phase IN ('group','round_of_32','round_of_16','quarter','semi','third_place','final')),
   group_name   TEXT,
   match_date   TEXT    NOT NULL,
   kickoff_time TEXT    NOT NULL,

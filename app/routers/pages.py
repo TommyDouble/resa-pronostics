@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 PHASE_LABELS = {
     "group": "Phase de groupes",
-    "round_of_32": "Huitièmes de finale",
+    "round_of_32": "Seizièmes de finale",
+    "round_of_16": "Huitièmes de finale",
     "quarter": "Quarts de finale",
     "semi": "Demi-finales",
     "third_place": "Match pour la 3e place",
@@ -25,22 +26,58 @@ PHASE_LABELS = {
 }
 
 TEAMS_48 = [
-    "Argentine","Australie","Belgique","Brésil","Cameroun","Canada",
-    "Chili","Colombie","Corée du Sud","Costa Rica","Côte d'Ivoire",
-    "Croatie","DRC","Égypte","Équateur","Espagne","États-Unis","France",
-    "Ghana","Guatemala","Honduras","Inde","Indonésie","Iran","Irlande",
-    "Italie","Jamaïque","Japon","Koweït","Maroc","Mexique","Nouvelle-Zélande",
-    "Pays-Bas","Panama","Paraguay","Pérou","Portugal","Qatar","Sénégal",
-    "Slovénie","Soudan du Sud","Thaïlande","Tunisie","Turquie","Ukraine",
-    "Uruguay","Venezuela","Vietnam",
+    "Mexique","Afrique du Sud","Corée du Sud","Tchéquie",
+    "Canada","Bosnie-Herzégovine","Qatar","Suisse",
+    "Brésil","Maroc","Haïti","Écosse",
+    "États-Unis","Paraguay","Australie","Turquie",
+    "Allemagne","Curaçao","Côte d'Ivoire","Équateur",
+    "Pays-Bas","Japon","Suède","Tunisie",
+    "Belgique","Égypte","Iran","Nouvelle-Zélande",
+    "Espagne","Cap-Vert","Arabie Saoudite","Uruguay",
+    "France","Sénégal","Irak","Norvège",
+    "Argentine","Algérie","Autriche","Jordanie",
+    "Portugal","RD Congo","Ouzbékistan","Colombie",
+    "Angleterre","Croatie","Ghana","Panama",
 ]
 
 SCORERS = [
-    "Kylian Mbappé","Erling Haaland","Vinicius Jr","Lionel Messi",
-    "Cristiano Ronaldo","Harry Kane","Marcus Rashford","Bukayo Saka",
-    "Sadio Mané","Karim Benzema","Lautaro Martínez","Rodri",
-    "Jude Bellingham","Phil Foden","Neymar Jr","Luis Díaz",
-    "Darwin Núñez","Gavi","Pedri","Dušan Vlahović",
+    # Grands favoris au Soulier d'Or
+    "Kylian Mbappé", "Harry Kane", "Erling Haaland",
+    "Vinícius Júnior", "Lautaro Martínez", "Viktor Gyökeres", "Lamine Yamal",
+    # France
+    "Marcus Thuram", "Randal Kolo Muani", "Ousmane Dembélé",
+    # Angleterre
+    "Phil Foden", "Cole Palmer", "Bukayo Saka", "Jarrod Bowen",
+    # Brésil
+    "Endrick", "Rodrygo", "Matheus Cunha", "Gabriel Martinelli",
+    # Espagne
+    "Nico Williams", "Álvaro Morata", "Ferran Torres",
+    # Allemagne
+    "Kai Havertz", "Maximilian Beier", "Leroy Sané",
+    # Portugal
+    "Cristiano Ronaldo", "Rafael Leão", "Gonçalo Ramos",
+    # Pays-Bas
+    "Cody Gakpo", "Brian Brobbey",
+    # Belgique
+    "Romelu Lukaku", "Loïs Openda", "Jérémy Doku",
+    # Argentine
+    "Julián Álvarez", "Paulo Dybala",
+    # Colombie
+    "Luis Díaz", "Jhon Durán",
+    # Égypte
+    "Mohamed Salah",
+    # Uruguay
+    "Darwin Núñez",
+    # Mexique
+    "Santiago Giménez", "Raúl Jiménez",
+    # Sénégal
+    "Ismaïla Sarr", "Sadio Mané",
+    # Norvège
+    "Alexander Sørloth",
+    # Japon
+    "Kaoru Mitoma", "Ayase Ueda",
+    # Croatie
+    "Andrej Kramarić",
 ]
 
 

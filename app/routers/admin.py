@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 PHASE_LABELS = {
     "group": "Phase de groupes",
-    "round_of_32": "Huitièmes",
+    "round_of_32": "Seizièmes",
+    "round_of_16": "Huitièmes",
     "quarter": "Quarts",
     "semi": "Demies",
     "third_place": "3e place",
