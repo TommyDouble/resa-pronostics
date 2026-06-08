@@ -376,18 +376,31 @@ async def correct_result(request: Request, match_id: int,
 
 # ---- Bonus Questions ----
 
+PT_DEADLINE = "2026-06-11T20:00:00"
+
 @router.get("/bonus", response_class=HTMLResponse)
 async def bonus_admin(request: Request):
     await require_admin(request)
     async with get_db() as db:
         rows = await db.execute("SELECT * FROM bonus_questions ORDER BY deadline")
         questions = [dict(r) for r in await rows.fetchall()]
+        pt_sub_row = await db.execute(
+            "SELECT COUNT(*) as cnt FROM pre_tournament_predictions WHERE submitted=1"
+        )
+        pt_submitted_count = (await pt_sub_row.fetchone())["cnt"]
+        pt_total_row = await db.execute(
+            "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1"
+        )
+        pt_total_count = (await pt_total_row.fetchone())["cnt"]
     return templates.TemplateResponse("admin/bonus.html", {
         "request": request,
         "active": "bonus",
         "flashes": _get_flashes(request),
         "questions": questions,
         "phase_labels": PHASE_LABELS,
+        "pt_submitted_count": pt_submitted_count,
+        "pt_total_count": pt_total_count,
+        "pt_deadline": PT_DEADLINE,
     })
 
 

@@ -25,7 +25,9 @@ PHASE_LABELS = {
     "final": "Finale",
 }
 
-TEAMS_48 = [
+PT_DEADLINE = "2026-06-11T20:00:00"
+
+TEAMS_48 = sorted([
     "Mexique","Afrique du Sud","Corée du Sud","Tchéquie",
     "Canada","Bosnie-Herzégovine","Qatar","Suisse",
     "Brésil","Maroc","Haïti","Écosse",
@@ -38,7 +40,7 @@ TEAMS_48 = [
     "Argentine","Algérie","Autriche","Jordanie",
     "Portugal","RD Congo","Ouzbékistan","Colombie",
     "Angleterre","Croatie","Ghana","Panama",
-]
+])
 
 SCORERS = [
     # Grands favoris au Soulier d'Or
@@ -211,12 +213,21 @@ async def participant_home(request: Request, token: str):
         # Encoded count
         encoded_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE result IS NOT NULL")
         encoded_count = (await encoded_row.fetchone())["cnt"]
+        # Pre-tournament status
+        pt_row2 = await db.execute(
+            "SELECT submitted FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
+        )
+        pt2 = await pt_row2.fetchone()
+        pt_submitted = bool(pt2 and pt2["submitted"])
+        pt_open = _now_utc() < PT_DEADLINE
         ctx.update({
             "today_matches": today_matches,
             "urgency": urgency,
             "unpredicted_today": unpredicted_today,
             "mini_rank": mini_rank,
             "encoded_count": encoded_count,
+            "pt_submitted": pt_submitted,
+            "pt_open": pt_open,
         })
     return templates.TemplateResponse("home.html", {"request": request, **ctx})
 
@@ -274,19 +285,21 @@ async def predictions_page(request: Request, token: str, phase: str = "group"):
 @router.get("/p/{token}/pre-tournoi", response_class=HTMLResponse)
 async def pre_tournament_page(request: Request, token: str):
     async with get_db() as db:
-        ctx = await _get_participant_context(token, db, "pronos")
+        ctx = await _get_participant_context(token, db, "bonus")
         p = ctx["participant"]
         row = await db.execute(
             "SELECT * FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
         )
         pt = await row.fetchone()
-        # Outsiders list (hardcoded for now — admin can customize later)
         outsiders = ["Maroc", "Japon", "USA", "Sénégal", "Australie", "Iran", "Côte d'Ivoire", "Équateur"]
+        pt_editable = _now_utc() < PT_DEADLINE
         ctx.update({
             "pt": dict(pt) if pt else {},
             "teams": TEAMS_48,
-            "scorers": SCORERS,
+            "scorers": sorted(SCORERS),
             "outsiders": outsiders,
+            "pt_editable": pt_editable,
+            "pt_deadline": PT_DEADLINE,
         })
     return templates.TemplateResponse("pre_tournament.html", {"request": request, **ctx})
 
@@ -302,13 +315,12 @@ async def save_pre_tournament(
     action: str = Form(default="draft"),
 ):
     p = await require_participant(token)
+    if _now_utc() >= PT_DEADLINE:
+        return RedirectResponse(url=f"/p/{token}/pre-tournoi", status_code=303)
     async with get_db() as db:
         existing = await (await db.execute(
             "SELECT id, submitted FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
         )).fetchone()
-        if existing and existing["submitted"]:
-            # Already submitted, can't modify
-            return RedirectResponse(url=f"/p/{token}/pre-tournoi", status_code=303)
         submitted = 1 if action == "submit" else 0
         submitted_at = _now_utc() if submitted else None
         if existing:
