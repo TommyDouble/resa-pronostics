@@ -1,6 +1,9 @@
 """Email sending — uses SMTP if configured, otherwise logs to console."""
+import asyncio
+import json
 import logging
 import smtplib
+import urllib.request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from app.config import settings
@@ -8,8 +11,49 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _send_webhook_sync(to: str, subject: str, html_body: str, text_body: str = ""):
+    payload = {
+        "secret": settings.EMAIL_WEBHOOK_SECRET,
+        "to": to,
+        "subject": subject,
+        "html": html_body,
+        "text": text_body or "",
+        "senderName": settings.EMAIL_SENDER_NAME,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        settings.EMAIL_WEBHOOK_URL,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        body = response.read(2000).decode("utf-8", errors="replace")
+        if response.status >= 400:
+            raise RuntimeError(f"Email webhook returned HTTP {response.status}: {body}")
+    if body:
+        try:
+            result = json.loads(body)
+        except json.JSONDecodeError:
+            result = {}
+        if result and not result.get("ok"):
+            raise RuntimeError(result.get("error") or body)
+
+
 async def send_email(to: str, subject: str, html_body: str, text_body: str = ""):
     """Send an email. Falls back to console logging if SMTP not configured."""
+    if settings.EMAIL_WEBHOOK_URL:
+        if not settings.EMAIL_WEBHOOK_SECRET:
+            logger.error("EMAIL_WEBHOOK_SECRET is required when EMAIL_WEBHOOK_URL is configured.")
+            return False
+        try:
+            await asyncio.to_thread(_send_webhook_sync, to, subject, html_body, text_body)
+            logger.info(f"Email sent to {to} via webhook: {subject}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send email to {to} via webhook: {e}")
+            return False
+
     if not settings.SMTP_HOST:
         logger.info(
             f"[EMAIL LOG - SMTP not configured]\n"

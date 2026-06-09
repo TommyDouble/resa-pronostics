@@ -13,6 +13,9 @@ class Settings:
     SMTP_USER: str = os.getenv("SMTP_USER", "")
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
     SMTP_FROM: str = os.getenv("SMTP_FROM", "pronos@resa.be")
+    EMAIL_WEBHOOK_URL: str = os.getenv("EMAIL_WEBHOOK_URL", "")
+    EMAIL_WEBHOOK_SECRET: str = os.getenv("EMAIL_WEBHOOK_SECRET", "")
+    EMAIL_SENDER_NAME: str = os.getenv("EMAIL_SENDER_NAME", "RESA Pronostics 2026")
     ADMIN_PASSWORD_HASH: str = os.getenv("ADMIN_PASSWORD_HASH", "")
 
     # Timezone
