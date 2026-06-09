@@ -1,63 +1,182 @@
 /* RESA Pronostics 2026 — Vanilla JS */
 'use strict';
 
-/* ---- Prediction pills ---- */
-function initPredictionPills() {
-  document.querySelectorAll('.match-card[data-match-id]').forEach(function(card) {
+/* ---- Prediction score entry ---- */
+function initPredictionScores() {
+  document.querySelectorAll('.prediction-card[data-match-id]').forEach(function(card) {
     var matchId = card.dataset.matchId;
     var token = document.body.dataset.token;
-    var pills = card.querySelectorAll('.pills .p:not(.lock)');
-    var exactRow = card.querySelector('.exact-row');
+    var score1 = card.querySelector('.score-pick[data-side="1"]');
+    var score2 = card.querySelector('.score-pick[data-side="2"]');
+    var outcome = card.querySelector('[data-outcome]');
+    var qualifierRow = card.querySelector('.qualifier-row');
+    var qualifierBtns = card.querySelectorAll('.qualifier-btn');
+    var errorBox = card.querySelector('.prediction-error');
     var saveIndicator = card.querySelector('.save-badge');
+    var saveTimer = null;
 
-    pills.forEach(function(pill) {
-      pill.addEventListener('click', function() {
-        var value = pill.dataset.value;
-        // update UI immediately
-        pills.forEach(function(p) { p.classList.remove('on'); });
-        pill.classList.add('on');
-        // expand score exact
-        if (exactRow) exactRow.classList.add('open');
-        // save to server
-        savePrediction(matchId, token, value, card, saveIndicator);
+    function scoreValue(inp) {
+      if (!inp || inp.value === '') return null;
+      var parsed = parseInt(inp.value, 10);
+      return isNaN(parsed) ? null : parsed;
+    }
+
+    function clampScore(inp) {
+      if (!inp || inp.value === '') return;
+      var value = parseInt(inp.value, 10);
+      if (isNaN(value) || value < 0) inp.value = 0;
+      if (value > 30) inp.value = 30;
+    }
+
+    function derivedPrediction(s1, s2) {
+      if (s1 > s2) return { value: 'team1', short: '1', label: card.dataset.team1 };
+      if (s2 > s1) return { value: 'team2', short: '2', label: card.dataset.team2 };
+      return { value: 'draw', short: 'X', label: 'Nul' };
+    }
+
+    function selectedQualifier() {
+      var selected = card.querySelector('.qualifier-btn.on');
+      return selected ? selected.dataset.value : null;
+    }
+
+    function setError(message) {
+      if (!errorBox) return;
+      errorBox.textContent = message || '';
+      errorBox.classList.toggle('show', !!message);
+    }
+
+    function isKnockoutDraw(s1, s2) {
+      return card.dataset.knockout === '1' && s1 === s2;
+    }
+
+    function updateOutcome() {
+      var s1 = scoreValue(score1);
+      var s2 = scoreValue(score2);
+      if (s1 === null || s2 === null) {
+        if (outcome) {
+          outcome.textContent = 'Score requis';
+          outcome.classList.add('empty');
+        }
+        if (qualifierRow) qualifierRow.classList.remove('open');
+        return null;
+      }
+      var prediction = derivedPrediction(s1, s2);
+      if (outcome) {
+        outcome.textContent = 'Issue ' + prediction.short;
+        outcome.classList.remove('empty');
+      }
+      if (qualifierRow) {
+        qualifierRow.classList.toggle('open', isKnockoutDraw(s1, s2));
+      }
+      return prediction;
+    }
+
+    function markSaved(data) {
+      card.classList.add('complete');
+      var dot = card.querySelector('.mtop .dot');
+      if (dot) {
+        dot.classList.remove('gr', 'r');
+        dot.classList.add('g');
+      }
+      var prediction = updateOutcome();
+      var pronoText = card.querySelector('.prono-text');
+      var s1 = scoreValue(score1);
+      var s2 = scoreValue(score2);
+      if (pronoText && prediction && s1 !== null && s2 !== null) {
+        pronoText.textContent = 'Prono ' + s1 + '-' + s2 + ' · ' + prediction.label;
+        pronoText.classList.remove('empty');
+      }
+      showSaveBadge(saveIndicator);
+      showSaveBadge(document.getElementById('global-save-badge'));
+      setError('');
+    }
+
+    function saveScorePrediction() {
+      var s1 = scoreValue(score1);
+      var s2 = scoreValue(score2);
+      if (s1 === null || s2 === null) return;
+      var body = {
+        match_id: parseInt(matchId, 10),
+        exact_score_team1: s1,
+        exact_score_team2: s2
+      };
+      if (isKnockoutDraw(s1, s2)) {
+        var qualifier = selectedQualifier();
+        if (!qualifier) {
+          setError('Choisis l’équipe qualifiée.');
+          return;
+        }
+        body.qualifier_prediction = qualifier;
+      }
+
+      fetch('/api/predictions?token=' + encodeURIComponent(token), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }).then(function(response) {
+        return response.json().then(function(data) {
+          if (!response.ok) throw data;
+          return data;
+        });
+      }).then(function(data) {
+        if (data.success) markSaved(data);
+      }).catch(function(err) {
+        setError((err && err.detail) || 'Enregistrement impossible, réessaie.');
+      });
+    }
+
+    function queueSave() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveScorePrediction, 500);
+    }
+
+    [score1, score2].forEach(function(inp) {
+      if (!inp || inp.disabled) return;
+      inp.addEventListener('input', function() {
+        clampScore(inp);
+        setError('');
+        updateOutcome();
+        if (scoreValue(score1) !== null && scoreValue(score2) !== null) queueSave();
+      });
+      inp.addEventListener('change', saveScorePrediction);
+      inp.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowUp') {
+          inp.value = Math.min(30, (parseInt(inp.value, 10) || 0) + 1);
+          updateOutcome();
+          saveScorePrediction();
+          e.preventDefault();
+        }
+        if (e.key === 'ArrowDown') {
+          inp.value = Math.max(0, (parseInt(inp.value, 10) || 0) - 1);
+          updateOutcome();
+          saveScorePrediction();
+          e.preventDefault();
+        }
       });
     });
 
-    // Score exact auto-save on blur
-    var exactInputs = card.querySelectorAll('.mini-input');
-    exactInputs.forEach(function(inp) {
-      inp.addEventListener('change', function() {
-        var activePill = card.querySelector('.pills .p.on');
-        if (!activePill) return;
-        var s1 = card.querySelector('.mini-input[data-side="1"]');
-        var s2 = card.querySelector('.mini-input[data-side="2"]');
-        savePrediction(matchId, token, activePill.dataset.value, card, saveIndicator,
-          s1 ? parseInt(s1.value) : null, s2 ? parseInt(s2.value) : null);
+    qualifierBtns.forEach(function(btn) {
+      if (btn.disabled) return;
+      btn.addEventListener('click', function() {
+        qualifierBtns.forEach(function(other) { other.classList.remove('on'); });
+        btn.classList.add('on');
+        setError('');
+        saveScorePrediction();
       });
     });
-  });
-}
 
-function savePrediction(matchId, token, prediction, card, badge, score1, score2) {
-  var body = { match_id: parseInt(matchId), prediction: prediction };
-  if (score1 !== null && score1 !== undefined && !isNaN(score1)) body.exact_score_team1 = score1;
-  if (score2 !== null && score2 !== undefined && !isNaN(score2)) body.exact_score_team2 = score2;
-
-  fetch('/api/predictions?token=' + encodeURIComponent(token), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.success) showSaveBadge(badge);
-  }).catch(function() {
-    // silently fail — user can retry
+    updateOutcome();
   });
 }
 
 function showSaveBadge(badge) {
   if (!badge) return;
+  badge.style.display = 'inline-flex';
   badge.classList.add('show');
-  setTimeout(function() { badge.classList.remove('show'); }, 2000);
+  setTimeout(function() {
+    badge.classList.remove('show');
+    if (badge.id === 'global-save-badge') badge.style.display = 'none';
+  }, 2000);
 }
 
 /* ---- Score exact stepper inputs ---- */
@@ -306,7 +425,7 @@ function initPhaseFilter() {
 /* ---- Init all on DOM ready ---- */
 document.addEventListener('DOMContentLoaded', function() {
   initLocalTimes();
-  initPredictionPills();
+  initPredictionScores();
   initMiniInputs();
   initCountdown();
   initOutsiderChips();

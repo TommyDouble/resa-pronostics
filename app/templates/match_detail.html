@@ -39,6 +39,11 @@
         {% if my_pred.exact_score_team1 is not none %}
         · <span class="muted" style="font-weight:500;">{{ my_pred.exact_score_team1 }}–{{ my_pred.exact_score_team2 }}</span>
         {% endif %}
+        {% if my_pred.qualifier_prediction %}
+        <div class="muted" style="font-size:11px;margin-top:3px;font-weight:500;">
+          Qualifié : {% if my_pred.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% else %}{{ match.team2_name }}{% endif %}
+        </div>
+        {% endif %}
       </div>
       {% if my_score and my_score.points > 0 %}
       <span class="chip ok">{{ '+' + my_score.points|string if my_score else '+0' }} pts</span>
@@ -87,7 +92,16 @@
         <tr>
           <td>{{ pr.name }}</td>
           <td>{% if pr.prediction == 'team1' %}{{ match.team1_name }}{% elif pr.prediction == 'team2' %}{{ match.team2_name }}{% else %}<span class="muted">Nul</span>{% endif %}</td>
-          <td>{% if pr.exact_score_team1 is not none %}<span style="color:var(--primary);font-weight:700;">{{ pr.exact_score_team1 }}–{{ pr.exact_score_team2 }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>
+            {% if pr.exact_score_team1 is not none %}
+              <span style="color:var(--primary);font-weight:700;">{{ pr.exact_score_team1 }}–{{ pr.exact_score_team2 }}</span>
+              {% if pr.qualifier_prediction %}
+              <div class="muted" style="font-size:10px;">Qualifié : {% if pr.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% else %}{{ match.team2_name }}{% endif %}</div>
+              {% endif %}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
           <td class="s" style="text-align:right;">{{ pr.points or 0 }}</td>
         </tr>
         {% endfor %}

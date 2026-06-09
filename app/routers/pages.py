@@ -1,4 +1,5 @@
 """Participant-facing HTML page routes."""
+from collections import defaultdict
 import logging
 import uuid
 
@@ -34,6 +35,36 @@ PHASE_LABELS = {
     "semi": "Demi-finales",
     "third_place": "Match pour la 3e place",
     "final": "Finale",
+}
+
+GROUP_MATCH_LABELS = {
+    1: "Phase de groupes - Match 1",
+    2: "Phase de groupes - Match 2",
+    3: "Phase de groupes - Match 3",
+}
+
+PREDICTION_SECTION_ORDER = [
+    "group_match_1",
+    "group_match_2",
+    "group_match_3",
+    "round_of_32",
+    "round_of_16",
+    "quarter",
+    "semi",
+    "third_place",
+    "final",
+]
+
+PREDICTION_SECTION_LABELS = {
+    "group_match_1": GROUP_MATCH_LABELS[1],
+    "group_match_2": GROUP_MATCH_LABELS[2],
+    "group_match_3": GROUP_MATCH_LABELS[3],
+    "round_of_32": PHASE_LABELS["round_of_32"],
+    "round_of_16": PHASE_LABELS["round_of_16"],
+    "quarter": PHASE_LABELS["quarter"],
+    "semi": PHASE_LABELS["semi"],
+    "third_place": PHASE_LABELS["third_place"],
+    "final": PHASE_LABELS["final"],
 }
 
 TEAMS_48 = sorted([
@@ -130,6 +161,89 @@ def _is_locked(match: dict) -> bool:
 
 def _minutes_until(match: dict) -> int:
     return minutes_until_match(match)
+
+
+def _prediction_short(prediction: str | None) -> str:
+    return {"team1": "1", "draw": "X", "team2": "2"}.get(prediction or "", "")
+
+
+def _prediction_label(match: dict) -> str:
+    if match.get("prediction") == "team1":
+        return match["team1_name"]
+    if match.get("prediction") == "team2":
+        return match["team2_name"]
+    if match.get("prediction") == "draw":
+        return "Nul"
+    return "—"
+
+
+def _qualifier_label(match: dict) -> str:
+    if match.get("qualifier_prediction") == "team1":
+        return match["team1_name"]
+    if match.get("qualifier_prediction") == "team2":
+        return match["team2_name"]
+    return ""
+
+
+def _enrich_prediction_matches(matches: list[dict]) -> None:
+    grouped = defaultdict(list)
+    for match in matches:
+        if match["phase"] == "group":
+            grouped[match.get("group_name") or ""].append(match)
+
+    for group_matches in grouped.values():
+        group_matches.sort(key=lambda item: (
+            item["match_date"],
+            item["kickoff_time"],
+            item["match_number"],
+        ))
+        for index, match in enumerate(group_matches):
+            group_match_no = min((index // 2) + 1, 3)
+            match["group_match_no"] = group_match_no
+            match["section_key"] = f"group_match_{group_match_no}"
+            match["section_label"] = GROUP_MATCH_LABELS[group_match_no]
+
+    for match in matches:
+        if match["phase"] != "group":
+            match["section_key"] = match["phase"]
+            match["section_label"] = PHASE_LABELS.get(match["phase"], match["phase"])
+        match["is_locked"] = _is_locked(match)
+        match["phase_label"] = PHASE_LABELS.get(match["phase"], match["phase"])
+        match["has_score_prediction"] = (
+            match.get("exact_score_team1") is not None
+            and match.get("exact_score_team2") is not None
+        )
+        match["prediction_short"] = _prediction_short(match.get("prediction"))
+        match["prediction_label"] = _prediction_label(match)
+        match["qualifier_label"] = _qualifier_label(match)
+
+
+def _prediction_sections(matches: list[dict]) -> list[dict]:
+    sections = []
+    for key in PREDICTION_SECTION_ORDER:
+        section_matches = [m for m in matches if m.get("section_key") == key]
+        total = len(section_matches)
+        done = sum(1 for m in section_matches if m.get("has_score_prediction"))
+        open_count = sum(1 for m in section_matches if not m.get("is_locked"))
+        sections.append({
+            "key": key,
+            "label": PREDICTION_SECTION_LABELS[key],
+            "short_label": PREDICTION_SECTION_LABELS[key].replace("Phase de groupes - ", ""),
+            "total": total,
+            "done": done,
+            "open_count": open_count,
+        })
+    return sections
+
+
+def _default_prediction_section(sections: list[dict]) -> str:
+    for section in sections:
+        if section["total"] and section["open_count"]:
+            return section["key"]
+    for section in sections:
+        if section["total"]:
+            return section["key"]
+    return PREDICTION_SECTION_ORDER[0]
 
 
 async def _get_participant_context(token: str, db, active_nav: str = "home") -> dict:
@@ -283,39 +397,56 @@ async def confirm_onboarding(request: Request, token: str,
 
 
 @router.get("/p/{token}/pronos", response_class=HTMLResponse)
-async def predictions_page(request: Request, token: str, phase: str = "group"):
+async def predictions_page(request: Request, token: str, section: str = "", phase: str = ""):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "pronos")
         p = ctx["participant"]
-        # Get matches for selected phase
         rows = await db.execute(
             """SELECT m.*,
-                 pr.prediction, pr.exact_score_team1, pr.exact_score_team2
+                 pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
+                 pr.qualifier_prediction, s.points
                FROM matches m
                LEFT JOIN predictions pr ON pr.match_id = m.id AND pr.participant_id = ?
+               LEFT JOIN scores s ON s.match_id = m.id AND s.participant_id = ?
                ORDER BY m.match_date, m.kickoff_time""",
-            (p["id"],)
+            (p["id"], p["id"])
         )
         all_matches = [dict(r) for r in await rows.fetchall()]
-        for m in all_matches:
-            m["is_locked"] = _is_locked(m)
-            m["phase_label"] = PHASE_LABELS.get(m["phase"], m["phase"])
-        # Group by phase then by date
-        phases_order = ["group", "round_of_32", "round_of_16", "quarter", "semi", "third_place", "final"]
-        # Pre-tournament warning
+        _enrich_prediction_matches(all_matches)
+        sections = _prediction_sections(all_matches)
+        requested_section = section
+        if not requested_section and phase:
+            requested_section = "group_match_1" if phase == "group" else phase
+        if requested_section not in PREDICTION_SECTION_ORDER:
+            requested_section = _default_prediction_section(sections)
+        current_matches = [
+            match for match in all_matches
+            if match.get("section_key") == requested_section
+        ]
         pt_row = await db.execute(
             "SELECT submitted FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
         )
         pt = await pt_row.fetchone()
-        pt_submitted = pt and pt["submitted"]
+        pt_submitted = bool(pt and pt["submitted"])
         ctx.update({
             "matches": all_matches,
-            "current_phase": phase,
-            "phases": phases_order,
+            "current_matches": current_matches,
+            "current_section": requested_section,
+            "current_section_label": PREDICTION_SECTION_LABELS.get(requested_section, requested_section),
+            "prediction_sections": sections,
             "phase_labels": PHASE_LABELS,
             "pt_submitted": pt_submitted,
+            "page_wide": True,
         })
     return templates.TemplateResponse("predictions.html", {"request": request, **ctx})
+
+
+@router.get("/p/{token}/reglement", response_class=HTMLResponse)
+async def rules_page(request: Request, token: str):
+    async with get_db() as db:
+        ctx = await _get_participant_context(token, db, "rules")
+        ctx["page_wide"] = True
+    return templates.TemplateResponse("rules.html", {"request": request, **ctx})
 
 
 @router.get("/p/{token}/pre-tournoi", response_class=HTMLResponse)
@@ -448,7 +579,8 @@ async def match_detail_page(request: Request, token: str, match_id: int):
         dist = {k: {"cnt": v, "pct": round(v / total_preds * 100)} for k, v in dist_raw.items()}
         # All predictions (only after kickoff)
         all_preds_rows = await db.execute(
-            """SELECT par.name, pr.prediction, pr.exact_score_team1, pr.exact_score_team2, s.points
+            """SELECT par.name, pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
+                      pr.qualifier_prediction, s.points
                FROM predictions pr
                JOIN participants par ON par.id = pr.participant_id
                LEFT JOIN scores s ON s.match_id = pr.match_id AND s.participant_id = pr.participant_id

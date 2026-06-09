@@ -371,6 +371,7 @@ async def predictions_admin(
                       m.match_number, m.phase, m.team1_name, m.team2_name,
                       m.score_team1, m.score_team2, m.result,
                       pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
+                      pr.qualifier_prediction,
                       pr.submitted_at, COALESCE(s.points, 0) as points
                     FROM predictions pr
                     JOIN participants p ON p.id = pr.participant_id

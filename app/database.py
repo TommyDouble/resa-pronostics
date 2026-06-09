@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS predictions (
   prediction          TEXT    NOT NULL CHECK(prediction IN ('team1','draw','team2')),
   exact_score_team1   INTEGER,
   exact_score_team2   INTEGER,
+  qualifier_prediction TEXT   CHECK(qualifier_prediction IN ('team1','team2') OR qualifier_prediction IS NULL),
   submitted_at        TEXT    NOT NULL DEFAULT (datetime('now')),
   is_locked           INTEGER NOT NULL DEFAULT 0,
   UNIQUE(participant_id, match_id)
@@ -159,6 +160,15 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
         for column in participant_columns:
             try:
                 await db.execute(f"ALTER TABLE participants ADD COLUMN {column}")
+            except Exception:
+                pass
+
+        prediction_columns = [
+            "qualifier_prediction TEXT CHECK(qualifier_prediction IN ('team1','team2') OR qualifier_prediction IS NULL)",
+        ]
+        for column in prediction_columns:
+            try:
+                await db.execute(f"ALTER TABLE predictions ADD COLUMN {column}")
             except Exception:
                 pass
 

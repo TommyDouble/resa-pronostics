@@ -2,24 +2,32 @@
 {% block title %}Pronostics — RESA Pronostics{% endblock %}
 {% block page_content %}
 
+{% set stats = namespace(total=0, done=0) %}
+{% for sec in prediction_sections %}
+  {% if sec.key == current_section %}
+    {% set stats.total = sec.total %}
+    {% set stats.done = sec.done %}
+  {% endif %}
+{% endfor %}
+
 <div class="page-head">
   <div class="row1">
     <h1>Pronostics</h1>
     <span class="sp"></span>
     <span class="chip ok" id="global-save-badge" style="display:none;">Enregistré ✓</span>
   </div>
-  <div class="fchips" style="margin-top:10px;">
-    {% for ph in phases %}
-    <a href="/p/{{ token }}/pronos?phase={{ ph }}"
-       class="{{ 'on' if current_phase == ph else '' }} phase-filter-btn"
-       data-phase="{{ ph }}">
-      {{ phase_labels[ph] }}
+  <div class="fchips prono-tabs">
+    {% for sec in prediction_sections %}
+    <a href="/p/{{ token }}/pronos?section={{ sec.key }}"
+       class="{{ 'on' if current_section == sec.key else '' }}">
+      {{ sec.short_label }}
+      <span>{{ sec.done }}/{{ sec.total }}</span>
     </a>
     {% endfor %}
   </div>
 </div>
 
-<div class="page-content" style="gap:16px;">
+<div class="page-content predictions-page">
 
   {% if not pt_submitted %}
   <div class="banner acc">
@@ -29,83 +37,101 @@
   </div>
   {% endif %}
 
+  <div class="prono-progress">
+    <div>
+      <span class="lbl">{{ current_section_label }}</span>
+      <strong>{{ stats.done }}/{{ stats.total }}</strong>
+    </div>
+    <div class="progress-line">
+      <span style="width:{{ (stats.done * 100 // stats.total) if stats.total else 0 }}%;"></span>
+    </div>
+  </div>
+
   {% set ns = namespace(current_date=None) %}
-  {% for m in matches if m.phase == current_phase %}
+  {% for m in current_matches %}
     {% set display_date = m|match_date %}
     {% if display_date != ns.current_date %}
       {% set ns.current_date = display_date %}
-      <div class="daybar">JOURNÉE · <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="date">{{ display_date }}</span></div>
+      <div class="daybar"><span data-local-utc="{{ m|match_utc_iso }}" data-local-format="date">{{ display_date }}</span></div>
     {% endif %}
 
-    <div class="match-card {% if m.is_top_match and not m.is_locked %}top{% endif %} {% if m.is_locked %}past{% endif %}"
-         data-match-id="{{ m.id }}">
+    <div class="match prediction-card {% if m.is_top_match and not m.is_locked %}top{% endif %} {% if m.is_locked %}past{% endif %} {{ 'complete' if m.has_score_prediction else '' }}"
+         data-match-id="{{ m.id }}"
+         data-knockout="{{ '1' if m.phase != 'group' else '0' }}"
+         data-team1="{{ m.team1_name }}"
+         data-team2="{{ m.team2_name }}">
       <div class="mtop">
-        {% if m.is_locked and m.result %}
+        {% if m.is_locked %}
           <span class="dot r"></span> Terminé
-        {% elif m.prediction %}
+        {% elif m.has_score_prediction %}
           <span class="dot g"></span> <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
         {% else %}
-          <span class="dot {% if m.is_locked %}r{% else %}gr{% endif %}"></span>
-          <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
+          <span class="dot gr"></span> <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
+        {% endif %}
+        {% if m.group_name %}
+          <span class="muted">· {{ m.group_name }}</span>
         {% endif %}
         <span class="sp"></span>
-        {% if m.is_top_match %}
+        {% if m.is_locked and m.result is not none and m.score_team1 is not none %}
+          <span class="chip lock">Réel {{ m.score_team1 }}-{{ m.score_team2 }}</span>
+        {% elif m.is_top_match %}
           <span class="chip warn">★ Top Match ×2</span>
         {% else %}
           <span class="chip gr">×{{ m.weight }}</span>
         {% endif %}
-        <span class="save-badge" style="margin-left:8px;">Enregistré ✓</span>
       </div>
 
-      <div class="teams">
-        <div class="team">{{ m.team1_name }}</div>
-        {% if m.is_locked and m.result is not none and m.score_team1 is not none %}
-          <div class="score-real">{{ m.score_team1 }} – {{ m.score_team2 }}</div>
-        {% else %}
-          <span class="vs-sep">vs</span>
-        {% endif %}
-        <div class="team r">{{ m.team2_name }}</div>
+      <div class="score-entry">
+        <div class="score-team">{{ m.team1_name }}</div>
+        <input class="score-pick" type="number" min="0" max="30" inputmode="numeric"
+               data-side="1" aria-label="Score {{ m.team1_name }}"
+               value="{{ m.exact_score_team1 if m.exact_score_team1 is not none else '' }}"
+               placeholder="-" {% if m.is_locked %}disabled{% endif %}>
+        <span class="score-dash">-</span>
+        <input class="score-pick" type="number" min="0" max="30" inputmode="numeric"
+               data-side="2" aria-label="Score {{ m.team2_name }}"
+               value="{{ m.exact_score_team2 if m.exact_score_team2 is not none else '' }}"
+               placeholder="-" {% if m.is_locked %}disabled{% endif %}>
+        <div class="score-team r">{{ m.team2_name }}</div>
       </div>
 
-      {% if m.is_locked %}
-        {# Past match: show my prediction + points #}
-        {% if m.prediction %}
-        <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;" class="muted">
-          <span>Ton prono :
-            <b style="color:var(--n900)">{% if m.prediction == 'team1' %}{{ m.team1_name }}{% elif m.prediction == 'team2' %}{{ m.team2_name }}{% else %}Nul{% endif %}
-            {% if m.exact_score_team1 is not none %} · {{ m.exact_score_team1 }}–{{ m.exact_score_team2 }}{% endif %}</b>
-          </span>
-          <a href="/p/{{ token }}/match/{{ m.id }}" style="color:var(--primary);font-weight:700;text-decoration:none;">Détail →</a>
-        </div>
+      <div class="prediction-meta">
+        <span class="outcome-chip {{ '' if m.has_score_prediction else 'empty' }}" data-outcome>
+          {% if m.has_score_prediction %}Issue {{ m.prediction_short }}{% else %}Score requis{% endif %}
+        </span>
+        {% if m.points is not none %}
+          <span class="chip ok">+{{ m.points }} pts</span>
         {% endif %}
-      {% else %}
-        {# Active match: pills + score exact #}
-        <div class="pills">
-          <div class="p {{ 'on' if m.prediction == 'team1' else '' }} {{ 'lock' if m.is_locked else '' }}"
-               data-value="team1">{{ m.team1_name }}</div>
-          <div class="p {{ 'on' if m.prediction == 'draw' else '' }} {{ 'lock' if m.is_locked else '' }}"
-               data-value="draw">Nul</div>
-          <div class="p {{ 'on' if m.prediction == 'team2' else '' }} {{ 'lock' if m.is_locked else '' }}"
-               data-value="team2">{{ m.team2_name }}</div>
-        </div>
-        <div class="exact-row {{ 'open' if m.prediction else '' }}">
-          <div class="inner">
-            <span class="lbl">Score exact</span>
-            <span class="muted" style="font-size:11px;">(+2 pts)</span>
-            <input class="mini-input" type="number" min="0" max="30" data-side="1"
-                   value="{{ m.exact_score_team1 if m.exact_score_team1 is not none else '' }}"
-                   placeholder="0">
-            <span class="vs-sep">–</span>
-            <input class="mini-input" type="number" min="0" max="30" data-side="2"
-                   value="{{ m.exact_score_team2 if m.exact_score_team2 is not none else '' }}"
-                   placeholder="0">
-          </div>
-        </div>
+        <span class="muted prono-text {{ 'empty' if not m.has_score_prediction else '' }}">
+          {% if m.has_score_prediction %}Prono {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }} · {{ m.prediction_label }}{% endif %}
+        </span>
+        <span class="sp"></span>
+        <span class="save-badge">Enregistré ✓</span>
+        {% if m.is_locked %}
+          <a href="/p/{{ token }}/match/{{ m.id }}" class="detail-link">Détail</a>
+        {% endif %}
+      </div>
+
+      {% if m.phase != 'group' %}
+      <div class="qualifier-row {% if m.has_score_prediction and m.exact_score_team1 == m.exact_score_team2 %}open{% endif %}">
+        <span class="lbl">Qualifié</span>
+        <button type="button"
+                class="qualifier-btn {{ 'on' if m.qualifier_prediction == 'team1' else '' }}"
+                data-value="team1" {% if m.is_locked %}disabled{% endif %}>{{ m.team1_name }}</button>
+        <button type="button"
+                class="qualifier-btn {{ 'on' if m.qualifier_prediction == 'team2' else '' }}"
+                data-value="team2" {% if m.is_locked %}disabled{% endif %}>{{ m.team2_name }}</button>
+        {% if m.qualifier_label %}
+          <span class="muted qualifier-saved">Qualifié: {{ m.qualifier_label }}</span>
+        {% endif %}
+      </div>
       {% endif %}
+
+      <div class="prediction-error" role="alert"></div>
     </div>
   {% else %}
     <div style="text-align:center;padding:40px 20px;color:var(--n600);">
-      <p style="font-family:var(--sketch);font-size:22px;">Aucun match pour cette phase.</p>
+      <p style="font-family:var(--sketch);font-size:22px;">Aucun match pour cette section.</p>
     </div>
   {% endfor %}
 

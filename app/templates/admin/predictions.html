@@ -60,7 +60,18 @@
         <td>
           {% if r.prediction == 'team1' %}{{ r.team1_name }}{% elif r.prediction == 'team2' %}{{ r.team2_name }}{% else %}Nul{% endif %}
         </td>
-        <td>{% if r.exact_score_team1 is not none %}{{ r.exact_score_team1 }}–{{ r.exact_score_team2 }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>
+          {% if r.exact_score_team1 is not none %}
+            {{ r.exact_score_team1 }}–{{ r.exact_score_team2 }}
+            {% if r.qualifier_prediction %}
+            <div class="muted" style="font-size:10px;">
+              Qualifié : {% if r.qualifier_prediction == 'team1' %}{{ r.team1_name }}{% else %}{{ r.team2_name }}{% endif %}
+            </div>
+            {% endif %}
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
         <td>{% if r.result %}{{ r.score_team1 }}–{{ r.score_team2 }}{% else %}<span class="muted">À venir</span>{% endif %}</td>
         <td class="s">{{ r.points }}</td>
         <td class="muted" style="font-size:10px;" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}</td>

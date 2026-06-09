@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block body %}
-<div class="page-wrap">
+<div class="page-wrap {{ 'wide' if page_wide|default(false) else '' }}">
 
   <!-- Desktop top nav -->
   <nav class="top-nav" style="display:none" id="top-nav">
@@ -11,6 +11,7 @@
     <a href="/p/{{ token }}/profil" class="{{ 'on' if active_nav == 'profil' else '' }}">Profil</a>
     <a href="/p/{{ token }}/bonus"
        class="{{ 'on' if active_nav == 'bonus' else '' }}{% if pending_bonus > 0 %} bdg-link{% endif %}">Bonus</a>
+    <a href="/p/{{ token }}/reglement" class="{{ 'on' if active_nav == 'rules' else '' }}">Règlement</a>
   </nav>
 
   {% block page_content %}{% endblock %}
