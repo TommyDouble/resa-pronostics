@@ -1,16 +1,29 @@
 """Admin backoffice routes."""
 import csv
 import io
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, Form, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import require_admin, verify_password, hash_password
+from app.config import settings
 from app.database import get_db
+from app.mail import (
+    send_invitation,
+    send_match_reminder as send_match_reminder_email,
+    send_pre_tournament_reminder,
+)
+from app.pre_tournament import (
+    DEFAULT_PRE_TOURNAMENT_QUESTIONS,
+    get_pre_tournament_deadline,
+    get_pre_tournament_question_map,
+    get_pre_tournament_questions,
+)
 from app.scoring import recalculate_match_scores, get_rankings, calculate_bonus_scores
 
 router = APIRouter()
@@ -26,6 +39,8 @@ PHASE_LABELS = {
     "third_place": "3e place",
     "final": "Finale",
 }
+
+BONUS_PHASES = {"pre_tournament", "round_of_32", "quarter", "semi"}
 
 STATUSES = {
     "confirmed": ("ok", "confirmé"),
@@ -54,6 +69,25 @@ def _flash(request: Request, msg: str, kind: str = "ok"):
 
 def _get_flashes(request: Request):
     return request.session.pop("flashes", [])
+
+
+def _split_name(name: str) -> tuple[str, str]:
+    parts = name.strip().split()
+    if not parts:
+        return "", ""
+    return parts[0], " ".join(parts[1:])
+
+
+def _normalize_bonus_options(answer_type: str, options_text: str):
+    if answer_type != "choice":
+        return None
+    options = [
+        opt.strip()
+        for line in options_text.splitlines()
+        for opt in line.split(",")
+        if opt.strip()
+    ]
+    return json.dumps(options, ensure_ascii=False) if options else None
 
 
 # ---- Login ----
@@ -170,20 +204,48 @@ async def participants_list(request: Request):
 @router.post("/participants/add")
 async def add_participant(request: Request, name: str = Form(...), email: str = Form(...)):
     await require_admin(request)
+    name = name.strip()
+    email = email.strip().lower()
+    first_name, last_name = _split_name(name)
     token = str(uuid.uuid4())
+    participant = {"name": name, "email": email, "token": token}
     async with get_db() as db:
         try:
             await db.execute(
-                "INSERT INTO participants (name, email, token) VALUES (?,?,?)",
-                (name.strip(), email.strip().lower(), token)
+                """INSERT INTO participants (name, first_name, last_name, email, token)
+                   VALUES (?,?,?,?,?)""",
+                (name, first_name, last_name, email, token)
             )
             await db.commit()
-            _flash(request, f"Participant {name} ajouté.")
+            sent = await send_invitation(participant)
+            if sent:
+                _flash(request, f"Participant {name} ajouté. Invitation envoyée.")
+            else:
+                _flash(request, f"Participant {name} ajouté, mais l'invitation n'a pas pu être envoyée.", "err")
         except Exception as e:
             if "UNIQUE" in str(e):
                 _flash(request, "Email déjà utilisé.", "err")
             else:
                 _flash(request, "Erreur lors de l'ajout.", "err")
+    return RedirectResponse("/admin/participants", status_code=303)
+
+
+@router.post("/participants/{participant_id}/invite")
+async def invite_participant(request: Request, participant_id: int):
+    await require_admin(request)
+    async with get_db() as db:
+        row = await db.execute(
+            "SELECT name, email, token FROM participants WHERE id=? AND is_admin=0",
+            (participant_id,)
+        )
+        participant = await row.fetchone()
+    if not participant:
+        raise HTTPException(404)
+    sent = await send_invitation(dict(participant))
+    if sent:
+        _flash(request, f"Invitation envoyée à {participant['email']}.")
+    else:
+        _flash(request, f"Impossible d'envoyer l'invitation à {participant['email']}.", "err")
     return RedirectResponse("/admin/participants", status_code=303)
 
 
@@ -244,21 +306,224 @@ async def import_csv(request: Request, csv_file: UploadFile = File(...)):
         _flash(request, f"Erreurs CSV: {'; '.join(errors[:3])}", "err")
         return RedirectResponse("/admin/participants", status_code=303)
 
-    imported = 0
+    imported_participants = []
     async with get_db() as db:
         for name, email in valid:
+            first_name, last_name = _split_name(name)
             token = str(uuid.uuid4())
             try:
-                await db.execute(
-                    "INSERT OR IGNORE INTO participants (name, email, token) VALUES (?,?,?)",
-                    (name, email, token)
+                cursor = await db.execute(
+                    """INSERT OR IGNORE INTO participants
+                       (name, first_name, last_name, email, token)
+                       VALUES (?,?,?,?,?)""",
+                    (name, first_name, last_name, email, token)
                 )
-                imported += 1
+                if cursor.rowcount:
+                    imported_participants.append({"name": name, "email": email, "token": token})
             except Exception:
                 pass
         await db.commit()
-    _flash(request, f"{imported} participant(s) importé(s).")
+    sent_count = 0
+    for participant in imported_participants:
+        if await send_invitation(participant):
+            sent_count += 1
+    _flash(
+        request,
+        f"{len(imported_participants)} participant(s) importé(s), {sent_count} invitation(s) envoyée(s).",
+    )
     return RedirectResponse("/admin/participants", status_code=303)
+
+
+# ---- Prediction Review ----
+
+@router.get("/pronostics", response_class=HTMLResponse)
+async def predictions_admin(
+    request: Request,
+    view: str = Query(default="matches"),
+    participant_id: int = Query(default=0),
+    phase: str = Query(default="all"),
+):
+    await require_admin(request)
+    if view not in ("matches", "pre_tournament", "bonus"):
+        view = "matches"
+    async with get_db() as db:
+        p_rows = await db.execute(
+            """SELECT id, name, nickname FROM participants
+               WHERE is_admin=0
+               ORDER BY COALESCE(NULLIF(nickname, ''), name)"""
+        )
+        participants = [dict(r) for r in await p_rows.fetchall()]
+        match_predictions = []
+        pre_tournament_rows = []
+        bonus_answers = []
+        pt_questions = await get_pre_tournament_question_map(db, include_disabled=True)
+
+        if view == "matches":
+            where = ["p.is_admin=0"]
+            params = []
+            if participant_id:
+                where.append("p.id=?")
+                params.append(participant_id)
+            if phase != "all":
+                where.append("m.phase=?")
+                params.append(phase)
+            rows = await db.execute(
+                f"""SELECT
+                      p.id as participant_id,
+                      COALESCE(NULLIF(p.nickname, ''), p.name) as participant_name,
+                      p.name as full_name,
+                      m.match_number, m.phase, m.team1_name, m.team2_name,
+                      m.score_team1, m.score_team2, m.result,
+                      pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
+                      pr.submitted_at, COALESCE(s.points, 0) as points
+                    FROM predictions pr
+                    JOIN participants p ON p.id = pr.participant_id
+                    JOIN matches m ON m.id = pr.match_id
+                    LEFT JOIN scores s ON s.match_id = pr.match_id
+                      AND s.participant_id = pr.participant_id
+                    WHERE {' AND '.join(where)}
+                    ORDER BY pr.submitted_at DESC, m.match_number""",
+                params,
+            )
+            match_predictions = [dict(r) for r in await rows.fetchall()]
+
+        if view == "pre_tournament":
+            where = ["p.is_admin=0"]
+            params = []
+            if participant_id:
+                where.append("p.id=?")
+                params.append(participant_id)
+            rows = await db.execute(
+                f"""SELECT
+                      p.id as participant_id,
+                      COALESCE(NULLIF(p.nickname, ''), p.name) as participant_name,
+                      p.name as full_name,
+                      pt.winner, pt.finalist, pt.top_scorer, pt.revelation,
+                      pt.total_goals, pt.submitted, pt.submitted_at
+                    FROM participants p
+                    LEFT JOIN pre_tournament_predictions pt
+                      ON pt.participant_id = p.id
+                    WHERE {' AND '.join(where)}
+                    ORDER BY p.name""",
+                params,
+            )
+            pre_tournament_rows = [dict(r) for r in await rows.fetchall()]
+
+        if view == "bonus":
+            where = ["p.is_admin=0"]
+            params = []
+            if participant_id:
+                where.append("p.id=?")
+                params.append(participant_id)
+            rows = await db.execute(
+                f"""SELECT
+                      p.id as participant_id,
+                      COALESCE(NULLIF(p.nickname, ''), p.name) as participant_name,
+                      p.name as full_name,
+                      bq.question_text, bq.phase, bq.points_value,
+                      bq.correct_answer, ba.answer, ba.submitted_at,
+                      COALESCE(s.points, 0) as points
+                    FROM bonus_answers ba
+                    JOIN participants p ON p.id = ba.participant_id
+                    JOIN bonus_questions bq ON bq.id = ba.question_id
+                    LEFT JOIN scores s ON s.bonus_question_id = ba.question_id
+                      AND s.participant_id = ba.participant_id
+                    WHERE {' AND '.join(where)}
+                    ORDER BY ba.submitted_at DESC""",
+                params,
+            )
+            bonus_answers = [dict(r) for r in await rows.fetchall()]
+
+    return templates.TemplateResponse("admin/predictions.html", {
+        "request": request,
+        "active": "pronostics",
+        "flashes": _get_flashes(request),
+        "view": view,
+        "participant_id": participant_id,
+        "phase": phase,
+        "participants": participants,
+        "phase_labels": PHASE_LABELS,
+        "match_predictions": match_predictions,
+        "pre_tournament_rows": pre_tournament_rows,
+        "bonus_answers": bonus_answers,
+        "pt_questions": pt_questions,
+    })
+
+
+# ---- Pre-tournament Admin ----
+
+@router.get("/pre-tournoi", response_class=HTMLResponse)
+async def pre_tournament_admin(request: Request):
+    await require_admin(request)
+    async with get_db() as db:
+        questions = await get_pre_tournament_questions(db, include_disabled=True)
+        deadline = await get_pre_tournament_deadline(db)
+        submitted_row = await db.execute(
+            "SELECT COUNT(*) as cnt FROM pre_tournament_predictions WHERE submitted=1"
+        )
+        submitted_count = (await submitted_row.fetchone())["cnt"]
+        total_row = await db.execute(
+            "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0"
+        )
+        total_count = (await total_row.fetchone())["cnt"]
+    return templates.TemplateResponse("admin/pre_tournament.html", {
+        "request": request,
+        "active": "pre_tournoi",
+        "flashes": _get_flashes(request),
+        "questions": questions,
+        "deadline": deadline,
+        "submitted_count": submitted_count,
+        "total_count": total_count,
+    })
+
+
+@router.post("/pre-tournoi/deadline")
+async def update_pre_tournament_deadline(request: Request, deadline: str = Form(...)):
+    await require_admin(request)
+    deadline = deadline.strip()
+    if "T" not in deadline:
+        _flash(request, "Deadline invalide.", "err")
+        return RedirectResponse("/admin/pre-tournoi", status_code=303)
+    async with get_db() as db:
+        await db.execute(
+            """INSERT INTO app_settings (key, value) VALUES ('pre_tournament_deadline', ?)
+               ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+            (deadline,)
+        )
+        await db.commit()
+    _flash(request, "Deadline pré-tournoi mise à jour.")
+    return RedirectResponse("/admin/pre-tournoi", status_code=303)
+
+
+@router.post("/pre-tournoi/questions/{question_key}")
+async def update_pre_tournament_question(
+    request: Request,
+    question_key: str,
+    label: str = Form(...),
+    points_label: str = Form(...),
+    help_text: str = Form(default=""),
+    is_enabled: str = Form(default="0"),
+):
+    await require_admin(request)
+    allowed = {q["key"] for q in DEFAULT_PRE_TOURNAMENT_QUESTIONS}
+    if question_key not in allowed:
+        raise HTTPException(404)
+    async with get_db() as db:
+        await db.execute(
+            """UPDATE pre_tournament_questions
+               SET label=?, points_label=?, help_text=?, is_enabled=?
+               WHERE key=?""",
+            (
+                label.strip()[:120],
+                points_label.strip()[:80],
+                help_text.strip()[:240],
+                1 if is_enabled == "1" else 0,
+                question_key,
+            ),
+        )
+        await db.commit()
+    _flash(request, "Question pré-tournoi mise à jour.")
+    return RedirectResponse("/admin/pre-tournoi", status_code=303)
 
 
 # ---- Matches ----
@@ -376,14 +641,48 @@ async def correct_result(request: Request, match_id: int,
 
 # ---- Bonus Questions ----
 
-PT_DEADLINE = "2026-06-11T20:00:00"
-
 @router.get("/bonus", response_class=HTMLResponse)
 async def bonus_admin(request: Request):
     await require_admin(request)
     async with get_db() as db:
-        rows = await db.execute("SELECT * FROM bonus_questions ORDER BY deadline")
+        pt_deadline = await get_pre_tournament_deadline(db)
+        rows = await db.execute(
+            """SELECT bq.*,
+                      COUNT(ba.id) as answer_count,
+                      SUM(CASE WHEN bq.correct_answer IS NOT NULL
+                                AND ba.answer = bq.correct_answer THEN 1 ELSE 0 END) as correct_count
+               FROM bonus_questions bq
+               LEFT JOIN bonus_answers ba ON ba.question_id = bq.id
+               GROUP BY bq.id
+               ORDER BY bq.deadline"""
+        )
         questions = [dict(r) for r in await rows.fetchall()]
+        for question in questions:
+            try:
+                opts = json.loads(question["options"]) if question.get("options") else []
+            except Exception:
+                opts = []
+            question["options_text"] = "\n".join(opts)
+            question["correct_count"] = question.get("correct_count") or 0
+        answer_rows = await db.execute(
+            """SELECT
+                  ba.question_id,
+                  COALESCE(NULLIF(p.nickname, ''), p.name) as participant_name,
+                  p.name as full_name,
+                  ba.answer,
+                  ba.submitted_at,
+                  COALESCE(s.points, 0) as points
+               FROM bonus_answers ba
+               JOIN participants p ON p.id = ba.participant_id
+               LEFT JOIN scores s ON s.bonus_question_id = ba.question_id
+                 AND s.participant_id = ba.participant_id
+               WHERE p.is_admin=0
+               ORDER BY ba.submitted_at DESC"""
+        )
+        answers_by_question = {}
+        for answer in await answer_rows.fetchall():
+            answer_dict = dict(answer)
+            answers_by_question.setdefault(answer_dict["question_id"], []).append(answer_dict)
         pt_sub_row = await db.execute(
             "SELECT COUNT(*) as cnt FROM pre_tournament_predictions WHERE submitted=1"
         )
@@ -400,7 +699,8 @@ async def bonus_admin(request: Request):
         "phase_labels": PHASE_LABELS,
         "pt_submitted_count": pt_submitted_count,
         "pt_total_count": pt_total_count,
-        "pt_deadline": PT_DEADLINE,
+        "pt_deadline": pt_deadline,
+        "answers_by_question": answers_by_question,
     })
 
 
@@ -408,16 +708,82 @@ async def bonus_admin(request: Request):
 async def create_bonus(request: Request,
                        question_text: str = Form(...), phase: str = Form(...),
                        answer_type: str = Form(...), points_value: int = Form(...),
-                       deadline: str = Form(...)):
+                       deadline: str = Form(...), options_text: str = Form(default=""),
+                       correct_answer: str = Form(default="")):
     await require_admin(request)
+    if answer_type not in ("choice", "number", "text"):
+        _flash(request, "Type de question invalide.", "err")
+        return RedirectResponse("/admin/bonus", status_code=303)
+    if phase not in BONUS_PHASES:
+        _flash(request, "Phase de question bonus invalide.", "err")
+        return RedirectResponse("/admin/bonus", status_code=303)
+    options = _normalize_bonus_options(answer_type, options_text)
     async with get_db() as db:
+        cursor = await db.execute(
+            """INSERT INTO bonus_questions
+               (question_text, phase, answer_type, options, points_value, correct_answer, deadline)
+               VALUES (?,?,?,?,?,?,?)""",
+            (
+                question_text.strip(),
+                phase,
+                answer_type,
+                options,
+                points_value,
+                correct_answer.strip() or None,
+                deadline,
+            )
+        )
+        question_id = cursor.lastrowid
+        await db.commit()
+    if correct_answer.strip():
+        await calculate_bonus_scores(question_id)
+    _flash(request, "Question créée.")
+    return RedirectResponse("/admin/bonus", status_code=303)
+
+
+@router.post("/bonus/{question_id}/update")
+async def update_bonus_question(
+    request: Request,
+    question_id: int,
+    question_text: str = Form(...),
+    phase: str = Form(...),
+    answer_type: str = Form(...),
+    points_value: int = Form(...),
+    deadline: str = Form(...),
+    options_text: str = Form(default=""),
+    correct_answer: str = Form(default=""),
+):
+    await require_admin(request)
+    if answer_type not in ("choice", "number", "text"):
+        _flash(request, "Type de question invalide.", "err")
+        return RedirectResponse("/admin/bonus", status_code=303)
+    if phase not in BONUS_PHASES:
+        _flash(request, "Phase de question bonus invalide.", "err")
+        return RedirectResponse("/admin/bonus", status_code=303)
+    options = _normalize_bonus_options(answer_type, options_text)
+    async with get_db() as db:
+        row = await db.execute("SELECT id FROM bonus_questions WHERE id=?", (question_id,))
+        if not await row.fetchone():
+            raise HTTPException(404)
         await db.execute(
-            """INSERT INTO bonus_questions (question_text, phase, answer_type, points_value, deadline)
-               VALUES (?,?,?,?,?)""",
-            (question_text, phase, answer_type, points_value, deadline)
+            """UPDATE bonus_questions
+               SET question_text=?, phase=?, answer_type=?, options=?,
+                   points_value=?, correct_answer=?, deadline=?
+               WHERE id=?""",
+            (
+                question_text.strip(),
+                phase,
+                answer_type,
+                options,
+                points_value,
+                correct_answer.strip() or None,
+                deadline,
+                question_id,
+            ),
         )
         await db.commit()
-    _flash(request, "Question créée.")
+    await calculate_bonus_scores(question_id)
+    _flash(request, "Question mise à jour.")
     return RedirectResponse("/admin/bonus", status_code=303)
 
 
@@ -433,6 +799,19 @@ async def set_bonus_answer(request: Request, question_id: int,
         await db.commit()
     await calculate_bonus_scores(question_id)
     _flash(request, "Réponse correcte enregistrée. Scores calculés.")
+    return RedirectResponse("/admin/bonus", status_code=303)
+
+
+@router.post("/bonus/{question_id}/delete")
+async def delete_bonus_question(request: Request, question_id: int):
+    await require_admin(request)
+    async with get_db() as db:
+        row = await db.execute("SELECT id FROM bonus_questions WHERE id=?", (question_id,))
+        if not await row.fetchone():
+            raise HTTPException(404)
+        await db.execute("DELETE FROM bonus_questions WHERE id=?", (question_id,))
+        await db.commit()
+    _flash(request, "Question supprimée.")
     return RedirectResponse("/admin/bonus", status_code=303)
 
 
@@ -463,23 +842,55 @@ async def communications(request: Request):
         "flashes": _get_flashes(request),
         "no_pt": no_pt,
         "upcoming_matches": upcoming,
+        "smtp_host": settings.SMTP_HOST,
+        "smtp_port": settings.SMTP_PORT,
     })
 
 
 @router.post("/communications/send-pt-reminder")
 async def send_pt_reminder(request: Request):
     await require_admin(request)
-    # In Phase 1: just log (SMTP optional)
-    logger.info("SMTP: pre-tournament reminder sent")
-    _flash(request, "Rappel envoyé (ou journalisé si SMTP non configuré).")
+    async with get_db() as db:
+        rows = await db.execute(
+            """SELECT p.name, p.email, p.token FROM participants p
+               WHERE p.is_confirmed=1 AND p.is_admin=0 AND p.email_opt_in=1
+               AND NOT EXISTS (SELECT 1 FROM pre_tournament_predictions pt
+                               WHERE pt.participant_id=p.id AND pt.submitted=1)"""
+        )
+        participants = [dict(r) for r in await rows.fetchall()]
+    sent_count = 0
+    for participant in participants:
+        if await send_pre_tournament_reminder(participant):
+            sent_count += 1
+    _flash(request, f"{sent_count}/{len(participants)} rappel(s) pré-tournoi envoyé(s).")
     return RedirectResponse("/admin/communications", status_code=303)
 
 
 @router.post("/communications/send-match-reminder")
 async def send_match_reminder(request: Request, match_id: int = Form(...)):
     await require_admin(request)
-    logger.info(f"SMTP: match reminder for match {match_id}")
-    _flash(request, "Rappel envoyé.")
+    async with get_db() as db:
+        match_row = await db.execute("SELECT * FROM matches WHERE id=?", (match_id,))
+        match = await match_row.fetchone()
+        if not match:
+            raise HTTPException(404)
+        if _is_played(dict(match)):
+            _flash(request, "Ce match a déjà commencé.", "err")
+            return RedirectResponse("/admin/communications", status_code=303)
+        rows = await db.execute(
+            """SELECT p.name, p.email, p.token FROM participants p
+               WHERE p.is_confirmed=1 AND p.is_admin=0 AND p.email_opt_in=1
+               AND NOT EXISTS (SELECT 1 FROM predictions pr
+                               WHERE pr.participant_id=p.id AND pr.match_id=?)""",
+            (match_id,)
+        )
+        participants = [dict(r) for r in await rows.fetchall()]
+    sent_count = 0
+    match_dict = dict(match)
+    for participant in participants:
+        if await send_match_reminder_email(participant, match_dict):
+            sent_count += 1
+    _flash(request, f"{sent_count}/{len(participants)} rappel(s) match envoyé(s).")
     return RedirectResponse("/admin/communications", status_code=303)
 
 

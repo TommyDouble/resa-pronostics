@@ -1,0 +1,155 @@
+{% extends "admin/base.html" %}
+{% block title %}Pronostics — Admin RESA{% endblock %}
+{% block admin_content %}
+
+<h1>Pronostics</h1>
+
+<div class="fchips">
+  <a href="/admin/pronostics?view=matches" class="{{ 'on' if view == 'matches' else '' }}">Matchs</a>
+  <a href="/admin/pronostics?view=pre_tournament" class="{{ 'on' if view == 'pre_tournament' else '' }}">Pré-tournoi</a>
+  <a href="/admin/pronostics?view=bonus" class="{{ 'on' if view == 'bonus' else '' }}">Bonus</a>
+</div>
+
+<form method="get" action="/admin/pronostics" class="toolbar2">
+  <input type="hidden" name="view" value="{{ view }}">
+  <div class="field" style="max-width:260px;">
+    <select name="participant_id">
+      <option value="0">Tous les participants</option>
+      {% for p in participants %}
+      <option value="{{ p.id }}" {{ 'selected' if participant_id == p.id else '' }}>
+        {{ p.nickname or p.name }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  {% if view == 'matches' %}
+  <div class="field" style="max-width:220px;">
+    <select name="phase">
+      <option value="all">Toutes les phases</option>
+      {% for key, label in phase_labels.items() %}
+      <option value="{{ key }}" {{ 'selected' if phase == key else '' }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  <button type="submit" class="btn sm">Filtrer</button>
+</form>
+
+{% if view == 'matches' %}
+<div class="card p0">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>Participant</th>
+        <th>Match</th>
+        <th>Pronostic</th>
+        <th>Score exact</th>
+        <th>Résultat</th>
+        <th>Pts</th>
+        <th>Envoyé</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in match_predictions %}
+      <tr>
+        <td>
+          <b>{{ r.participant_name }}</b>
+          {% if r.full_name != r.participant_name %}<div class="muted" style="font-size:10px;">{{ r.full_name }}</div>{% endif %}
+        </td>
+        <td>#{{ r.match_number }} · {{ r.team1_name }} – {{ r.team2_name }}</td>
+        <td>
+          {% if r.prediction == 'team1' %}{{ r.team1_name }}{% elif r.prediction == 'team2' %}{{ r.team2_name }}{% else %}Nul{% endif %}
+        </td>
+        <td>{% if r.exact_score_team1 is not none %}{{ r.exact_score_team1 }}–{{ r.exact_score_team2 }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.result %}{{ r.score_team1 }}–{{ r.score_team2 }}{% else %}<span class="muted">À venir</span>{% endif %}</td>
+        <td class="s">{{ r.points }}</td>
+        <td class="muted" style="font-size:10px;">{{ r.submitted_at[:16] }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--n400);">Aucun pronostic match.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if view == 'pre_tournament' %}
+<div class="card p0">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>Participant</th>
+        <th>{{ pt_questions.winner.label }}</th>
+        <th>{{ pt_questions.finalist.label }}</th>
+        <th>{{ pt_questions.top_scorer.label }}</th>
+        <th>{{ pt_questions.revelation.label }}</th>
+        <th>{{ pt_questions.total_goals.label }}</th>
+        <th>Statut</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in pre_tournament_rows %}
+      <tr>
+        <td>
+          <b>{{ r.participant_name }}</b>
+          {% if r.full_name != r.participant_name %}<div class="muted" style="font-size:10px;">{{ r.full_name }}</div>{% endif %}
+        </td>
+        <td>{{ r.winner or '—' }}</td>
+        <td>{{ r.finalist or '—' }}</td>
+        <td>{{ r.top_scorer or '—' }}</td>
+        <td>{{ r.revelation or '—' }}</td>
+        <td>{{ r.total_goals or '—' }}</td>
+        <td>
+          {% if r.submitted %}
+          <span class="chip ok">Soumis</span>
+          <div class="muted" style="font-size:10px;margin-top:3px;">{{ r.submitted_at[:16] if r.submitted_at else '' }}</div>
+          {% elif r.winner or r.finalist or r.top_scorer or r.revelation or r.total_goals %}
+          <span class="chip warn">Brouillon</span>
+          {% else %}
+          <span class="chip gr">Vide</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--n400);">Aucune réponse pré-tournoi.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if view == 'bonus' %}
+<div class="card p0">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>Participant</th>
+        <th>Question</th>
+        <th>Réponse</th>
+        <th>Correct</th>
+        <th>Pts</th>
+        <th>Envoyé</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in bonus_answers %}
+      <tr>
+        <td>
+          <b>{{ r.participant_name }}</b>
+          {% if r.full_name != r.participant_name %}<div class="muted" style="font-size:10px;">{{ r.full_name }}</div>{% endif %}
+        </td>
+        <td>{{ r.question_text }}<div class="muted" style="font-size:10px;">{{ phase_labels.get(r.phase, r.phase) }} · {{ r.points_value }} pts</div></td>
+        <td>{{ r.answer }}</td>
+        <td>{{ r.correct_answer or '—' }}</td>
+        <td class="s">{{ r.points }}</td>
+        <td class="muted" style="font-size:10px;">{{ r.submitted_at[:16] }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--n400);">Aucune réponse bonus.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

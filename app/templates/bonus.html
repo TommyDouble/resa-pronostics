@@ -2,10 +2,10 @@
 {% block title %}Bonus — RESA Pronostics{% endblock %}
 {% block page_content %}
 
-{% if current_q %}
+{% if pending_bonus_questions > 0 %}
 <div style="padding:12px 16px 0;">
   <div class="banner red">
-    <span>🔔</span> Question bonus à répondre avant la deadline
+    <span>🔔</span> {{ pending_bonus_questions }} question{{ 's' if pending_bonus_questions > 1 else '' }} bonus à répondre avant deadline
   </div>
 </div>
 {% endif %}
@@ -29,66 +29,90 @@
     <a href="/p/{{ token }}/pre-tournoi" class="btn ghost" style="font-size:12px;white-space:nowrap;">Voir / Modifier</a>
   </div>
 
-  {% if current_q %}
+  {% if not bonus_questions %}
+  <div style="text-align:center;padding:40px 20px;color:var(--n600);">
+    <p style="font-family:var(--sketch);font-size:22px;">Aucune question bonus active pour l'instant.</p>
+  </div>
+  {% endif %}
+
+  {% for q in bonus_questions %}
   <div class="card" style="padding:14px;">
-    <span class="chip acc">{{ current_q.phase }} · {{ current_q.points_value }} pts</span>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span class="chip acc">{{ q.phase }} · {{ q.points_value }} pts</span>
+      {% if q.has_score %}
+        <span class="chip {{ 'ok' if q.points > 0 else 'lock' }}">{{ q.points }} pt{{ 's' if q.points != 1 else '' }}</span>
+      {% elif q.can_edit and q.has_answer %}
+        <span class="chip ok">Réponse enregistrée</span>
+      {% elif q.can_edit %}
+        <span class="chip warn">À répondre</span>
+      {% elif q.has_answer %}
+        <span class="chip gr">Verrouillée</span>
+      {% else %}
+        <span class="chip lock">Non répondue</span>
+      {% endif %}
+      <span class="muted" style="font-size:11px;margin-left:auto;">Deadline · {{ q.deadline[:10] }} {{ q.deadline[11:16] }}</span>
+    </div>
+
     <p style="font-family:var(--sketch);font-weight:600;font-size:24px;line-height:1.1;margin:9px 0 12px;">
-      {{ current_q.question_text }}
+      {{ q.question_text }}
     </p>
-    <form method="post" action="/p/{{ token }}/bonus/{{ current_q.id }}">
-      {% if current_q.answer_type == 'number' %}
+
+    {% if q.has_answer %}
+    <div class="banner acc" style="margin-bottom:12px;">
+      <span>✓</span>
+      <span>Ta réponse : <b>{{ q.answer }}</b></span>
+      {% if q.answered_at %}<span class="muted" style="margin-left:auto;font-size:11px;">{{ q.answered_at[:16] }}</span>{% endif %}
+    </div>
+    {% elif not q.can_edit %}
+    <div class="banner" style="background:var(--n100);color:var(--n600);margin-bottom:12px;">
+      <span>🔒</span> Deadline dépassée — aucune réponse enregistrée.
+    </div>
+    {% endif %}
+
+    {% if q.has_score and q.correct_answer %}
+    <div class="muted" style="font-size:12px;margin-bottom:12px;">
+      Réponse correcte : <b style="color:var(--n900);">{{ q.correct_answer }}</b>
+    </div>
+    {% endif %}
+
+    {% if q.can_edit %}
+    <form method="post" action="/p/{{ token }}/bonus/{{ q.id }}">
+      {% if q.answer_type == 'number' %}
       <div class="stepper" style="margin-bottom:14px;">
         <div class="b" data-action="minus">–</div>
-        <input type="number" name="answer" id="bonus-stepper" min="0" value="0" style="width:70px;">
+        <input type="number" name="answer" min="0" value="{{ q.answer or 0 }}" style="width:70px;">
         <div class="b" data-action="plus">+</div>
         <span class="muted" style="font-size:12px;margin-left:6px;">réponse numérique</span>
       </div>
-      {% elif current_q.answer_type == 'choice' and current_q.options %}
+      {% elif q.answer_type == 'choice' and q.options %}
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
-        {% for opt in current_q.options | fromjson %}
+        {% for opt in q.options | fromjson %}
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input type="radio" name="answer" value="{{ opt }}" required>
+          <input type="radio" name="answer" value="{{ opt }}" {{ 'checked' if q.answer == opt else '' }} required>
           <span>{{ opt }}</span>
         </label>
         {% endfor %}
       </div>
       {% else %}
       <div class="field" style="margin-bottom:14px;">
-        <input type="text" name="answer" placeholder="Votre réponse…" required>
+        <input type="text" name="answer" value="{{ q.answer or '' }}" placeholder="Votre réponse…" required>
       </div>
       {% endif %}
-      <button class="btn full" type="submit">Valider ma réponse</button>
+      <button class="btn full" type="submit">
+        {% if q.has_answer %}Modifier ma réponse{% else %}Valider ma réponse{% endif %}
+      </button>
     </form>
+    {% elif q.has_answer %}
+    <div class="muted" style="font-size:12px;">
+      {% if q.has_score %}
+        Points attribués — la réponse reste visible.
+      {% else %}
+        Deadline dépassée — la réponse n'est plus modifiable.
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
-  {% else %}
-  <div style="text-align:center;padding:40px 20px;color:var(--n600);">
-    <p style="font-family:var(--sketch);font-size:22px;">Aucune question bonus active pour l'instant.</p>
-  </div>
-  {% endif %}
-
-  {% if history %}
-  <div class="card p0">
-    <div style="padding:9px 12px 2px;"><div class="lbl">Historique</div></div>
-    <table class="tbl">
-      <tbody>
-        {% for h in history %}
-        <tr>
-          <td>{{ h.question_text[:50] }}{% if h.question_text|length > 50 %}…{% endif %}</td>
-          <td style="text-align:right;">
-            {% if h.correct_answer is none %}
-              <span class="chip gr">en attente</span>
-            {% elif h.points > 0 %}
-              <span class="chip ok">+{{ h.points }} pts</span>
-            {% else %}
-              <span class="chip lock">0 pt</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endif %}
+  {% endfor %}
 
 </div>
 {% endblock %}

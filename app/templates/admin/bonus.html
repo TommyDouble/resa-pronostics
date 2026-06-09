@@ -15,16 +15,27 @@
         ⑤ Total buts en groupes (+8/+4 pts)
       </div>
     </div>
-    <span class="chip" style="white-space:nowrap;">Deadline · {{ pt_deadline[:10] }} 20h UTC</span>
+    <span class="chip" style="white-space:nowrap;">Deadline · {{ pt_deadline[:10] }} {{ pt_deadline[11:16] }} UTC</span>
   </div>
   <div style="margin-top:10px;font-size:12px;color:var(--n600);">
     <b>{{ pt_submitted_count }}</b> / {{ pt_total_count }} participants ont soumis leurs pronostics pré-tournoi.
+    <a href="/admin/pre-tournoi" style="color:var(--primary);font-weight:700;margin-left:8px;">Administrer →</a>
+    <a href="/admin/pronostics?view=pre_tournament" style="color:var(--primary);font-weight:700;margin-left:8px;">Voir réponses →</a>
   </div>
 </div>
 
+<div class="toolbar2">
+  <button type="button" class="btn sm" onclick="document.getElementById('add-bonus-card').style.display='block'">+ Ajouter une question</button>
+  <a href="/admin/pronostics?view=bonus" class="btn ghost sm">Vue consolidée des réponses</a>
+</div>
+
 <!-- Create question -->
-<div class="card">
-  <div class="lbl" style="margin-bottom:12px;">Créer une question mid-tournoi</div>
+<div class="card" id="add-bonus-card" style="display:none;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+    <div class="lbl" style="font-size:13px;">Nouvelle question bonus</div>
+    <span class="sp"></span>
+    <button type="button" class="btn ghost sm" onclick="document.getElementById('add-bonus-card').style.display='none'">Fermer</button>
+  </div>
   <form method="post" action="/admin/bonus/create" style="display:flex;flex-direction:column;gap:10px;">
     <div>
       <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
@@ -45,8 +56,8 @@
         <div class="lbl" style="margin-bottom:5px;">Phase</div>
         <div class="field">
           <select name="phase" style="flex:1;">
+            <option value="pre_tournament">Pré-tournoi</option>
             <option value="round_of_32">Seizièmes</option>
-            <option value="round_of_16">Huitièmes</option>
             <option value="quarter">Quarts</option>
             <option value="semi">Demies</option>
           </select>
@@ -58,11 +69,19 @@
       </div>
     </div>
     <div>
+      <div class="lbl" style="margin-bottom:5px;">Options si choix unique</div>
+      <textarea name="options_text" class="textarea" rows="3" placeholder="Une option par ligne, ou séparées par des virgules"></textarea>
+    </div>
+    <div>
       <div class="lbl" style="margin-bottom:5px;">Deadline (ISO, UTC)</div>
       <div class="field"><input type="datetime-local" name="deadline" required style="flex:1;"></div>
     </div>
+    <div>
+      <div class="lbl" style="margin-bottom:5px;">Réponse correcte optionnelle</div>
+      <div class="field"><input type="text" name="correct_answer" placeholder="À compléter plus tard si besoin"></div>
+    </div>
     <div class="row2">
-      <button type="button" class="btn ghost">Aperçu</button>
+      <button type="button" class="btn ghost" onclick="document.getElementById('add-bonus-card').style.display='none'">Annuler</button>
       <button type="submit" class="btn">Publier</button>
     </div>
   </form>
@@ -75,24 +94,127 @@
 </h2>
 {% for q in questions %}
 <div class="card">
-  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">
-    <div style="flex:1;">
-      <b style="font-size:13px;">{{ q.question_text }}</b>
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+    <div style="flex:1;min-width:240px;">
+      <b style="font-size:14px;">{{ q.question_text }}</b>
       <div class="muted" style="font-size:11px;margin-top:3px;">
         {{ phase_labels.get(q.phase, q.phase) }} · {{ q.answer_type }} · {{ q.points_value }} pts · deadline: {{ q.deadline[:16] }}
       </div>
     </div>
-    {% if q.correct_answer is none %}
-    <form method="post" action="/admin/bonus/{{ q.id }}/answer" style="display:flex;gap:8px;align-items:center;">
-      <div class="field" style="width:160px;"><input type="text" name="correct_answer" placeholder="Réponse correcte" required></div>
-      <button type="submit" class="btn sm">Valider → calcul auto</button>
-    </form>
-    {% else %}
+    <span class="chip {{ 'ok' if q.correct_answer else 'warn' }}">
+      {{ q.correct_count }}/{{ q.answer_count }} correcte{{ 's' if q.correct_count > 1 else '' }}
+    </span>
+    {% if q.correct_answer %}
     <span class="chip ok">Réponse: {{ q.correct_answer }}</span>
+    {% else %}
+    <span class="chip gr">Réponse non définie</span>
+    {% endif %}
+  </div>
+
+  <form method="post" action="/admin/bonus/{{ q.id }}/update" style="display:flex;flex-direction:column;gap:10px;">
+    <div>
+      <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
+      <div class="field"><input type="text" name="question_text" value="{{ q.question_text }}" required></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Type</div>
+        <div class="field">
+          <select name="answer_type">
+            <option value="number" {{ 'selected' if q.answer_type == 'number' else '' }}>Numérique</option>
+            <option value="text" {{ 'selected' if q.answer_type == 'text' else '' }}>Texte libre</option>
+            <option value="choice" {{ 'selected' if q.answer_type == 'choice' else '' }}>Choix unique</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Phase</div>
+        <div class="field">
+          <select name="phase">
+            <option value="pre_tournament" {{ 'selected' if q.phase == 'pre_tournament' else '' }}>Pré-tournoi</option>
+            <option value="round_of_32" {{ 'selected' if q.phase == 'round_of_32' else '' }}>Seizièmes</option>
+            <option value="quarter" {{ 'selected' if q.phase == 'quarter' else '' }}>Quarts</option>
+            <option value="semi" {{ 'selected' if q.phase == 'semi' else '' }}>Demies</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Points</div>
+        <div class="field"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl" style="margin-bottom:5px;">Options si choix unique</div>
+      <textarea name="options_text" class="textarea" rows="3">{{ q.options_text }}</textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Deadline</div>
+        <div class="field"><input type="datetime-local" name="deadline" value="{{ q.deadline[:16] }}" required></div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Réponse correcte</div>
+        <div class="field"><input type="text" name="correct_answer" value="{{ q.correct_answer or '' }}" placeholder="Déclenche le recalcul"></div>
+      </div>
+    </div>
+    <div class="row2">
+      <button type="submit" class="btn sm">Enregistrer et recalculer</button>
+      <a href="/admin/pronostics?view=bonus" class="btn ghost sm">Toutes les réponses</a>
+    </div>
+  </form>
+
+  <form method="post" action="/admin/bonus/{{ q.id }}/delete"
+        onsubmit="return confirm('Supprimer cette question bonus et ses réponses ?')"
+        style="margin-top:8px;">
+    <button type="submit" class="btn ghost sm" style="color:var(--error);">Supprimer</button>
+  </form>
+
+  <div style="margin-top:14px;">
+    <div class="lbl" style="margin-bottom:8px;">Réponses participants</div>
+    {% set answers = answers_by_question.get(q.id, []) %}
+    {% if answers %}
+    <div class="card p0" style="box-shadow:none;">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Participant</th>
+            <th>Réponse</th>
+            <th>Pts</th>
+            <th>Envoyé</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in answers %}
+          <tr>
+            <td>
+              <b>{{ a.participant_name }}</b>
+              {% if a.full_name != a.participant_name %}<div class="muted" style="font-size:10px;">{{ a.full_name }}</div>{% endif %}
+            </td>
+            <td>
+              {{ a.answer }}
+              {% if q.correct_answer and a.answer == q.correct_answer %}
+              <span class="chip ok" style="margin-left:6px;">correct</span>
+              {% elif q.correct_answer %}
+              <span class="chip lock" style="margin-left:6px;">0 pt</span>
+              {% endif %}
+            </td>
+            <td class="s">{{ a.points }}</td>
+            <td class="muted" style="font-size:10px;">{{ a.submitted_at[:16] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="muted" style="font-size:12px;">Aucune réponse pour cette question.</div>
     {% endif %}
   </div>
 </div>
 {% endfor %}
+{% else %}
+<div class="card" style="text-align:center;color:var(--n600);">
+  Aucune question bonus créée.
+</div>
 {% endif %}
 
 {% endblock %}

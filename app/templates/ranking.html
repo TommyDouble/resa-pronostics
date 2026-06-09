@@ -40,7 +40,11 @@
       <div class="av {{ r.color_class }}">{{ r.name[:2].upper() }}</div>
       <div class="nm">
         {{ r.name }}
-        {% if r.is_me %}<small>c'est toi</small>{% endif %}
+        {% if r.full_name and r.full_name != r.name %}
+          <small>{{ r.full_name }}{% if r.is_me %} · c'est toi{% endif %}</small>
+        {% elif r.is_me %}
+          <small>c'est toi</small>
+        {% endif %}
       </div>
       <span class="sc">{{ r.total_points }}</span>
     </div>

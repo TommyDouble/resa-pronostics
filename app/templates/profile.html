@@ -10,6 +10,9 @@
     <h1>Mon profil</h1>
     {% endif %}
     <span class="sp"></span>
+    {% if is_own %}
+    <a href="/p/{{ token }}/profil/edit" class="btn ghost sm">Modifier</a>
+    {% endif %}
     <span class="chip acc">{{ 'Mon profil' if is_own else 'Profil public' }}</span>
   </div>
 </div>
@@ -23,13 +26,39 @@
     </div>
     <div>
       <h1 style="font-family:var(--display);font-weight:800;font-size:22px;margin:0;">{{ profile.name }}</h1>
+      {% if profile.nickname and profile.full_name != profile.name %}
+      <div class="muted" style="font-size:12px;margin-top:1px;">{{ profile.full_name }}</div>
+      {% endif %}
       <div class="meta">
         <span class="chip acc">Rang #{{ profile.rank }}</span>
         <b style="color:var(--primary);font-family:var(--display);">{{ profile.total_points }} pts</b>
         · {{ profile.match_count }} matchs
+        {% if profile.favorite_team %}· {{ profile.favorite_team }}{% endif %}
       </div>
     </div>
   </div>
+
+  {% if profile.bio or profile.favorite_team or is_own %}
+  <div class="card">
+    <div class="lbl" style="margin-bottom:8px;">Infos joueur</div>
+    {% if profile.bio %}
+    <p style="font-size:13px;line-height:1.45;margin:0 0 10px;">{{ profile.bio }}</p>
+    {% endif %}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      {% if profile.favorite_team %}<span class="chip acc">{{ profile.favorite_team }}</span>{% endif %}
+      {% if is_own %}
+        <span class="chip {{ 'ok' if profile.email_opt_in else 'gr' }}">{{ 'Emails activés' if profile.email_opt_in else 'Emails coupés' }}</span>
+        <span class="chip {{ 'gr' if profile.profile_visibility == 'limited' else 'ok' }}">{{ 'Profil limité' if profile.profile_visibility == 'limited' else 'Profil complet' }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% elif profile.is_limited_view %}
+  <div class="card flat" style="background:var(--n50);border:1px dashed var(--n300);padding:13px;text-align:center;">
+    <div style="font-family:var(--sketch);font-size:18px;color:var(--n400);">
+      Profil limité aux stats publiques.
+    </div>
+  </div>
+  {% endif %}
 
   <!-- 4 Metrics -->
   <div class="metrics">

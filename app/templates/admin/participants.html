@@ -48,6 +48,9 @@
         <td>
           <button class="btn ghost sm" style="font-size:11px;padding:4px 8px;"
                   onclick="copyToken('{{ base_url }}p/{{ p.token }}')">⧉ Lien</button>
+          <form method="post" action="/admin/participants/{{ p.id }}/invite" style="display:inline;">
+            <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;">✉ Inviter</button>
+          </form>
           <form method="post" action="/admin/participants/{{ p.id }}/delete"
                 style="display:inline;" onsubmit="return confirm('Supprimer {{ p.name }} ?')">
             <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;color:var(--error);">🗑</button>

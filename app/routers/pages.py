@@ -1,4 +1,5 @@
 """Participant-facing HTML page routes."""
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -9,10 +10,16 @@ from fastapi.templating import Jinja2Templates
 
 from app.auth import require_participant
 from app.database import get_db
+from app.pre_tournament import (
+    get_pre_tournament_deadline,
+    get_pre_tournament_question_map,
+    get_pre_tournament_questions,
+)
 from app.scoring import get_rankings
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.filters["fromjson"] = json.loads
 logger = logging.getLogger(__name__)
 
 PHASE_LABELS = {
@@ -24,8 +31,6 @@ PHASE_LABELS = {
     "third_place": "Match pour la 3e place",
     "final": "Finale",
 }
-
-PT_DEADLINE = "2026-06-11T20:00:00"
 
 TEAMS_48 = sorted([
     "Mexique","Afrique du Sud","Corée du Sud","Tchéquie",
@@ -87,6 +92,34 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def _split_name(name: str) -> tuple[str, str]:
+    parts = name.strip().split()
+    if not parts:
+        return "", ""
+    return parts[0], " ".join(parts[1:])
+
+
+def _display_name(participant: dict) -> str:
+    return participant.get("nickname") or participant.get("name") or "Participant"
+
+
+def _greeting_name(participant: dict) -> str:
+    return (
+        participant.get("nickname")
+        or participant.get("first_name")
+        or (participant.get("name") or "Participant").split()[0]
+    )
+
+
+def _initials(name: str) -> str:
+    parts = [p for p in name.split() if p]
+    if not parts:
+        return "??"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return "".join(p[0].upper() for p in parts[:2])
+
+
 def _is_locked(match: dict) -> bool:
     try:
         kickoff = datetime.fromisoformat(f"{match['match_date']}T{match['kickoff_time']}").replace(tzinfo=timezone.utc)
@@ -124,6 +157,8 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
     pending_bonus = (await bonus_row.fetchone())["cnt"]
     return {
         "participant": dict(p),
+        "display_name": _display_name(dict(p)),
+        "greeting_name": _greeting_name(dict(p)),
         "total_points": total_points,
         "user_rank": user_rank,
         "pending_bonus": pending_bonus,
@@ -146,6 +181,7 @@ async def register_post(request: Request, name: str = Form(...), email: str = Fo
             "request": request, "error": "Nom et email valides requis."
         })
     token = str(uuid.uuid4())
+    first_name, last_name = _split_name(name)
     async with get_db() as db:
         # Check if email already registered
         existing = await (await db.execute(
@@ -155,8 +191,10 @@ async def register_post(request: Request, name: str = Form(...), email: str = Fo
             return RedirectResponse(url=f"/p/{existing['token']}", status_code=303)
         try:
             await db.execute(
-                "INSERT INTO participants (name, email, token, is_confirmed) VALUES (?,?,?,1)",
-                (name, email, token)
+                """INSERT INTO participants
+                   (name, first_name, last_name, email, token, is_confirmed)
+                   VALUES (?,?,?,?,?,1)""",
+                (name, first_name, last_name, email, token)
             )
             await db.commit()
         except Exception:
@@ -219,7 +257,8 @@ async def participant_home(request: Request, token: str):
         )
         pt2 = await pt_row2.fetchone()
         pt_submitted = bool(pt2 and pt2["submitted"])
-        pt_open = _now_utc() < PT_DEADLINE
+        pt_deadline = await get_pre_tournament_deadline(db)
+        pt_open = _now_utc() < pt_deadline
         ctx.update({
             "today_matches": today_matches,
             "urgency": urgency,
@@ -228,6 +267,7 @@ async def participant_home(request: Request, token: str):
             "encoded_count": encoded_count,
             "pt_submitted": pt_submitted,
             "pt_open": pt_open,
+            "pt_deadline": pt_deadline,
         })
     return templates.TemplateResponse("home.html", {"request": request, **ctx})
 
@@ -239,8 +279,10 @@ async def confirm_onboarding(request: Request, token: str,
     name = f"{first_name.strip()} {last_name.strip()}"
     async with get_db() as db:
         await db.execute(
-            "UPDATE participants SET name = ?, is_confirmed = 1 WHERE token = ?",
-            (name, token)
+            """UPDATE participants
+               SET name = ?, first_name = ?, last_name = ?, is_confirmed = 1
+               WHERE token = ?""",
+            (name, first_name.strip(), last_name.strip(), token)
         )
         await db.commit()
     return RedirectResponse(url=f"/p/{token}", status_code=303)
@@ -265,7 +307,7 @@ async def predictions_page(request: Request, token: str, phase: str = "group"):
             m["is_locked"] = _is_locked(m)
             m["phase_label"] = PHASE_LABELS.get(m["phase"], m["phase"])
         # Group by phase then by date
-        phases_order = ["group", "round_of_32", "quarter", "semi", "third_place", "final"]
+        phases_order = ["group", "round_of_32", "round_of_16", "quarter", "semi", "third_place", "final"]
         # Pre-tournament warning
         pt_row = await db.execute(
             "SELECT submitted FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
@@ -292,14 +334,17 @@ async def pre_tournament_page(request: Request, token: str):
         )
         pt = await row.fetchone()
         outsiders = ["Maroc", "Japon", "USA", "Sénégal", "Australie", "Iran", "Côte d'Ivoire", "Équateur"]
-        pt_editable = _now_utc() < PT_DEADLINE
+        pt_deadline = await get_pre_tournament_deadline(db)
+        pt_questions = await get_pre_tournament_question_map(db)
+        pt_editable = _now_utc() < pt_deadline
         ctx.update({
             "pt": dict(pt) if pt else {},
+            "pt_questions": pt_questions,
             "teams": TEAMS_48,
             "scorers": sorted(SCORERS),
             "outsiders": outsiders,
             "pt_editable": pt_editable,
-            "pt_deadline": PT_DEADLINE,
+            "pt_deadline": pt_deadline,
         })
     return templates.TemplateResponse("pre_tournament.html", {"request": request, **ctx})
 
@@ -315,12 +360,32 @@ async def save_pre_tournament(
     action: str = Form(default="draft"),
 ):
     p = await require_participant(token)
-    if _now_utc() >= PT_DEADLINE:
-        return RedirectResponse(url=f"/p/{token}/pre-tournoi", status_code=303)
     async with get_db() as db:
+        pt_deadline = await get_pre_tournament_deadline(db)
+        if _now_utc() >= pt_deadline:
+            return RedirectResponse(url=f"/p/{token}/pre-tournoi", status_code=303)
+        enabled = {
+            q["key"] for q in await get_pre_tournament_questions(db)
+        }
         existing = await (await db.execute(
-            "SELECT id, submitted FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
+            "SELECT * FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
         )).fetchone()
+        values = {
+            "winner": existing["winner"] if existing else "",
+            "finalist": existing["finalist"] if existing else "",
+            "top_scorer": existing["top_scorer"] if existing else "",
+            "revelation": existing["revelation"] if existing else "",
+            "total_goals": existing["total_goals"] if existing else 0,
+        }
+        incoming = {
+            "winner": winner,
+            "finalist": finalist,
+            "top_scorer": top_scorer,
+            "revelation": revelation,
+            "total_goals": total_goals,
+        }
+        for key in enabled:
+            values[key] = incoming[key]
         submitted = 1 if action == "submit" else 0
         submitted_at = _now_utc() if submitted else None
         if existing:
@@ -329,7 +394,7 @@ async def save_pre_tournament(
                    SET winner=?, finalist=?, top_scorer=?, revelation=?, total_goals=?,
                        submitted=?, submitted_at=?
                    WHERE participant_id=?""",
-                (winner, finalist, top_scorer, revelation, total_goals,
+                (values["winner"], values["finalist"], values["top_scorer"], values["revelation"], values["total_goals"],
                  submitted, submitted_at, p["id"])
             )
         else:
@@ -337,7 +402,7 @@ async def save_pre_tournament(
                 """INSERT INTO pre_tournament_predictions
                    (participant_id, winner, finalist, top_scorer, revelation, total_goals, submitted, submitted_at)
                    VALUES (?,?,?,?,?,?,?,?)""",
-                (p["id"], winner, finalist, top_scorer, revelation, total_goals, submitted, submitted_at)
+                (p["id"], values["winner"], values["finalist"], values["top_scorer"], values["revelation"], values["total_goals"], submitted, submitted_at)
             )
         await db.commit()
     return RedirectResponse(url=f"/p/{token}/pre-tournoi", status_code=303)
@@ -419,6 +484,57 @@ async def own_profile(request: Request, token: str):
     return templates.TemplateResponse("profile.html", {"request": request, **ctx})
 
 
+@router.get("/p/{token}/profil/edit", response_class=HTMLResponse)
+async def edit_profile_page(request: Request, token: str):
+    async with get_db() as db:
+        ctx = await _get_participant_context(token, db, "profil")
+        ctx.update({"teams": TEAMS_48})
+    return templates.TemplateResponse("profile_edit.html", {"request": request, **ctx})
+
+
+@router.post("/p/{token}/profil/edit", response_class=HTMLResponse)
+async def save_profile(
+    request: Request,
+    token: str,
+    first_name: str = Form(default=""),
+    last_name: str = Form(default=""),
+    nickname: str = Form(default=""),
+    favorite_team: str = Form(default=""),
+    bio: str = Form(default=""),
+    profile_visibility: str = Form(default="public"),
+    email_opt_in: str = Form(default="0"),
+):
+    p = await require_participant(token)
+    first_name = first_name.strip()[:80]
+    last_name = last_name.strip()[:80]
+    nickname = nickname.strip()[:40]
+    favorite_team = favorite_team.strip()[:80]
+    bio = bio.strip()[:240]
+    if profile_visibility not in ("public", "limited"):
+        profile_visibility = "public"
+    full_name = f"{first_name} {last_name}".strip() or p["name"]
+    async with get_db() as db:
+        await db.execute(
+            """UPDATE participants
+               SET name=?, first_name=?, last_name=?, nickname=?, favorite_team=?,
+                   bio=?, profile_visibility=?, email_opt_in=?
+               WHERE token=?""",
+            (
+                full_name,
+                first_name,
+                last_name,
+                nickname,
+                favorite_team,
+                bio,
+                profile_visibility,
+                1 if email_opt_in == "1" else 0,
+                token,
+            ),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/p/{token}/profil", status_code=303)
+
+
 @router.get("/p/{token}/profil/{participant_id}", response_class=HTMLResponse)
 async def other_profile(request: Request, token: str, participant_id: int):
     async with get_db() as db:
@@ -437,6 +553,8 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     """Build profile data for a participant."""
     row = await db.execute("SELECT * FROM participants WHERE id=?", (participant_id,))
     p = dict(await row.fetchone())
+    display_name = _display_name(p)
+    is_limited_view = bool(viewer_id and viewer_id != participant_id and p.get("profile_visibility") == "limited")
     # Total points + rank
     rankings = await get_rankings(db)
     rank_data = next((r for r in rankings if r["id"] == participant_id), None)
@@ -523,10 +641,17 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
             diff = viewer_pts - total_points
             comparison = {"viewer_pts": viewer_pts, "target_pts": total_points, "diff": diff}
     color_class = f"c{((participant_id - 1) % 8) + 1}"
-    initials = "".join(w[0].upper() for w in p["name"].split()[:2]) if p["name"] else "??"
+    initials = _initials(display_name)
     return {
         "participant": p,
-        "name": p["name"],
+        "name": display_name,
+        "full_name": p["name"],
+        "nickname": p.get("nickname"),
+        "favorite_team": "" if is_limited_view else p.get("favorite_team"),
+        "bio": "" if is_limited_view else p.get("bio"),
+        "profile_visibility": p.get("profile_visibility") or "public",
+        "email_opt_in": p.get("email_opt_in"),
+        "is_limited_view": is_limited_view,
         "initials": initials,
         "color_class": color_class,
         "rank": user_rank,
@@ -537,7 +662,7 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         "streak": streak,
         "best_day": best_day,
         "best_day_pts": best_day_pts,
-        "last5": last5,
+        "last5": [] if is_limited_view else last5,
         "comparison": comparison,
     }
 
@@ -548,31 +673,38 @@ async def bonus_page(request: Request, token: str):
         ctx = await _get_participant_context(token, db, "bonus")
         p = ctx["participant"]
         now = _now_utc()
-        # Current pending question
-        q_row = await db.execute(
-            """SELECT bq.* FROM bonus_questions bq
-               WHERE bq.deadline > ? AND NOT EXISTS (
-                 SELECT 1 FROM bonus_answers ba WHERE ba.question_id=bq.id AND ba.participant_id=?
-               )
-               ORDER BY bq.deadline LIMIT 1""",
-            (now, p["id"])
+        rows = await db.execute(
+            """SELECT bq.*,
+                      ba.answer,
+                      ba.submitted_at as answered_at,
+                      s.points,
+                      s.calculated_at as scored_at
+               FROM bonus_questions bq
+               LEFT JOIN bonus_answers ba
+                 ON ba.question_id = bq.id AND ba.participant_id = ?
+               LEFT JOIN scores s
+                 ON s.bonus_question_id = bq.id AND s.participant_id = ?
+               ORDER BY
+                 CASE WHEN bq.deadline > ? THEN 0 ELSE 1 END,
+                 bq.deadline ASC,
+                 bq.id ASC""",
+            (p["id"], p["id"], now)
         )
-        current_q = await q_row.fetchone()
-        # Past answered questions
-        hist_rows = await db.execute(
-            """SELECT bq.question_text, bq.phase, bq.correct_answer, bq.points_value,
-                      ba.answer, COALESCE(s.points, 0) as points
-               FROM bonus_answers ba
-               JOIN bonus_questions bq ON bq.id = ba.question_id
-               LEFT JOIN scores s ON s.bonus_question_id = bq.id AND s.participant_id = ba.participant_id
-               WHERE ba.participant_id=?
-               ORDER BY ba.submitted_at DESC""",
-            (p["id"],)
-        )
-        history = [dict(r) for r in await hist_rows.fetchall()]
+        bonus_questions = []
+        pending_count = 0
+        for row in await rows.fetchall():
+            q = dict(row)
+            q["is_open"] = q["deadline"] > now
+            q["has_answer"] = q["answer"] is not None
+            q["has_score"] = q["points"] is not None
+            q["can_edit"] = q["is_open"] and not q["has_score"]
+            if q["is_open"] and not q["has_answer"]:
+                pending_count += 1
+            bonus_questions.append(q)
         ctx.update({
-            "current_q": dict(current_q) if current_q else None,
-            "history": history,
+            "bonus_questions": bonus_questions,
+            "pending_bonus_questions": pending_count,
+            "now": now,
         })
     return templates.TemplateResponse("bonus.html", {"request": request, **ctx})
 

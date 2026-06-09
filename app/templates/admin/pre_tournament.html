@@ -1,0 +1,61 @@
+{% extends "admin/base.html" %}
+{% block title %}Pré-tournoi — Admin RESA{% endblock %}
+{% block admin_content %}
+
+<h1>Pré-tournoi</h1>
+
+<div class="kpis">
+  <div class="kpi">
+    <div class="big">{{ submitted_count }}/{{ total_count }}</div>
+    <div class="cap">Soumissions</div>
+  </div>
+  <div class="kpi">
+    <div class="big">{{ questions|selectattr('is_enabled')|list|length }}</div>
+    <div class="cap">Questions actives</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="lbl" style="margin-bottom:10px;">Deadline</div>
+  <form method="post" action="/admin/pre-tournoi/deadline" class="toolbar2">
+    <div class="field" style="max-width:260px;">
+      <input type="datetime-local" name="deadline" value="{{ deadline[:16] }}" required>
+    </div>
+    <button type="submit" class="btn sm">Enregistrer</button>
+  </form>
+</div>
+
+{% for q in questions %}
+<div class="card">
+  <form method="post" action="/admin/pre-tournoi/questions/{{ q.key }}" style="display:flex;flex-direction:column;gap:10px;">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span class="chip {{ 'ok' if q.is_enabled else 'gr' }}">#{{ q.sort_order }}</span>
+      <b style="font-size:14px;">{{ q.key }}</b>
+      <label style="margin-left:auto;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--n600);font-weight:700;">
+        <input type="checkbox" name="is_enabled" value="1" {{ 'checked' if q.is_enabled else '' }}>
+        Active
+      </label>
+    </div>
+    <div class="grid2">
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
+        <div class="field"><input type="text" name="label" value="{{ q.label }}" required></div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Points affichés</div>
+        <div class="field"><input type="text" name="points_label" value="{{ q.points_label }}" required></div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl" style="margin-bottom:5px;">Aide courte</div>
+      <textarea name="help_text" class="textarea" rows="2">{{ q.help_text }}</textarea>
+    </div>
+    <div class="row2">
+      <a href="/admin/pronostics?view=pre_tournament" class="btn ghost sm">Voir réponses</a>
+      <button type="submit" class="btn sm">Mettre à jour</button>
+    </div>
+  </form>
+</div>
+{% endfor %}
+
+{% endblock %}

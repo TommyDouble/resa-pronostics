@@ -36,7 +36,7 @@ app = FastAPI(
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.SECRET_KEY,
-    max_age=86400 * 7,  # 7 days
+    max_age=8 * 60 * 60,
 )
 
 # Static files

@@ -2,6 +2,7 @@ import aiosqlite
 import os
 from contextlib import asynccontextmanager
 from app.config import settings
+from app.pre_tournament import ensure_pre_tournament_defaults
 
 DB_PATH = settings.DATABASE_URL.replace("./", "")
 
@@ -25,11 +26,18 @@ async def init_db():
 CREATE TABLE IF NOT EXISTS participants (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT    NOT NULL,
+  first_name TEXT,
+  last_name  TEXT,
+  nickname   TEXT,
   email      TEXT    NOT NULL UNIQUE,
   token      TEXT    NOT NULL UNIQUE,
   is_admin   INTEGER NOT NULL DEFAULT 0,
   is_confirmed INTEGER NOT NULL DEFAULT 0,
   has_paid   INTEGER NOT NULL DEFAULT 0,
+  favorite_team TEXT,
+  bio        TEXT,
+  profile_visibility TEXT NOT NULL DEFAULT 'public' CHECK(profile_visibility IN ('public','limited')),
+  email_opt_in INTEGER NOT NULL DEFAULT 1,
   created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -117,6 +125,20 @@ CREATE TABLE IF NOT EXISTS admin_users (
   created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS app_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pre_tournament_questions (
+  key          TEXT PRIMARY KEY CHECK(key IN ('winner','finalist','top_scorer','revelation','total_goals')),
+  label        TEXT NOT NULL,
+  points_label TEXT NOT NULL,
+  help_text    TEXT NOT NULL DEFAULT '',
+  sort_order   INTEGER NOT NULL,
+  is_enabled   INTEGER NOT NULL DEFAULT 1
+);
+
 CREATE INDEX IF NOT EXISTS idx_participants_token ON participants(token);
 CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_participant ON predictions(participant_id);
@@ -124,9 +146,21 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
         """)
         await db.commit()
 
-        # Migration: add has_paid if DB existed before this column
-        try:
-            await db.execute("ALTER TABLE participants ADD COLUMN has_paid INTEGER NOT NULL DEFAULT 0")
-            await db.commit()
-        except Exception:
-            pass
+        participant_columns = [
+            "has_paid INTEGER NOT NULL DEFAULT 0",
+            "first_name TEXT",
+            "last_name TEXT",
+            "nickname TEXT",
+            "favorite_team TEXT",
+            "bio TEXT",
+            "profile_visibility TEXT NOT NULL DEFAULT 'public' CHECK(profile_visibility IN ('public','limited'))",
+            "email_opt_in INTEGER NOT NULL DEFAULT 1",
+        ]
+        for column in participant_columns:
+            try:
+                await db.execute(f"ALTER TABLE participants ADD COLUMN {column}")
+            except Exception:
+                pass
+
+        await ensure_pre_tournament_defaults(db)
+        await db.commit()

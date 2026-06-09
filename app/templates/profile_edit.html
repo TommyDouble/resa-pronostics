@@ -1,0 +1,73 @@
+{% extends "participant_base.html" %}
+{% block title %}Modifier mon profil — RESA Pronostics{% endblock %}
+{% block page_content %}
+
+<div class="page-head">
+  <div class="row1">
+    <a href="/p/{{ token }}/profil" style="font-family:var(--display);font-weight:800;font-size:14px;color:var(--n600);text-decoration:none;">‹ Profil</a>
+    <h1>Modifier</h1>
+    <span class="sp"></span>
+    <span class="chip acc">Réglages</span>
+  </div>
+</div>
+
+<div class="page-content">
+  <form method="post" action="/p/{{ token }}/profil/edit" style="display:flex;flex-direction:column;gap:12px;">
+    <div class="card">
+      <div class="lbl" style="margin-bottom:10px;">Identité</div>
+      <div class="grid2">
+        <div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">Prénom</div>
+          <div class="field"><input type="text" name="first_name" value="{{ participant.first_name or participant.name.split()[0] }}" maxlength="80" required></div>
+        </div>
+        <div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">Nom</div>
+          <div class="field"><input type="text" name="last_name" value="{{ participant.last_name or participant.name.split()[1:]|join(' ') }}" maxlength="80"></div>
+        </div>
+      </div>
+      <div style="margin-top:10px;">
+        <div class="muted" style="font-size:11px;margin-bottom:5px;">Pseudo public</div>
+        <div class="field"><input type="text" name="nickname" value="{{ participant.nickname or '' }}" placeholder="Ex: Captain Prono" maxlength="40"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl" style="margin-bottom:10px;">Préférences joueur</div>
+      <div>
+        <div class="muted" style="font-size:11px;margin-bottom:5px;">Équipe favorite</div>
+        <div class="field">
+          <select name="favorite_team">
+            <option value="">Aucune</option>
+            {% for team in teams %}
+            <option value="{{ team }}" {{ 'selected' if participant.favorite_team == team else '' }}>{{ team }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:10px;">
+        <div class="muted" style="font-size:11px;margin-bottom:5px;">Bio courte</div>
+        <textarea name="bio" maxlength="240" rows="4" class="textarea" placeholder="Ta stratégie, ton style de pronostic, ta mauvaise foi assumée...">{{ participant.bio or '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl" style="margin-bottom:10px;">Confidentialité</div>
+      <div class="field">
+        <select name="profile_visibility">
+          <option value="public" {{ 'selected' if participant.profile_visibility != 'limited' else '' }}>Profil complet visible</option>
+          <option value="limited" {{ 'selected' if participant.profile_visibility == 'limited' else '' }}>Profil limité aux stats</option>
+        </select>
+      </div>
+      <label style="display:flex;align-items:center;gap:9px;margin-top:12px;font-size:13px;color:var(--n600);font-weight:600;">
+        <input type="checkbox" name="email_opt_in" value="1" {{ 'checked' if participant.email_opt_in else '' }}>
+        Recevoir les rappels par email
+      </label>
+    </div>
+
+    <div class="row2">
+      <a href="/p/{{ token }}/profil" class="btn ghost">Annuler</a>
+      <button type="submit" class="btn">Enregistrer</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

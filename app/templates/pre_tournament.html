@@ -14,7 +14,7 @@
       <span class="chip warn">Brouillon</span>
     {% endif %}
   </div>
-  <div class="sub1">Deadline · 11 juin 2026 à 20h00 UTC</div>
+  <div class="sub1">Deadline · {{ pt_deadline[:10] }} à {{ pt_deadline[11:16] }} UTC</div>
 </div>
 
 <div class="page-content">
@@ -25,7 +25,7 @@
   </div>
   {% elif pt.submitted %}
   <div class="banner" style="background:#ECFDF5;border-left:3px solid #22C55E;color:#166534;font-size:12px;padding:10px 14px;border-radius:8px;">
-    <span>✓</span> Soumis ! Tu peux encore modifier depuis cet écran (Bonus) jusqu'au 11 juin 20h00 UTC.
+    <span>✓</span> Soumis ! Tu peux encore modifier depuis cet écran jusqu'à la deadline.
   </div>
   {% else %}
   <div class="banner acc"><span>✎</span> Brouillon non soumis — pense à valider avant la deadline !</div>
@@ -33,8 +33,11 @@
 
   <form method="post" action="/p/{{ token }}/pre-tournoi" id="pt-form">
 
+    {% set q = pt_questions.get('winner') %}
+    {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">① Vainqueur · +8 pts</div>
+      <div class="lbl">① {{ q.label }} · {{ q.points_label }}</div>
+      {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="field" style="margin-top:8px;">
         <select name="winner" {% if not pt_editable %}disabled{% endif %}>
           <option value="">Choisir parmi les 48 équipes…</option>
@@ -44,9 +47,13 @@
         </select>
       </div>
     </div>
+    {% endif %}
 
+    {% set q = pt_questions.get('finalist') %}
+    {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">② Finaliste · +5 pts</div>
+      <div class="lbl">② {{ q.label }} · {{ q.points_label }}</div>
+      {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="field" style="margin-top:8px;">
         <select name="finalist" {% if not pt_editable %}disabled{% endif %}>
           <option value="">Sélectionner (≠ vainqueur)…</option>
@@ -56,9 +63,13 @@
         </select>
       </div>
     </div>
+    {% endif %}
 
+    {% set q = pt_questions.get('top_scorer') %}
+    {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">③ Meilleur buteur · +5 pts</div>
+      <div class="lbl">③ {{ q.label }} · {{ q.points_label }}</div>
+      {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="field" style="margin-top:8px;">
         <select name="top_scorer" {% if not pt_editable %}disabled{% endif %}>
           <option value="">Choisir un joueur…</option>
@@ -68,9 +79,13 @@
         </select>
       </div>
     </div>
+    {% endif %}
 
+    {% set q = pt_questions.get('revelation') %}
+    {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">④ Révélation du tournoi · +5 pts</div>
+      <div class="lbl">④ {{ q.label }} · {{ q.points_label }}</div>
+      {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="outsider-chips">
         {% for o in outsiders %}
         <div class="outsider-chip {{ 'on' if pt.revelation == o else '' }}"
@@ -82,9 +97,13 @@
       </div>
       <input type="hidden" name="revelation" id="revelation-input" value="{{ pt.revelation or '' }}">
     </div>
+    {% endif %}
 
+    {% set q = pt_questions.get('total_goals') %}
+    {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:16px;">
-      <div class="lbl">⑤ Total buts en groupes · +8 pts (exact) / +4 pts (±3)</div>
+      <div class="lbl">⑤ {{ q.label }} · {{ q.points_label }}</div>
+      {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div id="goals-stepper" class="stepper" style="margin-top:10px;">
         <div class="b" data-action="minus" {% if not pt_editable %}style="pointer-events:none;opacity:.4"{% endif %}>–</div>
         <input type="number" name="total_goals" min="50" max="300"
@@ -94,6 +113,7 @@
         <span class="muted" style="font-size:12px;margin-left:4px;">50–300</span>
       </div>
     </div>
+    {% endif %}
 
     {% if pt_editable %}
     <div class="row2">

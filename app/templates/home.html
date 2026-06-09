@@ -6,7 +6,7 @@
   <div class="row1">
     <div>
       <h1 style="font-family:var(--sketch);font-size:26px;font-weight:700;">
-        Salut {{ participant.name.split()[0] }} 👋
+        Salut {{ greeting_name }} 👋
       </h1>
       <div class="sub1">Tu es {{ user_rank }}ème · {{ total_points }} pts</div>
     </div>
@@ -29,7 +29,7 @@
   <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
     <div>
       <div style="font-weight:700;font-size:13px;color:#1D4ED8;">🏆 Pronostics pré-tournoi</div>
-      <div style="font-size:12px;color:#3B82F6;margin-top:2px;">Vainqueur, buteur, révélation… à remplir avant le 11 juin !</div>
+      <div style="font-size:12px;color:#3B82F6;margin-top:2px;">Vainqueur, buteur, révélation… à remplir avant le {{ pt_deadline[:10] }} !</div>
     </div>
     <a href="/p/{{ token }}/pre-tournoi" class="btn" style="font-size:12px;white-space:nowrap;padding:7px 14px;">Répondre</a>
   </div>
@@ -105,7 +105,7 @@
         <div class="av {{ 'c' + ((r.id - 1) % 8 + 1)|string }}">
           {{ r.name[:2].upper() }}
         </div>
-        <div class="nm">{{ r.name }}{% if r.id == participant.id %}<small>c'est toi</small>{% endif %}</div>
+        <div class="nm">{{ r.name }}{% if r.full_name and r.full_name != r.name %}<small>{{ r.full_name }}</small>{% elif r.id == participant.id %}<small>c'est toi</small>{% endif %}</div>
         <span class="sc">{{ r.total_points }}</span>
       </div>
       {% endfor %}

@@ -30,7 +30,7 @@
           {% endfor %}
         </select>
       </div>
-      <button type="submit" class="btn sm">Envoyer</button>
+      <button type="submit" class="btn sm" {% if not upcoming_matches %}disabled{% endif %}>Envoyer</button>
     </form>
   </div>
 </div>
@@ -39,14 +39,14 @@
   <div class="lbl" style="margin-bottom:12px;">Configuration SMTP</div>
   <form style="display:flex;flex-direction:column;gap:10px;">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-      <div class="field"><input type="text" placeholder="smtp.host" name="smtp_host" value="{{ smtp_host or '' }}"></div>
-      <div class="field"><input type="number" placeholder="port 587" name="smtp_port" value="587"></div>
-      <div class="field"><input type="text" placeholder="Utilisateur" name="smtp_user"></div>
-      <div class="field"><input type="password" placeholder="Mot de passe" name="smtp_pass"></div>
+      <div class="field"><input type="text" placeholder="smtp.host" name="smtp_host" value="{{ smtp_host or '' }}" disabled></div>
+      <div class="field"><input type="number" placeholder="port 587" name="smtp_port" value="{{ smtp_port }}" disabled></div>
+      <div class="field"><input type="text" placeholder="Utilisateur" name="smtp_user" disabled></div>
+      <div class="field"><input type="password" placeholder="Mot de passe" name="smtp_pass" disabled></div>
     </div>
     <div class="row2">
-      <button type="button" class="btn ghost sm">Tester</button>
-      <button type="submit" class="btn sm">Enregistrer</button>
+      <button type="button" class="btn ghost sm" disabled>Tester</button>
+      <button type="submit" class="btn sm" disabled>Enregistrer</button>
     </div>
   </form>
 </div>

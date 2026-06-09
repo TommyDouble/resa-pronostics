@@ -221,6 +221,18 @@ body {
 input[type="text"], input[type="email"], input[type="password"], select, textarea {
   font-family: var(--body);
 }
+.textarea {
+  width: 100%;
+  border: 1.5px solid var(--n300);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--n900);
+  background: #fff;
+  outline: none;
+  resize: vertical;
+}
+.textarea:focus { border-color: var(--primary); box-shadow: var(--sh-focus); }
 
 .stepper { display: flex; align-items: center; gap: 8px; }
 .stepper .b {
