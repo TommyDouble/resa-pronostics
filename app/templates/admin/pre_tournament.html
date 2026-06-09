@@ -25,6 +25,80 @@
   </form>
 </div>
 
+<div class="card" style="background:#ECFDF5;border:1px solid #A7F3D0;">
+  <div class="lbl" style="font-size:13px;font-weight:700;color:#047857;margin-bottom:4px;">✅ Réponses correctes</div>
+  <div style="font-size:12px;color:var(--n600);margin-bottom:12px;">
+    À compléter au fil du tournoi. Chaque enregistrement recalcule les points pré-tournoi de tous les participants.
+  </div>
+  <form method="post" action="/admin/pre-tournoi/reponses" id="pt-answers-form" style="display:flex;flex-direction:column;gap:10px;">
+    <div class="grid2">
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">① Vainqueur</div>
+        <div class="field">
+          <select name="winner" id="answer-winner">
+            <option value="">— Pas encore connu —</option>
+            {% for team in teams %}
+            <option value="{{ team }}" {{ 'selected' if answers.winner == team else '' }}>{{ team }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if hits.winner %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.winner.winners }}/{{ hits.winner.scored }} participants l'avaient.</div>{% endif %}
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">② Finaliste (perdant de la finale)</div>
+        <div class="field">
+          <select name="finalist" id="answer-finalist">
+            <option value="">— Pas encore connu —</option>
+            {% for team in teams %}
+            <option value="{{ team }}" {{ 'selected' if answers.finalist == team else '' }}>{{ team }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="muted err-hint" id="winner-finalist-error" style="display:none;font-size:11px;margin-top:4px;color:var(--error);">
+          Le finaliste doit être différent du vainqueur.
+        </div>
+        {% if hits.finalist %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.finalist.winners }}/{{ hits.finalist.scored }} participants l'avaient.</div>{% endif %}
+      </div>
+    </div>
+    <div class="grid2">
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">③ Meilleur buteur</div>
+        <div class="field">
+          <select name="top_scorer">
+            <option value="">— Pas encore connu —</option>
+            {% for scorer in scorer_choices %}
+            <option value="{{ scorer }}" {{ 'selected' if answers.top_scorer == scorer else '' }}>{{ scorer }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if hits.top_scorer %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.top_scorer.winners }}/{{ hits.top_scorer.scored }} participants l'avaient.</div>{% endif %}
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">④ Révélation du tournoi</div>
+        <div class="field">
+          <select name="revelation">
+            <option value="">— Pas encore connue —</option>
+            {% for team in teams %}
+            <option value="{{ team }}" {{ 'selected' if answers.revelation == team else '' }}>{{ team }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if hits.revelation %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.revelation.winners }}/{{ hits.revelation.scored }} participants l'avaient.</div>{% endif %}
+      </div>
+    </div>
+    <div>
+      <div class="lbl" style="margin-bottom:5px;">⑤ Total buts phase de groupes <span class="muted" style="font-weight:400;">(exact = pts pleins · ±3 = 4 pts)</span></div>
+      <div class="field" style="max-width:160px;">
+        <input type="number" name="total_goals" min="0" max="500" value="{{ answers.total_goals }}" placeholder="ex: 142">
+      </div>
+      {% if hits.total_goals %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.total_goals.winners }}/{{ hits.total_goals.scored }} participants ont marqué des points.</div>{% endif %}
+    </div>
+    <div class="row2">
+      <button type="submit" class="btn sm">Enregistrer et recalculer les points</button>
+    </div>
+  </form>
+</div>
+
 {% for q in questions %}
 <div class="card">
   <form method="post" action="/admin/pre-tournoi/questions/{{ q.key }}" style="display:flex;flex-direction:column;gap:10px;">

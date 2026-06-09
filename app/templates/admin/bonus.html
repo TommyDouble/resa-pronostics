@@ -158,7 +158,18 @@
       </div>
       <div>
         <div class="lbl" style="margin-bottom:5px;">Réponse correcte</div>
+        {% if q.answer_type == 'choice' and q.options_text %}
+        <div class="field">
+          <select name="correct_answer">
+            <option value="">— Non définie —</option>
+            {% for opt in q.options | fromjson %}
+            <option value="{{ opt }}" {{ 'selected' if q.correct_answer == opt else '' }}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% else %}
         <div class="field"><input type="text" name="correct_answer" value="{{ q.correct_answer or '' }}" placeholder="Déclenche le recalcul"></div>
+        {% endif %}
       </div>
     </div>
     <div class="row2">
@@ -196,7 +207,7 @@
             </td>
             <td>
               {{ a.answer }}
-              {% if q.correct_answer and a.answer == q.correct_answer %}
+              {% if q.correct_answer and a.points > 0 %}
               <span class="chip ok" style="margin-left:6px;">correct</span>
               {% elif q.correct_answer %}
               <span class="chip lock" style="margin-left:6px;">0 pt</span>

@@ -1,25 +1,70 @@
-# CODING AGENTS: READ THIS FIRST
+# RESA Pronostics 2026
 
-This is a **handoff bundle** from Claude Design (claude.ai/design).
+Application de pronostics pour la Coupe du Monde 2026 (FastAPI + SQLite + Jinja).
+Les participants accèdent à l'app via un lien personnel à token (pas de mot de passe) ;
+l'organisateur gère tout depuis un backoffice `/admin`.
 
-A user mocked up designs in HTML/CSS/JS using an AI design tool, then exported this bundle so a coding agent can implement the designs for real.
+## Démarrage rapide
 
-## What you should do — IMPORTANT
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python scripts/seed_matches.py      # les 104 matchs du tournoi
+python scripts/create_admin.py      # compte admin du backoffice
+uvicorn app.main:app --reload
+```
 
-**Read the chat transcripts first.** There are 1 chat transcript(s) in `chats/`. The transcripts show the full back-and-forth between the user and the design assistant — they tell you **what the user actually wants** and **where they landed** after iterating. Don't skip them. The final HTML files are the output, but the chat is where the intent lives.
+- Participant : `http://localhost:8000/p/<token>` (token généré à l'ajout d'un participant)
+- Admin : `http://localhost:8000/admin`
+- Inscription publique : `http://localhost:8000/rejoindre`
 
-**Read `project/RESA Pronostics - Wireframes.html` in full.** The user had this file open when they triggered the handoff, so it's almost certainly the primary design they want built. Read it top to bottom — don't skim. Then **follow its imports**: open every file it pulls in (shared components, CSS, scripts) so you understand how the pieces fit together before you start implementing.
+## Fonctionnement
 
-**If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
+### Pronostics de matchs
+Score exact par match ; l'issue (1/X/2) est déduite. Bonne issue = +2 × poids
+(top match et phase finale ×2), score exact = +2. Verrouillage au coup d'envoi.
 
-## About the design files
+### Pré-tournoi (5 questions fixes)
+Vainqueur (+8), finaliste (+5), meilleur buteur (+5), révélation (+5),
+total de buts en phase de groupes (+8 exact, +4 à ±3). Vainqueur et finaliste
+doivent être différents (validation client + serveur). L'admin encode les
+réponses correctes dans `/admin/pre-tournoi` au fil du tournoi ; chaque
+enregistrement recalcule les points de tous les participants.
 
-The design medium is **HTML/CSS/JS** — these are prototypes, not production code. Your job is to **recreate them pixel-perfectly** in whatever technology makes sense for the target codebase (React, Vue, native, whatever fits). Match the visual output; don't copy the prototype's internal structure unless it happens to fit.
+### Questions bonus
+Questions libres créées par l'admin (choix / nombre / texte) avec deadline et
+points. La réponse correcte (select pour les questions à choix) déclenche le
+recalcul. Comparaison tolérante : casse/espaces ignorés pour le texte,
+`10`, `10.0` et `10,0` équivalents pour le numérique.
 
-**Don't render these files in a browser or take screenshots unless the user asks you to.** Everything you need — dimensions, colors, layout rules — is spelled out in the source. Read the HTML and CSS directly; a screenshot won't tell you anything they don't.
+## Données joueurs
 
-## Bundle contents
+`app/data/players.json` contient les 1246 joueurs des 48 sélections finales
+(listes FIFA du 1er juin 2026), utilisés pour le choix du meilleur buteur.
+Source : page Wikipedia « 2026 FIFA World Cup squads ». Pour regénérer :
 
-- `README.md` — this file
-- `chats/` — conversation transcripts (read these!)
-- `project/` — the `Prono RESA` project files (HTML prototypes, assets, components)
+```bash
+python scripts/fetch_players.py            # met à jour app/data/players.json
+python scripts/fetch_players.py --check    # stats sans écrire
+```
+
+Les valeurs stockées sont au format canonique `Nom (Équipe)` pour lever toute
+ambiguïté entre homonymes.
+
+## Tests
+
+```bash
+pip install pytest httpx
+python -m pytest tests/
+```
+
+## Déploiement
+
+Conçu pour Railway (`railway.toml`, `Procfile`, Python 3.12). Variables :
+`SECRET_KEY` (obligatoire en prod), `DATABASE_URL`, `BASE_URL`, et la config
+email (`SMTP_*` ou `EMAIL_WEBHOOK_*`). Voir `.env.example`.
+
+## Design d'origine
+
+Le dossier `project/` et `chats/` contiennent le bundle de design Claude Design
+(wireframes + hi-fi) qui a servi de référence pour l'implémentation.

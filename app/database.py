@@ -137,7 +137,18 @@ CREATE TABLE IF NOT EXISTS pre_tournament_questions (
   points_label TEXT NOT NULL,
   help_text    TEXT NOT NULL DEFAULT '',
   sort_order   INTEGER NOT NULL,
-  is_enabled   INTEGER NOT NULL DEFAULT 1
+  is_enabled   INTEGER NOT NULL DEFAULT 1,
+  points_value INTEGER,
+  correct_answer TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pre_tournament_scores (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  question_key   TEXT    NOT NULL REFERENCES pre_tournament_questions(key) ON DELETE CASCADE,
+  points         INTEGER NOT NULL DEFAULT 0,
+  calculated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(participant_id, question_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_participants_token ON participants(token);
@@ -169,6 +180,16 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
         for column in prediction_columns:
             try:
                 await db.execute(f"ALTER TABLE predictions ADD COLUMN {column}")
+            except Exception:
+                pass
+
+        pt_question_columns = [
+            "points_value INTEGER",
+            "correct_answer TEXT",
+        ]
+        for column in pt_question_columns:
+            try:
+                await db.execute(f"ALTER TABLE pre_tournament_questions ADD COLUMN {column}")
             except Exception:
                 pass
 

@@ -57,17 +57,26 @@ async def root():
 
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
-    return templates.TemplateResponse(
-        "error.html",
+    return templates.TemplateResponse(request, "error.html",
         {"request": request, "code": 404, "message": "Page introuvable."},
         status_code=404,
     )
 
 
+@app.exception_handler(401)
+async def unauthorized_handler(request: Request, exc):
+    # Admin session expired or missing: send back to the login form.
+    if request.url.path.startswith("/admin"):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    return templates.TemplateResponse(request, "error.html",
+        {"request": request, "code": 401, "message": "Authentification requise."},
+        status_code=401,
+    )
+
+
 @app.exception_handler(403)
 async def forbidden_handler(request: Request, exc):
-    return templates.TemplateResponse(
-        "error.html",
+    return templates.TemplateResponse(request, "error.html",
         {"request": request, "code": 403, "message": "Accès refusé."},
         status_code=403,
     )
@@ -76,8 +85,7 @@ async def forbidden_handler(request: Request, exc):
 @app.exception_handler(500)
 async def server_error_handler(request: Request, exc):
     logger.exception("Unhandled exception")
-    return templates.TemplateResponse(
-        "error.html",
+    return templates.TemplateResponse(request, "error.html",
         {"request": request, "code": 500, "message": "Erreur serveur interne."},
         status_code=500,
     )

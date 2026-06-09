@@ -22,6 +22,28 @@
 
 <div class="page-content">
 
+  {% if pt_error %}
+  <div class="banner red" style="margin-bottom:10px;">
+    <span>⚠️</span> {{ pt_error }}
+  </div>
+  {% endif %}
+
+  {% if pt_scores %}
+  <div class="card flat" style="padding:13px;margin-bottom:12px;background:#ECFDF5;border:1px solid #A7F3D0;">
+    <div class="lbl" style="color:#047857;">🎯 Tes points pré-tournoi</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+      {% for key, q in pt_questions.items() %}
+        {% if key in pt_scores %}
+        <span class="chip {{ 'ok' if pt_scores[key] > 0 else 'gr' }}">
+          {{ q.label }} · {{ pt_scores[key] }} pt{{ 's' if pt_scores[key] > 1 else '' }}
+        </span>
+        {% endif %}
+      {% endfor %}
+      <span class="chip acc">Total · {{ pt_scores.values()|sum }} pts</span>
+    </div>
+  </div>
+  {% endif %}
+
   {% if not pt_editable %}
   <div class="banner" style="background:#F3F4F6;border-left:3px solid #9CA3AF;color:#374151;font-size:12px;padding:10px 14px;border-radius:8px;">
     <span>🔒</span> La deadline est passée — pronostics verrouillés.
@@ -74,13 +96,28 @@
       <div class="lbl">③ {{ q.label }} · {{ q.points_label }}</div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="field" style="margin-top:8px;">
-        <select name="top_scorer" {% if not pt_editable %}disabled{% endif %}>
+        <input type="text" id="scorer-filter" placeholder="🔍 Filtrer par joueur ou équipe…"
+               autocomplete="off" {% if not pt_editable %}disabled{% endif %}
+               style="margin-bottom:8px;">
+      </div>
+      <div class="field">
+        <select name="top_scorer" id="top-scorer-select" size="1" {% if not pt_editable %}disabled{% endif %}>
           <option value="">Choisir un joueur…</option>
-          {% for scorer in scorers %}
-          <option value="{{ scorer }}" {{ 'selected' if pt.top_scorer == scorer else '' }}>{{ scorer }}</option>
+          {% for team, players in players_by_team.items() %}
+          <optgroup label="{{ team }}">
+            {% for pl in players %}
+            <option value="{{ pl.choice }}" data-search="{{ pl.name|lower }} {{ team|lower }}"
+                    {{ 'selected' if pt.top_scorer == pl.choice else '' }}>
+              {{ pl.name }}{% if pl.pos_label %} · {{ pl.pos_label }}{% endif %}{% if pl.club %} · {{ pl.club }}{% endif %}
+            </option>
+            {% endfor %}
+          </optgroup>
           {% endfor %}
         </select>
       </div>
+      {% if pt.top_scorer %}
+      <div class="muted" style="font-size:11px;margin-top:6px;">Sélection actuelle : <b>{{ pt.top_scorer }}</b></div>
+      {% endif %}
     </div>
     {% endif %}
 

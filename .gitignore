@@ -6,3 +6,5 @@ __pycache__/
 .env
 .claude/
 *.log
+.venv/
+.pytest_cache/

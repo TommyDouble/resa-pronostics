@@ -5,6 +5,7 @@ DEFAULT_PRE_TOURNAMENT_DEADLINE = "2026-06-11T18:45:00"
 DEFAULT_PRE_TOURNAMENT_QUESTIONS = [
     {
         "key": "winner",
+        "points_value": 8,
         "label": "Vainqueur",
         "points_label": "+8 pts",
         "help_text": "Choisir parmi les 48 equipes.",
@@ -13,6 +14,7 @@ DEFAULT_PRE_TOURNAMENT_QUESTIONS = [
     },
     {
         "key": "finalist",
+        "points_value": 5,
         "label": "Finaliste",
         "points_label": "+5 pts",
         "help_text": "Selectionner une equipe differente du vainqueur.",
@@ -21,6 +23,7 @@ DEFAULT_PRE_TOURNAMENT_QUESTIONS = [
     },
     {
         "key": "top_scorer",
+        "points_value": 5,
         "label": "Meilleur buteur",
         "points_label": "+5 pts",
         "help_text": "Choisir un joueur dans la liste proposee.",
@@ -29,6 +32,7 @@ DEFAULT_PRE_TOURNAMENT_QUESTIONS = [
     },
     {
         "key": "revelation",
+        "points_value": 5,
         "label": "Revelation du tournoi",
         "points_label": "+5 pts",
         "help_text": "Choisir une equipe outsider.",
@@ -37,6 +41,7 @@ DEFAULT_PRE_TOURNAMENT_QUESTIONS = [
     },
     {
         "key": "total_goals",
+        "points_value": 8,
         "label": "Total buts en groupes",
         "points_label": "+8 pts exact / +4 pts a +/-3",
         "help_text": "Estimer le nombre total de buts pendant la phase de groupes.",
@@ -55,8 +60,8 @@ async def ensure_pre_tournament_defaults(db):
     for q in DEFAULT_PRE_TOURNAMENT_QUESTIONS:
         await db.execute(
             """INSERT OR IGNORE INTO pre_tournament_questions
-               (key, label, points_label, help_text, sort_order, is_enabled)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (key, label, points_label, help_text, sort_order, is_enabled, points_value)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 q["key"],
                 q["label"],
@@ -64,7 +69,12 @@ async def ensure_pre_tournament_defaults(db):
                 q["help_text"],
                 q["sort_order"],
                 q["is_enabled"],
+                q["points_value"],
             ),
+        )
+        await db.execute(
+            "UPDATE pre_tournament_questions SET points_value=? WHERE key=? AND points_value IS NULL",
+            (q["points_value"], q["key"]),
         )
 
 
@@ -79,7 +89,8 @@ async def get_pre_tournament_deadline(db) -> str:
 async def get_pre_tournament_questions(db, include_disabled: bool = False) -> list:
     where = "" if include_disabled else "WHERE is_enabled=1"
     rows = await db.execute(
-        f"""SELECT key, label, points_label, help_text, sort_order, is_enabled
+        f"""SELECT key, label, points_label, help_text, sort_order, is_enabled,
+                   points_value, correct_answer
             FROM pre_tournament_questions
             {where}
             ORDER BY sort_order"""

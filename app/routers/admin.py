@@ -6,7 +6,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from app.auth import require_admin, verify_password, hash_password
 from app.config import settings
@@ -16,13 +16,19 @@ from app.mail import (
     send_match_reminder as send_match_reminder_email,
     send_pre_tournament_reminder,
 )
+from app.players import TEAMS_48, get_scorer_choices, is_valid_scorer
 from app.pre_tournament import (
     DEFAULT_PRE_TOURNAMENT_QUESTIONS,
     get_pre_tournament_deadline,
     get_pre_tournament_question_map,
     get_pre_tournament_questions,
 )
-from app.scoring import recalculate_match_scores, get_rankings, calculate_bonus_scores
+from app.scoring import (
+    calculate_bonus_scores,
+    get_rankings,
+    recalculate_match_scores,
+    recalculate_pre_tournament_scores,
+)
 from app.templating import create_templates
 from app.timeutils import is_match_locked, local_input_to_utc_iso, now_utc_iso
 
@@ -90,7 +96,7 @@ def _normalize_bonus_options(answer_type: str, options_text: str):
 async def admin_login(request: Request):
     if request.session.get("admin_id"):
         return RedirectResponse("/admin/dashboard")
-    return templates.TemplateResponse("admin/login.html", {
+    return templates.TemplateResponse(request, "admin/login.html", {
         "request": request, "error": request.session.pop("login_error", None)
     })
 
@@ -160,7 +166,7 @@ async def dashboard(request: Request):
             (now,)
         )
         late_matches = (await alert_row.fetchone())["cnt"]
-    return templates.TemplateResponse("admin/dashboard.html", {
+    return templates.TemplateResponse(request, "admin/dashboard.html", {
         "request": request,
         "active": "dashboard",
         "flashes": _get_flashes(request),
@@ -188,7 +194,7 @@ async def participants_list(request: Request):
                ORDER BY p.created_at"""
         )
         participants = [dict(r) for r in await rows.fetchall()]
-    return templates.TemplateResponse("admin/participants.html", {
+    return templates.TemplateResponse(request, "admin/participants.html", {
         "request": request,
         "active": "participants",
         "flashes": _get_flashes(request),
@@ -431,7 +437,7 @@ async def predictions_admin(
             )
             bonus_answers = [dict(r) for r in await rows.fetchall()]
 
-    return templates.TemplateResponse("admin/predictions.html", {
+    return templates.TemplateResponse(request, "admin/predictions.html", {
         "request": request,
         "active": "pronostics",
         "flashes": _get_flashes(request),
@@ -463,7 +469,16 @@ async def pre_tournament_admin(request: Request):
             "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0"
         )
         total_count = (await total_row.fetchone())["cnt"]
-    return templates.TemplateResponse("admin/pre_tournament.html", {
+        # Per-question hit counts once answers are scored
+        hits_rows = await db.execute(
+            """SELECT question_key,
+                      SUM(CASE WHEN points > 0 THEN 1 ELSE 0 END) as winners,
+                      COUNT(*) as scored
+               FROM pre_tournament_scores GROUP BY question_key"""
+        )
+        hits = {r["question_key"]: dict(r) for r in await hits_rows.fetchall()}
+    answers = {q["key"]: q.get("correct_answer") or "" for q in questions}
+    return templates.TemplateResponse(request, "admin/pre_tournament.html", {
         "request": request,
         "active": "pre_tournoi",
         "flashes": _get_flashes(request),
@@ -471,7 +486,63 @@ async def pre_tournament_admin(request: Request):
         "deadline": deadline,
         "submitted_count": submitted_count,
         "total_count": total_count,
+        "teams": TEAMS_48,
+        "scorer_choices": get_scorer_choices(),
+        "answers": answers,
+        "hits": hits,
     })
+
+
+@router.post("/pre-tournoi/reponses")
+async def update_pre_tournament_answers(
+    request: Request,
+    winner: str = Form(default=""),
+    finalist: str = Form(default=""),
+    top_scorer: str = Form(default=""),
+    revelation: str = Form(default=""),
+    total_goals: str = Form(default=""),
+):
+    await require_admin(request)
+    winner = winner.strip()
+    finalist = finalist.strip()
+    top_scorer = top_scorer.strip()
+    revelation = revelation.strip()
+    total_goals = total_goals.strip()
+
+    if winner and finalist and winner == finalist:
+        _flash(request, "Le vainqueur et le finaliste ne peuvent pas être identiques.", "err")
+        return RedirectResponse("/admin/pre-tournoi", status_code=303)
+    for team_value, label in ((winner, "vainqueur"), (finalist, "finaliste"), (revelation, "révélation")):
+        if team_value and team_value not in TEAMS_48:
+            _flash(request, f"Équipe inconnue pour {label} : {team_value}.", "err")
+            return RedirectResponse("/admin/pre-tournoi", status_code=303)
+    if top_scorer and not is_valid_scorer(top_scorer):
+        _flash(request, "Joueur inconnu pour le meilleur buteur.", "err")
+        return RedirectResponse("/admin/pre-tournoi", status_code=303)
+    if total_goals:
+        try:
+            int(total_goals)
+        except ValueError:
+            _flash(request, "Le total de buts doit être un nombre entier.", "err")
+            return RedirectResponse("/admin/pre-tournoi", status_code=303)
+
+    incoming = {
+        "winner": winner,
+        "finalist": finalist,
+        "top_scorer": top_scorer,
+        "revelation": revelation,
+        "total_goals": total_goals,
+    }
+    async with get_db() as db:
+        for key, value in incoming.items():
+            await db.execute(
+                "UPDATE pre_tournament_questions SET correct_answer=? WHERE key=?",
+                (value or None, key),
+            )
+        await db.commit()
+    await recalculate_pre_tournament_scores()
+    _flash(request, "Réponses pré-tournoi enregistrées. Scores recalculés.")
+    return RedirectResponse("/admin/pre-tournoi", status_code=303)
 
 
 @router.post("/pre-tournoi/deadline")
@@ -525,6 +596,7 @@ async def update_pre_tournament_question(
             ),
         )
         await db.commit()
+    await recalculate_pre_tournament_scores()
     _flash(request, "Question pré-tournoi mise à jour.")
     return RedirectResponse("/admin/pre-tournoi", status_code=303)
 
@@ -544,7 +616,7 @@ async def matches_list(request: Request, phase: str = "group"):
         for ph in PHASE_LABELS:
             c_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE phase=?", (ph,))
             counts[ph] = (await c_row.fetchone())["cnt"]
-    return templates.TemplateResponse("admin/matches.html", {
+    return templates.TemplateResponse(request, "admin/matches.html", {
         "request": request,
         "active": "matches",
         "flashes": _get_flashes(request),
@@ -564,7 +636,7 @@ async def toggle_top_match(request: Request, match_id: int):
         if not match:
             raise HTTPException(404)
         if _is_played(dict(match)):
-            return {"error": "Match déjà joué"}, 400
+            return JSONResponse({"error": "Match déjà joué"}, status_code=400)
         new_val = 0 if match["is_top_match"] else 1
         new_weight = 2 if new_val else 1
         await db.execute(
@@ -597,7 +669,7 @@ async def results_page(request: Request):
                ORDER BY match_date DESC, kickoff_time DESC LIMIT 10"""
         )
         done = [dict(r) for r in await done_rows.fetchall()]
-    return templates.TemplateResponse("admin/results.html", {
+    return templates.TemplateResponse(request, "admin/results.html", {
         "request": request,
         "active": "resultats",
         "flashes": _get_flashes(request),
@@ -652,8 +724,8 @@ async def bonus_admin(request: Request):
         rows = await db.execute(
             """SELECT bq.*,
                       COUNT(ba.id) as answer_count,
-                      SUM(CASE WHEN bq.correct_answer IS NOT NULL
-                                AND ba.answer = bq.correct_answer THEN 1 ELSE 0 END) as correct_count
+                      (SELECT COUNT(*) FROM scores s
+                       WHERE s.bonus_question_id = bq.id AND s.points > 0) as correct_count
                FROM bonus_questions bq
                LEFT JOIN bonus_answers ba ON ba.question_id = bq.id
                GROUP BY bq.id
@@ -694,7 +766,7 @@ async def bonus_admin(request: Request):
             "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1"
         )
         pt_total_count = (await pt_total_row.fetchone())["cnt"]
-    return templates.TemplateResponse("admin/bonus.html", {
+    return templates.TemplateResponse(request, "admin/bonus.html", {
         "request": request,
         "active": "bonus",
         "flashes": _get_flashes(request),
@@ -854,7 +926,7 @@ async def communications(request: Request):
             (now,)
         )
         upcoming = [dict(r) for r in await m_rows.fetchall()]
-    return templates.TemplateResponse("admin/communications.html", {
+    return templates.TemplateResponse(request, "admin/communications.html", {
         "request": request,
         "active": "communications",
         "flashes": _get_flashes(request),

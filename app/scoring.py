@@ -57,12 +57,13 @@ _RANKINGS_SQL = """
         p.name,
         p.nickname,
         p.email,
-        COALESCE(SUM(s.points), 0) as total_points,
-        COUNT(DISTINCT CASE WHEN s.match_id IS NOT NULL THEN s.match_id END) as matches_scored
+        COALESCE((SELECT SUM(s.points) FROM scores s WHERE s.participant_id = p.id), 0)
+          + COALESCE((SELECT SUM(ps.points) FROM pre_tournament_scores ps WHERE ps.participant_id = p.id), 0)
+          as total_points,
+        (SELECT COUNT(DISTINCT s.match_id) FROM scores s
+         WHERE s.participant_id = p.id AND s.match_id IS NOT NULL) as matches_scored
     FROM participants p
-    LEFT JOIN scores s ON s.participant_id = p.id
     WHERE p.is_confirmed = 1 AND p.is_admin = 0
-    GROUP BY p.id, p.name, p.nickname, p.email
     ORDER BY total_points DESC, COALESCE(NULLIF(p.nickname, ''), p.name) ASC
 """
 
@@ -93,6 +94,22 @@ async def get_rankings(db=None) -> list:
         return await _rankings_from_db(db)
 
 
+def answers_match(answer_type: str, given: str, correct: str) -> bool:
+    """Tolerant comparison of a participant answer against the correct one."""
+    given = (given or "").strip()
+    correct = (correct or "").strip()
+    if not given or not correct:
+        return False
+    if answer_type == "number":
+        try:
+            return float(given.replace(",", ".")) == float(correct.replace(",", "."))
+        except ValueError:
+            return given.casefold() == correct.casefold()
+    if answer_type == "text":
+        return given.casefold() == correct.casefold()
+    return given == correct
+
+
 async def calculate_bonus_scores(question_id: int):
     """Calculate scores for a bonus question after correct answer is set."""
     async with get_db() as db:
@@ -100,24 +117,90 @@ async def calculate_bonus_scores(question_id: int):
             "SELECT * FROM bonus_questions WHERE id = ?", (question_id,)
         )
         question = await row.fetchone()
-        if not question or question["correct_answer"] is None:
+        if not question:
             return
-
-        rows = await db.execute(
-            "SELECT * FROM bonus_answers WHERE question_id = ?", (question_id,)
-        )
-        answers = await rows.fetchall()
 
         await db.execute(
             "DELETE FROM scores WHERE bonus_question_id = ?", (question_id,)
         )
 
-        for ans in answers:
-            points = question["points_value"] if ans["answer"] == question["correct_answer"] else 0
-            await db.execute(
-                """INSERT INTO scores (participant_id, bonus_question_id, points)
-                   VALUES (?, ?, ?)""",
-                (ans["participant_id"], question_id, points),
+        if question["correct_answer"] is not None:
+            rows = await db.execute(
+                "SELECT * FROM bonus_answers WHERE question_id = ?", (question_id,)
             )
+            answers = await rows.fetchall()
+            for ans in answers:
+                correct = answers_match(
+                    question["answer_type"], ans["answer"], question["correct_answer"]
+                )
+                points = question["points_value"] if correct else 0
+                await db.execute(
+                    """INSERT INTO scores (participant_id, bonus_question_id, points)
+                       VALUES (?, ?, ?)""",
+                    (ans["participant_id"], question_id, points),
+                )
+
+        await db.commit()
+
+
+# Points awarded for a near miss on the total-goals question (exact = points_value).
+TOTAL_GOALS_NEAR_POINTS = 4
+TOTAL_GOALS_NEAR_MARGIN = 3
+
+
+def calculate_pre_tournament_points(question: dict, prediction_value) -> int:
+    """Points for one pre-tournament question given its correct answer.
+
+    `question` needs: key, points_value, correct_answer.
+    total_goals: full points if exact, TOTAL_GOALS_NEAR_POINTS if within ±3.
+    """
+    correct = question.get("correct_answer")
+    if correct is None or str(correct).strip() == "":
+        return 0
+    if prediction_value is None or str(prediction_value).strip() == "":
+        return 0
+    points_value = question.get("points_value") or 0
+    if question["key"] == "total_goals":
+        try:
+            predicted = int(str(prediction_value).strip())
+            actual = int(str(correct).strip())
+        except ValueError:
+            return 0
+        if predicted == actual:
+            return points_value
+        if abs(predicted - actual) <= TOTAL_GOALS_NEAR_MARGIN:
+            return TOTAL_GOALS_NEAR_POINTS
+        return 0
+    return points_value if str(prediction_value).strip() == str(correct).strip() else 0
+
+
+async def recalculate_pre_tournament_scores():
+    """Recompute all pre-tournament scores from the stored correct answers."""
+    async with get_db() as db:
+        q_rows = await db.execute(
+            """SELECT key, points_value, correct_answer
+               FROM pre_tournament_questions WHERE is_enabled=1"""
+        )
+        questions = [dict(r) for r in await q_rows.fetchall()]
+
+        p_rows = await db.execute(
+            "SELECT * FROM pre_tournament_predictions WHERE submitted=1"
+        )
+        predictions = [dict(r) for r in await p_rows.fetchall()]
+
+        await db.execute("DELETE FROM pre_tournament_scores")
+
+        for question in questions:
+            if not (question["correct_answer"] or "").strip():
+                continue
+            for pred in predictions:
+                points = calculate_pre_tournament_points(
+                    question, pred.get(question["key"])
+                )
+                await db.execute(
+                    """INSERT INTO pre_tournament_scores (participant_id, question_key, points)
+                       VALUES (?, ?, ?)""",
+                    (pred["participant_id"], question["key"], points),
+                )
 
         await db.commit()

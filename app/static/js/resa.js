@@ -296,27 +296,92 @@ function initOutsiderChips() {
   });
 }
 
-/* ---- Autocomplete (top scorer) ---- */
-function initAutocomplete(inputId, listId, items) {
-  var inp = document.getElementById(inputId);
-  var list = document.getElementById(listId);
-  if (!inp || !list) return;
-  inp.addEventListener('input', function() {
-    var q = inp.value.toLowerCase().trim();
-    list.innerHTML = '';
-    if (q.length < 2) { list.style.display = 'none'; return; }
-    var matches = items.filter(function(i) { return i.toLowerCase().includes(q); }).slice(0, 8);
-    if (!matches.length) { list.style.display = 'none'; return; }
-    matches.forEach(function(m) {
-      var li = document.createElement('li');
-      li.textContent = m;
-      li.addEventListener('click', function() { inp.value = m; list.style.display = 'none'; });
-      list.appendChild(li);
+/* ---- Winner ≠ finalist guard (participant + admin forms) ---- */
+function initWinnerFinalistGuard() {
+  document.querySelectorAll('form').forEach(function(form) {
+    var winner = form.querySelector('select[name="winner"]');
+    var finalist = form.querySelector('select[name="finalist"]');
+    if (!winner || !finalist) return;
+    var errorBox = form.querySelector('#winner-finalist-error');
+
+    function syncDisabled() {
+      // The selected winner can't be picked as finalist, and vice versa.
+      Array.prototype.forEach.call(finalist.options, function(opt) {
+        opt.disabled = !!opt.value && opt.value === winner.value;
+      });
+      Array.prototype.forEach.call(winner.options, function(opt) {
+        opt.disabled = !!opt.value && opt.value === finalist.value;
+      });
+    }
+
+    function conflict() {
+      return winner.value && finalist.value && winner.value === finalist.value;
+    }
+
+    function showError(show) {
+      if (errorBox) errorBox.style.display = show ? 'block' : 'none';
+      finalist.style.borderColor = show ? 'var(--error, #DC2626)' : '';
+    }
+
+    [winner, finalist].forEach(function(sel) {
+      sel.addEventListener('change', function() {
+        if (conflict()) {
+          // Clear the other field rather than keeping an invalid pair.
+          (sel === winner ? finalist : winner).value = '';
+        }
+        showError(false);
+        syncDisabled();
+      });
     });
-    list.style.display = 'block';
+
+    form.addEventListener('submit', function(e) {
+      if (conflict()) {
+        showError(true);
+        alert('Le vainqueur et le finaliste ne peuvent pas être identiques.');
+        e.preventDefault();
+      }
+    });
+
+    syncDisabled();
   });
-  document.addEventListener('click', function(e) {
-    if (!inp.contains(e.target)) list.style.display = 'none';
+}
+
+/* ---- Top scorer select filter (1200+ players) ---- */
+function initScorerFilter() {
+  var filter = document.getElementById('scorer-filter');
+  var select = document.getElementById('top-scorer-select');
+  if (!filter || !select) return;
+  var groups = Array.prototype.slice.call(select.querySelectorAll('optgroup'));
+
+  filter.addEventListener('input', function() {
+    var q = filter.value.toLowerCase().trim();
+    groups.forEach(function(group) {
+      var visible = 0;
+      Array.prototype.forEach.call(group.querySelectorAll('option'), function(opt) {
+        var match = !q || (opt.dataset.search || '').indexOf(q) !== -1;
+        opt.hidden = !match;
+        if (match) visible++;
+      });
+      group.hidden = visible === 0;
+    });
+    if (q) {
+      // Expand the list while filtering so matches are visible at a glance.
+      var visibleCount = select.querySelectorAll('option:not([hidden])').length;
+      select.size = Math.min(Math.max(visibleCount + 1, 2), 10);
+    } else {
+      select.size = 1;
+    }
+  });
+
+  select.addEventListener('change', function() {
+    if (select.value) {
+      filter.value = '';
+      groups.forEach(function(group) {
+        group.hidden = false;
+        Array.prototype.forEach.call(group.querySelectorAll('option'), function(opt) { opt.hidden = false; });
+      });
+      select.size = 1;
+    }
   });
 }
 
@@ -437,9 +502,6 @@ document.addEventListener('DOMContentLoaded', function() {
   initCsvImport();
   initPhaseFilter();
   initStepper('goals-stepper', 50, 300);
-
-  // Scorers autocomplete — injected by template
-  if (typeof SCORERS !== 'undefined') {
-    initAutocomplete('top-scorer-input', 'scorer-list', SCORERS);
-  }
+  initWinnerFinalistGuard();
+  initScorerFilter();
 });

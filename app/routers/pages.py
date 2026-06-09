@@ -8,6 +8,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.auth import require_participant
 from app.database import get_db
+from app.players import (
+    TEAMS_48,
+    get_players_by_team,
+    is_valid_scorer,
+    normalize_scorer,
+    scorer_choice,
+)
 from app.pre_tournament import (
     get_pre_tournament_deadline,
     get_pre_tournament_question_map,
@@ -67,60 +74,7 @@ PREDICTION_SECTION_LABELS = {
     "final": PHASE_LABELS["final"],
 }
 
-TEAMS_48 = sorted([
-    "Mexique","Afrique du Sud","Corée du Sud","Tchéquie",
-    "Canada","Bosnie-Herzégovine","Qatar","Suisse",
-    "Brésil","Maroc","Haïti","Écosse",
-    "États-Unis","Paraguay","Australie","Turquie",
-    "Allemagne","Curaçao","Côte d'Ivoire","Équateur",
-    "Pays-Bas","Japon","Suède","Tunisie",
-    "Belgique","Égypte","Iran","Nouvelle-Zélande",
-    "Espagne","Cap-Vert","Arabie Saoudite","Uruguay",
-    "France","Sénégal","Irak","Norvège",
-    "Argentine","Algérie","Autriche","Jordanie",
-    "Portugal","RD Congo","Ouzbékistan","Colombie",
-    "Angleterre","Croatie","Ghana","Panama",
-])
-
-SCORERS = [
-    # Grands favoris au Soulier d'Or
-    "Kylian Mbappé", "Harry Kane", "Erling Haaland",
-    "Vinícius Júnior", "Lautaro Martínez", "Viktor Gyökeres", "Lamine Yamal",
-    # France
-    "Marcus Thuram", "Randal Kolo Muani", "Ousmane Dembélé",
-    # Angleterre
-    "Phil Foden", "Cole Palmer", "Bukayo Saka", "Jarrod Bowen",
-    # Brésil
-    "Endrick", "Rodrygo", "Matheus Cunha", "Gabriel Martinelli",
-    # Espagne
-    "Nico Williams", "Álvaro Morata", "Ferran Torres",
-    # Allemagne
-    "Kai Havertz", "Maximilian Beier", "Leroy Sané",
-    # Portugal
-    "Cristiano Ronaldo", "Rafael Leão", "Gonçalo Ramos",
-    # Pays-Bas
-    "Cody Gakpo", "Brian Brobbey",
-    # Belgique
-    "Romelu Lukaku", "Loïs Openda", "Jérémy Doku",
-    # Argentine
-    "Julián Álvarez", "Paulo Dybala",
-    # Colombie
-    "Luis Díaz", "Jhon Durán",
-    # Égypte
-    "Mohamed Salah",
-    # Uruguay
-    "Darwin Núñez",
-    # Mexique
-    "Santiago Giménez", "Raúl Jiménez",
-    # Sénégal
-    "Ismaïla Sarr", "Sadio Mané",
-    # Norvège
-    "Alexander Sørloth",
-    # Japon
-    "Kaoru Mitoma", "Ayase Ueda",
-    # Croatie
-    "Andrej Kramarić",
-]
+POSITION_LABELS = {"GK": "G", "DF": "D", "MF": "M", "FW": "A"}
 
 
 def _now_utc() -> str:
@@ -278,7 +232,7 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
 
 @router.get("/rejoindre", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "register.html", {"request": request, "error": None})
 
 
 @router.post("/rejoindre", response_class=HTMLResponse)
@@ -286,7 +240,7 @@ async def register_post(request: Request, name: str = Form(...), email: str = Fo
     name = name.strip()
     email = email.strip().lower()
     if not name or not email or "@" not in email:
-        return templates.TemplateResponse("register.html", {
+        return templates.TemplateResponse(request, "register.html", {
             "request": request, "error": "Nom et email valides requis."
         })
     token = str(uuid.uuid4())
@@ -307,7 +261,7 @@ async def register_post(request: Request, name: str = Form(...), email: str = Fo
             )
             await db.commit()
         except Exception:
-            return templates.TemplateResponse("register.html", {
+            return templates.TemplateResponse(request, "register.html", {
                 "request": request, "error": "Une erreur est survenue, réessaie."
             })
     return RedirectResponse(url=f"/p/{token}", status_code=303)
@@ -317,7 +271,7 @@ async def register_post(request: Request, name: str = Form(...), email: str = Fo
 async def participant_home(request: Request, token: str):
     p = await require_participant(token)
     if not p["is_confirmed"]:
-        return templates.TemplateResponse("onboarding.html", {
+        return templates.TemplateResponse(request, "onboarding.html", {
             "request": request, "participant": dict(p), "token": token
         })
     async with get_db() as db:
@@ -377,7 +331,7 @@ async def participant_home(request: Request, token: str):
             "pt_open": pt_open,
             "pt_deadline": pt_deadline,
         })
-    return templates.TemplateResponse("home.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request, "home.html", {"request": request, **ctx})
 
 
 @router.post("/p/{token}/confirm", response_class=HTMLResponse)
@@ -438,7 +392,7 @@ async def predictions_page(request: Request, token: str, section: str = "", phas
             "pt_submitted": pt_submitted,
             "page_wide": True,
         })
-    return templates.TemplateResponse("predictions.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request, "predictions.html", {"request": request, **ctx})
 
 
 @router.get("/p/{token}/reglement", response_class=HTMLResponse)
@@ -446,11 +400,18 @@ async def rules_page(request: Request, token: str):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "rules")
         ctx["page_wide"] = True
-    return templates.TemplateResponse("rules.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request, "rules.html", {"request": request, **ctx})
+
+
+PT_ERRORS = {
+    "winner_finalist": "Le finaliste doit être différent du vainqueur.",
+    "invalid_team": "Une des équipes choisies est invalide.",
+    "invalid_scorer": "Le joueur choisi est invalide.",
+}
 
 
 @router.get("/p/{token}/pre-tournoi", response_class=HTMLResponse)
-async def pre_tournament_page(request: Request, token: str):
+async def pre_tournament_page(request: Request, token: str, error: str = ""):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "bonus")
         p = ctx["participant"]
@@ -458,20 +419,39 @@ async def pre_tournament_page(request: Request, token: str):
             "SELECT * FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
         )
         pt = await row.fetchone()
-        outsiders = ["Maroc", "Japon", "USA", "Sénégal", "Australie", "Iran", "Côte d'Ivoire", "Équateur"]
+        outsiders = ["Maroc", "Japon", "États-Unis", "Sénégal", "Australie", "Iran", "Côte d'Ivoire", "Équateur"]
         pt_deadline = await get_pre_tournament_deadline(db)
         pt_questions = await get_pre_tournament_question_map(db)
         pt_editable = _now_utc() < pt_deadline
+        pt_dict = dict(pt) if pt else {}
+        if pt_dict.get("top_scorer"):
+            pt_dict["top_scorer"] = normalize_scorer(pt_dict["top_scorer"])
+        # Results once correct answers are encoded (after deadline)
+        score_rows = await db.execute(
+            "SELECT question_key, points FROM pre_tournament_scores WHERE participant_id=?",
+            (p["id"],),
+        )
+        pt_scores = {r["question_key"]: r["points"] for r in await score_rows.fetchall()}
+        players_by_team = {
+            team: [
+                {**pl, "choice": scorer_choice(pl),
+                 "pos_label": POSITION_LABELS.get(pl.get("position", ""), "")}
+                for pl in team_players
+            ]
+            for team, team_players in get_players_by_team().items()
+        }
         ctx.update({
-            "pt": dict(pt) if pt else {},
+            "pt": pt_dict,
             "pt_questions": pt_questions,
             "teams": TEAMS_48,
-            "scorers": sorted(SCORERS),
+            "players_by_team": players_by_team,
             "outsiders": outsiders,
             "pt_editable": pt_editable,
             "pt_deadline": pt_deadline,
+            "pt_scores": pt_scores,
+            "pt_error": PT_ERRORS.get(error),
         })
-    return templates.TemplateResponse("pre_tournament.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request, "pre_tournament.html", {"request": request, **ctx})
 
 
 @router.post("/p/{token}/pre-tournoi", response_class=HTMLResponse)
@@ -485,6 +465,23 @@ async def save_pre_tournament(
     action: str = Form(default="draft"),
 ):
     p = await require_participant(token)
+    winner = winner.strip()
+    finalist = finalist.strip()
+    top_scorer = top_scorer.strip()
+    revelation = revelation.strip()
+    if winner and finalist and winner == finalist:
+        return RedirectResponse(
+            url=f"/p/{token}/pre-tournoi?error=winner_finalist", status_code=303
+        )
+    for team_value in (winner, finalist, revelation):
+        if team_value and team_value not in TEAMS_48:
+            return RedirectResponse(
+                url=f"/p/{token}/pre-tournoi?error=invalid_team", status_code=303
+            )
+    if top_scorer and not is_valid_scorer(top_scorer):
+        return RedirectResponse(
+            url=f"/p/{token}/pre-tournoi?error=invalid_scorer", status_code=303
+        )
     async with get_db() as db:
         pt_deadline = await get_pre_tournament_deadline(db)
         if _now_utc() >= pt_deadline:
@@ -544,7 +541,7 @@ async def ranking_page(request: Request, token: str):
             r["is_me"] = (r["id"] == p["id"])
             r["color_class"] = f"c{((r['id'] - 1) % 8) + 1}"
         ctx.update({"rankings": rankings})
-    return templates.TemplateResponse("ranking.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request, "ranking.html", {"request": request, **ctx})
 
 
 @router.get("/p/{token}/match/{match_id}", response_class=HTMLResponse)
@@ -597,7 +594,7 @@ async def match_detail_page(request: Request, token: str, match_id: int):
             "dist": dist,
             "all_preds": all_preds,
         })
-    return templates.TemplateResponse("match_detail.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request, "match_detail.html", {"request": request, **ctx})
 
 
 @router.get("/p/{token}/profil", response_class=HTMLResponse)
@@ -607,7 +604,7 @@ async def own_profile(request: Request, token: str):
         p = ctx["participant"]
         profile_data = await _build_profile(p["id"], db)
         ctx.update({"profile": profile_data, "is_own": True})
-    return templates.TemplateResponse("profile.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request, "profile.html", {"request": request, **ctx})
 
 
 @router.get("/p/{token}/profil/edit", response_class=HTMLResponse)
@@ -615,7 +612,7 @@ async def edit_profile_page(request: Request, token: str):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "profil")
         ctx.update({"teams": TEAMS_48})
-    return templates.TemplateResponse("profile_edit.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request, "profile_edit.html", {"request": request, **ctx})
 
 
 @router.post("/p/{token}/profil/edit", response_class=HTMLResponse)
@@ -672,7 +669,7 @@ async def other_profile(request: Request, token: str, participant_id: int):
             raise HTTPException(404)
         profile_data = await _build_profile(participant_id, db, viewer_id=p["id"])
         ctx.update({"profile": profile_data, "is_own": participant_id == p["id"]})
-    return templates.TemplateResponse("profile.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request, "profile.html", {"request": request, **ctx})
 
 
 async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict:
@@ -827,12 +824,25 @@ async def bonus_page(request: Request, token: str):
             if q["is_open"] and not q["has_answer"]:
                 pending_count += 1
             bonus_questions.append(q)
+        pt_score_row = await db.execute(
+            "SELECT COALESCE(SUM(points), 0) as total FROM pre_tournament_scores WHERE participant_id=?",
+            (p["id"],),
+        )
+        pt_points = (await pt_score_row.fetchone())["total"]
+        pt_scored_row = await db.execute(
+            "SELECT COUNT(*) as cnt FROM pre_tournament_scores WHERE participant_id=?",
+            (p["id"],),
+        )
+        pt_scored = (await pt_scored_row.fetchone())["cnt"] > 0
         ctx.update({
             "bonus_questions": bonus_questions,
             "pending_bonus_questions": pending_count,
             "now": now,
+            "phase_labels": {"pre_tournament": "Pré-tournoi", **PHASE_LABELS},
+            "pt_points": pt_points,
+            "pt_scored": pt_scored,
         })
-    return templates.TemplateResponse("bonus.html", {"request": request, **ctx})
+    return templates.TemplateResponse(request, "bonus.html", {"request": request, **ctx})
 
 
 @router.post("/p/{token}/bonus/{question_id}", response_class=HTMLResponse)
