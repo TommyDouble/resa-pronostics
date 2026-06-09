@@ -10,6 +10,13 @@ from fastapi.templating import Jinja2Templates
 
 from app.auth import require_participant
 from app.database import get_db
+from app.datetime_utils import (
+    match_to_local_label,
+    now_utc_str,
+    utc_to_local_input,
+    utc_to_local_label,
+    utc_to_local_short,
+)
 from app.pre_tournament import (
     get_pre_tournament_deadline,
     get_pre_tournament_question_map,
@@ -20,6 +27,9 @@ from app.scoring import get_rankings
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["fromjson"] = json.loads
+templates.env.filters["localdt"] = utc_to_local_label
+templates.env.filters["localinput"] = utc_to_local_input
+templates.env.filters["localshort"] = utc_to_local_short
 logger = logging.getLogger(__name__)
 
 PHASE_LABELS = {
@@ -89,7 +99,7 @@ SCORERS = [
 
 
 def _now_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    return now_utc_str()
 
 
 def _split_name(name: str) -> tuple[str, str]:
@@ -137,6 +147,11 @@ def _minutes_until(match: dict) -> int:
         return 99999
 
 
+def _decorate_match_times(matches: list[dict]):
+    for match in matches:
+        match["kickoff_display"] = match_to_local_label(match)
+
+
 async def _get_participant_context(token: str, db, active_nav: str = "home") -> dict:
     """Build common context for participant templates."""
     p = await require_participant(token)
@@ -148,7 +163,7 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
     # Pending bonus questions
     bonus_row = await db.execute(
         """SELECT COUNT(*) as cnt FROM bonus_questions bq
-           WHERE bq.deadline > ? AND NOT EXISTS (
+           WHERE bq.deadline > ? AND bq.correct_answer IS NULL AND NOT EXISTS (
              SELECT 1 FROM bonus_answers ba
              WHERE ba.question_id = bq.id AND ba.participant_id = ?
            )""",
@@ -185,9 +200,14 @@ async def register_post(request: Request, name: str = Form(...), email: str = Fo
     async with get_db() as db:
         # Check if email already registered
         existing = await (await db.execute(
-            "SELECT token FROM participants WHERE email=?", (email,)
+            "SELECT token, is_active FROM participants WHERE email=?", (email,)
         )).fetchone()
         if existing:
+            if not existing["is_active"]:
+                return templates.TemplateResponse("register.html", {
+                    "request": request,
+                    "error": "Ce compte est désactivé. Contacte l'organisateur.",
+                })
             return RedirectResponse(url=f"/p/{existing['token']}", status_code=303)
         try:
             await db.execute(
@@ -229,6 +249,7 @@ async def participant_home(request: Request, token: str):
         today_matches = [dict(r) for r in await rows.fetchall()]
         for m in today_matches:
             m["is_locked"] = _is_locked(m)
+        _decorate_match_times(today_matches)
         # Urgency match: next unpredicted/locked-soon match
         urgency = None
         for m in today_matches:
@@ -306,6 +327,7 @@ async def predictions_page(request: Request, token: str, phase: str = "group"):
         for m in all_matches:
             m["is_locked"] = _is_locked(m)
             m["phase_label"] = PHASE_LABELS.get(m["phase"], m["phase"])
+        _decorate_match_times(all_matches)
         # Group by phase then by date
         phases_order = ["group", "round_of_32", "round_of_16", "quarter", "semi", "third_place", "final"]
         # Pre-tournament warning
@@ -458,7 +480,7 @@ async def match_detail_page(request: Request, token: str, match_id: int):
                FROM predictions pr
                JOIN participants par ON par.id = pr.participant_id
                LEFT JOIN scores s ON s.match_id = pr.match_id AND s.participant_id = pr.participant_id
-               WHERE pr.match_id = ?
+               WHERE pr.match_id = ? AND par.is_active=1
                ORDER BY COALESCE(s.points, 0) DESC""",
             (match_id,)
         )
@@ -540,7 +562,10 @@ async def other_profile(request: Request, token: str, participant_id: int):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "")
         p = ctx["participant"]
-        row = await db.execute("SELECT * FROM participants WHERE id=? AND is_confirmed=1", (participant_id,))
+        row = await db.execute(
+            "SELECT * FROM participants WHERE id=? AND is_confirmed=1 AND is_active=1",
+            (participant_id,),
+        )
         target = await row.fetchone()
         if not target:
             raise HTTPException(404)
@@ -696,9 +721,10 @@ async def bonus_page(request: Request, token: str):
             q = dict(row)
             q["is_open"] = q["deadline"] > now
             q["has_answer"] = q["answer"] is not None
-            q["has_score"] = q["points"] is not None
+            q["has_score"] = q["points"] is not None or q["correct_answer"] is not None
             q["can_edit"] = q["is_open"] and not q["has_score"]
-            if q["is_open"] and not q["has_answer"]:
+            q["deadline_display"] = utc_to_local_label(q["deadline"])
+            if q["can_edit"] and not q["has_answer"]:
                 pending_count += 1
             bonus_questions.append(q)
         ctx.update({
@@ -718,12 +744,22 @@ async def submit_bonus(request: Request, token: str, question_id: int,
         q = await q_row.fetchone()
         if not q:
             raise HTTPException(404)
-        if q["deadline"] < _now_utc():
+        if q["deadline"] <= _now_utc():
             raise HTTPException(403, "Deadline dépassée")
+        if q["correct_answer"] is not None:
+            raise HTTPException(403, "Points déjà attribués")
+        score_row = await db.execute(
+            "SELECT 1 FROM scores WHERE bonus_question_id=? AND participant_id=?",
+            (question_id, p["id"]),
+        )
+        if await score_row.fetchone():
+            raise HTTPException(403, "Points déjà attribués")
         await db.execute(
             """INSERT INTO bonus_answers (participant_id, question_id, answer)
                VALUES (?,?,?)
-               ON CONFLICT(participant_id, question_id) DO UPDATE SET answer=excluded.answer""",
+               ON CONFLICT(participant_id, question_id) DO UPDATE SET
+                 answer=excluded.answer,
+                 submitted_at=datetime('now')""",
             (p["id"], question_id, answer)
         )
         await db.commit()

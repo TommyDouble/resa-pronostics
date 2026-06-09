@@ -7,7 +7,7 @@ async def get_participant_by_token(token: str):
     """Look up participant by UUID token."""
     async with get_db() as db:
         row = await db.execute(
-            "SELECT * FROM participants WHERE token = ?", (token,)
+            "SELECT * FROM participants WHERE token = ? AND is_active = 1", (token,)
         )
         participant = await row.fetchone()
     return participant

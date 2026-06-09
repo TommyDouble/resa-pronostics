@@ -84,6 +84,7 @@
         <th>{{ pt_questions.top_scorer.label }}</th>
         <th>{{ pt_questions.revelation.label }}</th>
         <th>{{ pt_questions.total_goals.label }}</th>
+        <th>Pts</th>
         <th>Statut</th>
       </tr>
     </thead>
@@ -99,6 +100,7 @@
         <td>{{ r.top_scorer or '—' }}</td>
         <td>{{ r.revelation or '—' }}</td>
         <td>{{ r.total_goals or '—' }}</td>
+        <td class="s">{{ r.pre_tournament_points }}</td>
         <td>
           {% if r.submitted %}
           <span class="chip ok">Soumis</span>
@@ -111,7 +113,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--n400);">Aucune réponse pré-tournoi.</td></tr>
+      <tr><td colspan="8" style="text-align:center;padding:24px;color:var(--n400);">Aucune réponse pré-tournoi.</td></tr>
       {% endfor %}
     </tbody>
   </table>

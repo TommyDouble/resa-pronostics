@@ -10,24 +10,41 @@ from fastapi import APIRouter, Form, HTTPException, Query, Request, UploadFile, 
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import require_admin, verify_password, hash_password
+from app.auth import require_admin, verify_password
 from app.config import settings
 from app.database import get_db
+from app.datetime_utils import (
+    local_input_to_utc,
+    match_to_local_label,
+    utc_to_local_input,
+    utc_to_local_label,
+    utc_to_local_short,
+)
 from app.mail import (
+    send_email,
     send_invitation,
     send_match_reminder as send_match_reminder_email,
     send_pre_tournament_reminder,
 )
+from app.routers.pages import SCORERS, TEAMS_48
 from app.pre_tournament import (
     DEFAULT_PRE_TOURNAMENT_QUESTIONS,
     get_pre_tournament_deadline,
     get_pre_tournament_question_map,
     get_pre_tournament_questions,
 )
-from app.scoring import recalculate_match_scores, get_rankings, calculate_bonus_scores
+from app.scoring import (
+    calculate_bonus_scores,
+    get_rankings,
+    recalculate_match_scores,
+    recalculate_pre_tournament_scores,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.filters["localdt"] = utc_to_local_label
+templates.env.filters["localinput"] = utc_to_local_input
+templates.env.filters["localshort"] = utc_to_local_short
 logger = logging.getLogger(__name__)
 
 PHASE_LABELS = {
@@ -41,6 +58,7 @@ PHASE_LABELS = {
 }
 
 BONUS_PHASES = {"pre_tournament", "round_of_32", "quarter", "semi"}
+OUTSIDERS = ["Maroc", "Japon", "USA", "Sénégal", "Australie", "Iran", "Côte d'Ivoire", "Équateur"]
 
 STATUSES = {
     "confirmed": ("ok", "confirmé"),
@@ -90,6 +108,11 @@ def _normalize_bonus_options(answer_type: str, options_text: str):
     return json.dumps(options, ensure_ascii=False) if options else None
 
 
+def _decorate_match_times(matches: list[dict]):
+    for match in matches:
+        match["kickoff_display"] = match_to_local_label(match)
+
+
 # ---- Login ----
 
 @router.get("/login", response_class=HTMLResponse)
@@ -132,14 +155,23 @@ async def dashboard(request: Request):
     async with get_db() as db:
         now = _now_utc()
         # KPIs
-        total_row = await db.execute("SELECT COUNT(*) as cnt FROM participants WHERE is_admin=0")
+        total_row = await db.execute("SELECT COUNT(*) as cnt FROM participants WHERE is_admin=0 AND is_active=1")
         total_participants = (await total_row.fetchone())["cnt"]
-        confirmed_row = await db.execute("SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0")
+        confirmed_row = await db.execute(
+            "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0 AND is_active=1"
+        )
         confirmed = (await confirmed_row.fetchone())["cnt"]
-        pt_row = await db.execute("SELECT COUNT(*) as cnt FROM pre_tournament_predictions WHERE submitted=1")
+        pt_row = await db.execute(
+            """SELECT COUNT(*) as cnt FROM pre_tournament_predictions pt
+               JOIN participants p ON p.id=pt.participant_id
+               WHERE pt.submitted=1 AND p.is_active=1 AND p.is_admin=0"""
+        )
         pt_submitted = (await pt_row.fetchone())["cnt"]
         has_pred_row = await db.execute(
-            "SELECT COUNT(DISTINCT participant_id) as cnt FROM predictions"
+            """SELECT COUNT(DISTINCT pr.participant_id) as cnt
+               FROM predictions pr
+               JOIN participants p ON p.id=pr.participant_id
+               WHERE p.is_active=1 AND p.is_admin=0"""
         )
         has_pred = (await has_pred_row.fetchone())["cnt"]
         next_row = await db.execute(
@@ -181,15 +213,20 @@ async def dashboard(request: Request):
 # ---- Participants ----
 
 @router.get("/participants", response_class=HTMLResponse)
-async def participants_list(request: Request):
+async def participants_list(request: Request, show: str = Query(default="active")):
     await require_admin(request)
+    if show not in ("active", "inactive"):
+        show = "active"
+    active_value = 0 if show == "inactive" else 1
     async with get_db() as db:
         rows = await db.execute(
             """SELECT p.*,
                  (SELECT COUNT(*) FROM predictions WHERE participant_id=p.id) as pred_count,
                  (SELECT submitted FROM pre_tournament_predictions WHERE participant_id=p.id) as pt_submitted
-               FROM participants p WHERE p.is_admin=0
+               FROM participants p WHERE p.is_admin=0 AND p.is_active=?
                ORDER BY p.created_at"""
+            ,
+            (active_value,),
         )
         participants = [dict(r) for r in await rows.fetchall()]
     return templates.TemplateResponse("admin/participants.html", {
@@ -198,6 +235,7 @@ async def participants_list(request: Request):
         "flashes": _get_flashes(request),
         "participants": participants,
         "base_url": request.base_url,
+        "show": show,
     })
 
 
@@ -221,7 +259,11 @@ async def add_participant(request: Request, name: str = Form(...), email: str = 
             if sent:
                 _flash(request, f"Participant {name} ajouté. Invitation envoyée.")
             else:
-                _flash(request, f"Participant {name} ajouté, mais l'invitation n'a pas pu être envoyée.", "err")
+                _flash(
+                    request,
+                    f"Participant {name} ajouté. Lien généré, email non envoyé (SMTP absent ou erreur).",
+                    "warn",
+                )
         except Exception as e:
             if "UNIQUE" in str(e):
                 _flash(request, "Email déjà utilisé.", "err")
@@ -235,7 +277,7 @@ async def invite_participant(request: Request, participant_id: int):
     await require_admin(request)
     async with get_db() as db:
         row = await db.execute(
-            "SELECT name, email, token FROM participants WHERE id=? AND is_admin=0",
+            "SELECT name, email, token FROM participants WHERE id=? AND is_admin=0 AND is_active=1",
             (participant_id,)
         )
         participant = await row.fetchone()
@@ -245,7 +287,43 @@ async def invite_participant(request: Request, participant_id: int):
     if sent:
         _flash(request, f"Invitation envoyée à {participant['email']}.")
     else:
-        _flash(request, f"Impossible d'envoyer l'invitation à {participant['email']}.", "err")
+        _flash(
+            request,
+            f"Email non envoyé à {participant['email']}. Copie le lien personnel depuis la liste.",
+            "warn",
+        )
+    return RedirectResponse("/admin/participants", status_code=303)
+
+
+@router.post("/participants/{participant_id}/update")
+async def update_participant(
+    request: Request,
+    participant_id: int,
+    name: str = Form(...),
+    email: str = Form(...),
+):
+    await require_admin(request)
+    name = name.strip()
+    email = email.strip().lower()
+    if not name or "@" not in email:
+        _flash(request, "Nom ou email invalide.", "err")
+        return RedirectResponse("/admin/participants", status_code=303)
+    first_name, last_name = _split_name(name)
+    async with get_db() as db:
+        try:
+            await db.execute(
+                """UPDATE participants
+                   SET name=?, first_name=?, last_name=?, email=?
+                   WHERE id=? AND is_admin=0""",
+                (name, first_name, last_name, email, participant_id),
+            )
+            await db.commit()
+            _flash(request, "Participant mis à jour.")
+        except Exception as e:
+            if "UNIQUE" in str(e):
+                _flash(request, "Email déjà utilisé.", "err")
+            else:
+                _flash(request, "Erreur lors de la mise à jour.", "err")
     return RedirectResponse("/admin/participants", status_code=303)
 
 
@@ -267,17 +345,26 @@ async def toggle_paid(request: Request, participant_id: int):
 async def delete_participant(request: Request, participant_id: int):
     await require_admin(request)
     async with get_db() as db:
-        # Check if any predictions exist (can't delete if tournament started)
-        pred_row = await db.execute("SELECT COUNT(*) as cnt FROM predictions WHERE participant_id=?", (participant_id,))
-        pred_count = (await pred_row.fetchone())["cnt"]
-        if pred_count > 0:
-            # Soft delete: just mark unconfirmed
-            await db.execute("UPDATE participants SET is_confirmed=0 WHERE id=?", (participant_id,))
-        else:
-            await db.execute("DELETE FROM participants WHERE id=?", (participant_id,))
+        await db.execute(
+            "UPDATE participants SET is_active=0 WHERE id=? AND is_admin=0",
+            (participant_id,),
+        )
         await db.commit()
-    _flash(request, "Participant supprimé.")
+    _flash(request, "Participant désactivé. Son lien personnel est bloqué.")
     return RedirectResponse("/admin/participants", status_code=303)
+
+
+@router.post("/participants/{participant_id}/reactivate")
+async def reactivate_participant(request: Request, participant_id: int):
+    await require_admin(request)
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE participants SET is_active=1 WHERE id=? AND is_admin=0",
+            (participant_id,),
+        )
+        await db.commit()
+    _flash(request, "Participant réactivé.")
+    return RedirectResponse("/admin/participants?show=inactive", status_code=303)
 
 
 @router.post("/participants/import")
@@ -327,10 +414,14 @@ async def import_csv(request: Request, csv_file: UploadFile = File(...)):
     for participant in imported_participants:
         if await send_invitation(participant):
             sent_count += 1
-    _flash(
-        request,
-        f"{len(imported_participants)} participant(s) importé(s), {sent_count} invitation(s) envoyée(s).",
-    )
+    if sent_count == len(imported_participants):
+        _flash(request, f"{len(imported_participants)} participant(s) importé(s), {sent_count} invitation(s) envoyée(s).")
+    else:
+        _flash(
+            request,
+            f"{len(imported_participants)} participant(s) importé(s), {sent_count} email(s) envoyé(s). Liens disponibles dans la liste.",
+            "warn",
+        )
     return RedirectResponse("/admin/participants", status_code=303)
 
 
@@ -349,7 +440,7 @@ async def predictions_admin(
     async with get_db() as db:
         p_rows = await db.execute(
             """SELECT id, name, nickname FROM participants
-               WHERE is_admin=0
+               WHERE is_admin=0 AND is_active=1
                ORDER BY COALESCE(NULLIF(nickname, ''), name)"""
         )
         participants = [dict(r) for r in await p_rows.fetchall()]
@@ -359,7 +450,7 @@ async def predictions_admin(
         pt_questions = await get_pre_tournament_question_map(db, include_disabled=True)
 
         if view == "matches":
-            where = ["p.is_admin=0"]
+            where = ["p.is_admin=0", "p.is_active=1"]
             params = []
             if participant_id:
                 where.append("p.id=?")
@@ -388,7 +479,7 @@ async def predictions_admin(
             match_predictions = [dict(r) for r in await rows.fetchall()]
 
         if view == "pre_tournament":
-            where = ["p.is_admin=0"]
+            where = ["p.is_admin=0", "p.is_active=1"]
             params = []
             if participant_id:
                 where.append("p.id=?")
@@ -399,10 +490,16 @@ async def predictions_admin(
                       COALESCE(NULLIF(p.nickname, ''), p.name) as participant_name,
                       p.name as full_name,
                       pt.winner, pt.finalist, pt.top_scorer, pt.revelation,
-                      pt.total_goals, pt.submitted, pt.submitted_at
+                      pt.total_goals, pt.submitted, pt.submitted_at,
+                      COALESCE(pts.points, 0) as pre_tournament_points
                     FROM participants p
                     LEFT JOIN pre_tournament_predictions pt
                       ON pt.participant_id = p.id
+                    LEFT JOIN (
+                      SELECT participant_id, SUM(points) as points
+                      FROM pre_tournament_scores
+                      GROUP BY participant_id
+                    ) pts ON pts.participant_id = p.id
                     WHERE {' AND '.join(where)}
                     ORDER BY p.name""",
                 params,
@@ -410,7 +507,7 @@ async def predictions_admin(
             pre_tournament_rows = [dict(r) for r in await rows.fetchall()]
 
         if view == "bonus":
-            where = ["p.is_admin=0"]
+            where = ["p.is_admin=0", "p.is_active=1"]
             params = []
             if participant_id:
                 where.append("p.id=?")
@@ -459,21 +556,40 @@ async def pre_tournament_admin(request: Request):
         questions = await get_pre_tournament_questions(db, include_disabled=True)
         deadline = await get_pre_tournament_deadline(db)
         submitted_row = await db.execute(
-            "SELECT COUNT(*) as cnt FROM pre_tournament_predictions WHERE submitted=1"
+            """SELECT COUNT(*) as cnt FROM pre_tournament_predictions pt
+               JOIN participants p ON p.id=pt.participant_id
+               WHERE pt.submitted=1 AND p.is_active=1 AND p.is_admin=0"""
         )
         submitted_count = (await submitted_row.fetchone())["cnt"]
         total_row = await db.execute(
-            "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0"
+            "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0 AND is_active=1"
         )
         total_count = (await total_row.fetchone())["cnt"]
+        answer_rows = await db.execute("SELECT key, answer FROM pre_tournament_official_answers")
+        official_answers = {r["key"]: r["answer"] for r in await answer_rows.fetchall()}
+        scored_row = await db.execute(
+            """SELECT COUNT(DISTINCT ps.participant_id) as cnt, COALESCE(SUM(ps.points), 0) as pts
+               FROM pre_tournament_scores ps
+               JOIN participants p ON p.id=ps.participant_id
+               WHERE p.is_active=1 AND p.is_admin=0"""
+        )
+        scored = await scored_row.fetchone()
     return templates.TemplateResponse("admin/pre_tournament.html", {
         "request": request,
         "active": "pre_tournoi",
         "flashes": _get_flashes(request),
         "questions": questions,
         "deadline": deadline,
+        "deadline_input": utc_to_local_input(deadline),
+        "deadline_display": utc_to_local_label(deadline),
         "submitted_count": submitted_count,
         "total_count": total_count,
+        "official_answers": official_answers,
+        "pre_tournament_scored_count": scored["cnt"] if scored else 0,
+        "pre_tournament_total_points": scored["pts"] if scored else 0,
+        "teams": TEAMS_48,
+        "scorers": sorted(SCORERS),
+        "outsiders": OUTSIDERS,
     })
 
 
@@ -484,11 +600,16 @@ async def update_pre_tournament_deadline(request: Request, deadline: str = Form(
     if "T" not in deadline:
         _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/pre-tournoi", status_code=303)
+    try:
+        deadline_utc = local_input_to_utc(deadline)
+    except ValueError:
+        _flash(request, "Deadline invalide.", "err")
+        return RedirectResponse("/admin/pre-tournoi", status_code=303)
     async with get_db() as db:
         await db.execute(
             """INSERT INTO app_settings (key, value) VALUES ('pre_tournament_deadline', ?)
                ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
-            (deadline,)
+            (deadline_utc,)
         )
         await db.commit()
     _flash(request, "Deadline pré-tournoi mise à jour.")
@@ -526,6 +647,45 @@ async def update_pre_tournament_question(
     return RedirectResponse("/admin/pre-tournoi", status_code=303)
 
 
+@router.post("/pre-tournoi/official")
+async def update_pre_tournament_official_answers(
+    request: Request,
+    winner: str = Form(default=""),
+    finalist: str = Form(default=""),
+    top_scorer: str = Form(default=""),
+    revelation: str = Form(default=""),
+    total_goals: str = Form(default=""),
+):
+    await require_admin(request)
+    answers = {
+        "winner": winner.strip(),
+        "finalist": finalist.strip(),
+        "top_scorer": top_scorer.strip(),
+        "revelation": revelation.strip(),
+        "total_goals": total_goals.strip(),
+    }
+    if answers["total_goals"]:
+        try:
+            int(answers["total_goals"])
+        except ValueError:
+            _flash(request, "Total de buts officiel invalide.", "err")
+            return RedirectResponse("/admin/pre-tournoi", status_code=303)
+    async with get_db() as db:
+        for key, value in answers.items():
+            await db.execute(
+                """INSERT INTO pre_tournament_official_answers (key, answer, updated_at)
+                   VALUES (?, ?, datetime('now'))
+                   ON CONFLICT(key) DO UPDATE SET
+                     answer=excluded.answer,
+                     updated_at=datetime('now')""",
+                (key, value or None),
+            )
+        await db.commit()
+    await recalculate_pre_tournament_scores()
+    _flash(request, "Réponses officielles enregistrées. Scores pré-tournoi recalculés.")
+    return RedirectResponse("/admin/pre-tournoi", status_code=303)
+
+
 # ---- Matches ----
 
 @router.get("/matches", response_class=HTMLResponse)
@@ -537,6 +697,7 @@ async def matches_list(request: Request, phase: str = "group"):
             (phase,)
         )
         matches = [dict(r) for r in await rows.fetchall()]
+        _decorate_match_times(matches)
         counts = {}
         for ph in PHASE_LABELS:
             c_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE phase=?", (ph,))
@@ -588,12 +749,14 @@ async def results_page(request: Request):
             (now,)
         )
         pending = [dict(r) for r in await pending_rows.fetchall()]
+        _decorate_match_times(pending)
         # Already encoded (last 10)
         done_rows = await db.execute(
             """SELECT * FROM matches WHERE result IS NOT NULL
                ORDER BY match_date DESC, kickoff_time DESC LIMIT 10"""
         )
         done = [dict(r) for r in await done_rows.fetchall()]
+        _decorate_match_times(done)
     return templates.TemplateResponse("admin/results.html", {
         "request": request,
         "active": "resultats",
@@ -664,6 +827,8 @@ async def bonus_admin(request: Request):
                 opts = []
             question["options_text"] = "\n".join(opts)
             question["correct_count"] = question.get("correct_count") or 0
+            question["deadline_input"] = utc_to_local_input(question["deadline"])
+            question["deadline_display"] = utc_to_local_label(question["deadline"])
         answer_rows = await db.execute(
             """SELECT
                   ba.question_id,
@@ -676,7 +841,7 @@ async def bonus_admin(request: Request):
                JOIN participants p ON p.id = ba.participant_id
                LEFT JOIN scores s ON s.bonus_question_id = ba.question_id
                  AND s.participant_id = ba.participant_id
-               WHERE p.is_admin=0
+               WHERE p.is_admin=0 AND p.is_active=1
                ORDER BY ba.submitted_at DESC"""
         )
         answers_by_question = {}
@@ -684,11 +849,13 @@ async def bonus_admin(request: Request):
             answer_dict = dict(answer)
             answers_by_question.setdefault(answer_dict["question_id"], []).append(answer_dict)
         pt_sub_row = await db.execute(
-            "SELECT COUNT(*) as cnt FROM pre_tournament_predictions WHERE submitted=1"
+            """SELECT COUNT(*) as cnt FROM pre_tournament_predictions pt
+               JOIN participants p ON p.id=pt.participant_id
+               WHERE pt.submitted=1 AND p.is_active=1 AND p.is_admin=0"""
         )
         pt_submitted_count = (await pt_sub_row.fetchone())["cnt"]
         pt_total_row = await db.execute(
-            "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1"
+            "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0 AND is_active=1"
         )
         pt_total_count = (await pt_total_row.fetchone())["cnt"]
     return templates.TemplateResponse("admin/bonus.html", {
@@ -717,6 +884,11 @@ async def create_bonus(request: Request,
     if phase not in BONUS_PHASES:
         _flash(request, "Phase de question bonus invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
+    try:
+        deadline_utc = local_input_to_utc(deadline)
+    except ValueError:
+        _flash(request, "Deadline invalide.", "err")
+        return RedirectResponse("/admin/bonus", status_code=303)
     options = _normalize_bonus_options(answer_type, options_text)
     async with get_db() as db:
         cursor = await db.execute(
@@ -730,7 +902,7 @@ async def create_bonus(request: Request,
                 options,
                 points_value,
                 correct_answer.strip() or None,
-                deadline,
+                deadline_utc,
             )
         )
         question_id = cursor.lastrowid
@@ -760,6 +932,11 @@ async def update_bonus_question(
     if phase not in BONUS_PHASES:
         _flash(request, "Phase de question bonus invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
+    try:
+        deadline_utc = local_input_to_utc(deadline)
+    except ValueError:
+        _flash(request, "Deadline invalide.", "err")
+        return RedirectResponse("/admin/bonus", status_code=303)
     options = _normalize_bonus_options(answer_type, options_text)
     async with get_db() as db:
         row = await db.execute("SELECT id FROM bonus_questions WHERE id=?", (question_id,))
@@ -777,7 +954,7 @@ async def update_bonus_question(
                 options,
                 points_value,
                 correct_answer.strip() or None,
-                deadline,
+                deadline_utc,
                 question_id,
             ),
         )
@@ -824,7 +1001,7 @@ async def communications(request: Request):
         # Count non-submitted pre-tournament
         ns_row = await db.execute(
             """SELECT COUNT(*) as cnt FROM participants p
-               WHERE p.is_confirmed=1 AND p.is_admin=0
+               WHERE p.is_confirmed=1 AND p.is_admin=0 AND p.is_active=1
                AND NOT EXISTS (SELECT 1 FROM pre_tournament_predictions pt
                                WHERE pt.participant_id=p.id AND pt.submitted=1)"""
         )
@@ -836,6 +1013,7 @@ async def communications(request: Request):
             (today,)
         )
         upcoming = [dict(r) for r in await m_rows.fetchall()]
+        _decorate_match_times(upcoming)
     return templates.TemplateResponse("admin/communications.html", {
         "request": request,
         "active": "communications",
@@ -844,6 +1022,8 @@ async def communications(request: Request):
         "upcoming_matches": upcoming,
         "smtp_host": settings.SMTP_HOST,
         "smtp_port": settings.SMTP_PORT,
+        "smtp_from": settings.SMTP_FROM,
+        "smtp_configured": bool(settings.SMTP_HOST),
     })
 
 
@@ -853,7 +1033,7 @@ async def send_pt_reminder(request: Request):
     async with get_db() as db:
         rows = await db.execute(
             """SELECT p.name, p.email, p.token FROM participants p
-               WHERE p.is_confirmed=1 AND p.is_admin=0 AND p.email_opt_in=1
+               WHERE p.is_confirmed=1 AND p.is_admin=0 AND p.is_active=1 AND p.email_opt_in=1
                AND NOT EXISTS (SELECT 1 FROM pre_tournament_predictions pt
                                WHERE pt.participant_id=p.id AND pt.submitted=1)"""
         )
@@ -879,7 +1059,7 @@ async def send_match_reminder(request: Request, match_id: int = Form(...)):
             return RedirectResponse("/admin/communications", status_code=303)
         rows = await db.execute(
             """SELECT p.name, p.email, p.token FROM participants p
-               WHERE p.is_confirmed=1 AND p.is_admin=0 AND p.email_opt_in=1
+               WHERE p.is_confirmed=1 AND p.is_admin=0 AND p.is_active=1 AND p.email_opt_in=1
                AND NOT EXISTS (SELECT 1 FROM predictions pr
                                WHERE pr.participant_id=p.id AND pr.match_id=?)""",
             (match_id,)
@@ -894,6 +1074,26 @@ async def send_match_reminder(request: Request, match_id: int = Form(...)):
     return RedirectResponse("/admin/communications", status_code=303)
 
 
+@router.post("/communications/test-smtp")
+async def test_smtp(request: Request, email: str = Form(...)):
+    await require_admin(request)
+    email = email.strip().lower()
+    if "@" not in email:
+        _flash(request, "Email de test invalide.", "err")
+        return RedirectResponse("/admin/communications", status_code=303)
+    sent = await send_email(
+        email,
+        "Test SMTP RESA Pronostics",
+        "<p>Le SMTP RESA Pronostics est configuré correctement.</p>",
+        "Le SMTP RESA Pronostics est configuré correctement.",
+    )
+    if sent:
+        _flash(request, f"Email de test envoyé à {email}.")
+    else:
+        _flash(request, "Email de test non envoyé : SMTP absent ou erreur d'envoi.", "err")
+    return RedirectResponse("/admin/communications", status_code=303)
+
+
 # ---- Export ----
 
 @router.get("/export/rankings")
@@ -903,9 +1103,25 @@ async def export_rankings(request: Request):
         rankings = await get_rankings(db)
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Rang", "Nom", "Email", "Points totaux"])
+    writer.writerow([
+        "Rang",
+        "Nom",
+        "Email",
+        "Points totaux",
+        "Points pre-tournoi",
+        "Scores exacts",
+        "Issues correctes",
+    ])
     for r in rankings:
-        writer.writerow([r["rank"], r["name"], r["email"], r["total_points"]])
+        writer.writerow([
+            r["rank"],
+            r["name"],
+            r["email"],
+            r["total_points"],
+            r["pre_tournament_points"],
+            r["exact_count"],
+            r["outcome_count"],
+        ])
     output.seek(0)
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode("utf-8-sig")),

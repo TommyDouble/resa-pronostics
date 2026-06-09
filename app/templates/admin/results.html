@@ -12,7 +12,7 @@
     <div style="flex:1;min-width:160px;">
       <b style="font-size:14px;">#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</b>
       <div class="muted" style="font-size:11px;margin-top:2px;">
-        {{ m.match_date }} {{ m.kickoff_time[:5] }}
+        {{ m.kickoff_display }}
         {% if m.is_top_match %} · ★ Top ×2{% endif %}
       </div>
     </div>

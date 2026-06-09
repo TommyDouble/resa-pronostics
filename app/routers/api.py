@@ -27,6 +27,27 @@ def _is_locked(match: dict) -> bool:
         return False
 
 
+def _score_outcome(score_team1: int, score_team2: int) -> str:
+    if score_team1 > score_team2:
+        return "team1"
+    if score_team2 > score_team1:
+        return "team2"
+    return "draw"
+
+
+def _validate_exact_score_consistency(body: "PredictionIn"):
+    has_one_score = body.exact_score_team1 is not None or body.exact_score_team2 is not None
+    has_both_scores = body.exact_score_team1 is not None and body.exact_score_team2 is not None
+    if has_one_score and not has_both_scores:
+        raise HTTPException(400, "Score exact incomplet")
+    if has_both_scores:
+        if body.exact_score_team1 < 0 or body.exact_score_team2 < 0:
+            raise HTTPException(400, "Score exact invalide")
+        score_prediction = _score_outcome(body.exact_score_team1, body.exact_score_team2)
+        if score_prediction != body.prediction:
+            raise HTTPException(400, "Le score exact ne correspond pas au pronostic choisi")
+
+
 class PredictionIn(BaseModel):
     match_id: int
     prediction: str
@@ -38,6 +59,7 @@ class PredictionIn(BaseModel):
 async def submit_prediction(body: PredictionIn, token: str = Query(...)):
     if body.prediction not in ("team1", "draw", "team2"):
         raise HTTPException(400, "Prediction invalide")
+    _validate_exact_score_consistency(body)
     p = await get_participant_by_token(token)
     if not p:
         raise HTTPException(403, "Token invalide")

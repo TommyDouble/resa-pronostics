@@ -14,7 +14,7 @@
       <span class="chip warn">Brouillon</span>
     {% endif %}
   </div>
-  <div class="sub1">Deadline · {{ pt_deadline[:10] }} à {{ pt_deadline[11:16] }} UTC</div>
+  <div class="sub1">Deadline · {{ pt_deadline | localdt }} Bruxelles</div>
 </div>
 
 <div class="page-content">

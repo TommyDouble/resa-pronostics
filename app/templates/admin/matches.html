@@ -32,7 +32,7 @@
       <tr>
         <td style="color:var(--n600);">{{ m.match_number }}</td>
         <td style="font-weight:600;">{{ m.team1_name }} – {{ m.team2_name }}</td>
-        <td class="muted" style="font-size:12px;">{{ m.match_date }} {{ m.kickoff_time[:5] }}</td>
+        <td class="muted" style="font-size:12px;">{{ m.kickoff_display }}</td>
         <td>
           <button class="chip {{ 'acc' if m.is_top_match else 'gr' }}"
                   data-toggle-top="{{ m.id }}"

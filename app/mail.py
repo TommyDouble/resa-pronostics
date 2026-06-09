@@ -1,4 +1,4 @@
-"""Email sending — uses SMTP if configured, otherwise logs to console."""
+"""Email sending through configured SMTP."""
 import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -9,15 +9,15 @@ logger = logging.getLogger(__name__)
 
 
 async def send_email(to: str, subject: str, html_body: str, text_body: str = ""):
-    """Send an email. Falls back to console logging if SMTP not configured."""
+    """Send an email. Return False when SMTP is not configured."""
     if not settings.SMTP_HOST:
         logger.info(
-            f"[EMAIL LOG - SMTP not configured]\n"
+            f"[EMAIL NOT SENT - SMTP not configured]\n"
             f"TO: {to}\n"
             f"SUBJECT: {subject}\n"
             f"BODY: {text_body or html_body}\n"
         )
-        return True
+        return False
 
     try:
         msg = MIMEMultipart("alternative")

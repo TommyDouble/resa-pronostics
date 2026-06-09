@@ -15,7 +15,7 @@
         ⑤ Total buts en groupes (+8/+4 pts)
       </div>
     </div>
-    <span class="chip" style="white-space:nowrap;">Deadline · {{ pt_deadline[:10] }} {{ pt_deadline[11:16] }} UTC</span>
+    <span class="chip" style="white-space:nowrap;">Deadline · {{ pt_deadline | localdt }} Bruxelles</span>
   </div>
   <div style="margin-top:10px;font-size:12px;color:var(--n600);">
     <b>{{ pt_submitted_count }}</b> / {{ pt_total_count }} participants ont soumis leurs pronostics pré-tournoi.
@@ -73,7 +73,7 @@
       <textarea name="options_text" class="textarea" rows="3" placeholder="Une option par ligne, ou séparées par des virgules"></textarea>
     </div>
     <div>
-      <div class="lbl" style="margin-bottom:5px;">Deadline (ISO, UTC)</div>
+      <div class="lbl" style="margin-bottom:5px;">Deadline (heure Bruxelles)</div>
       <div class="field"><input type="datetime-local" name="deadline" required style="flex:1;"></div>
     </div>
     <div>
@@ -98,7 +98,7 @@
     <div style="flex:1;min-width:240px;">
       <b style="font-size:14px;">{{ q.question_text }}</b>
       <div class="muted" style="font-size:11px;margin-top:3px;">
-        {{ phase_labels.get(q.phase, q.phase) }} · {{ q.answer_type }} · {{ q.points_value }} pts · deadline: {{ q.deadline[:16] }}
+        {{ phase_labels.get(q.phase, q.phase) }} · {{ q.answer_type }} · {{ q.points_value }} pts · deadline: {{ q.deadline_display }}
       </div>
     </div>
     <span class="chip {{ 'ok' if q.correct_answer else 'warn' }}">
@@ -150,7 +150,7 @@
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div>
         <div class="lbl" style="margin-bottom:5px;">Deadline</div>
-        <div class="field"><input type="datetime-local" name="deadline" value="{{ q.deadline[:16] }}" required></div>
+        <div class="field"><input type="datetime-local" name="deadline" value="{{ q.deadline_input }}" required></div>
       </div>
       <div>
         <div class="lbl" style="margin-bottom:5px;">Réponse correcte</div>

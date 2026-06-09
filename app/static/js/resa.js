@@ -31,6 +31,7 @@ function initPredictionPills() {
         if (!activePill) return;
         var s1 = card.querySelector('.mini-input[data-side="1"]');
         var s2 = card.querySelector('.mini-input[data-side="2"]');
+        if (!s1 || !s2 || s1.value === '' || s2.value === '') return;
         savePrediction(matchId, token, activePill.dataset.value, card, saveIndicator,
           s1 ? parseInt(s1.value) : null, s2 ? parseInt(s2.value) : null);
       });
@@ -40,6 +41,11 @@ function initPredictionPills() {
 
 function savePrediction(matchId, token, prediction, card, badge, score1, score2) {
   var body = { match_id: parseInt(matchId), prediction: prediction };
+  if (score1 !== null && score1 !== undefined && score2 !== null && score2 !== undefined &&
+      !isNaN(score1) && !isNaN(score2) && scoreOutcome(score1, score2) !== prediction) {
+    alert('Le score exact ne correspond pas au pronostic choisi.');
+    return;
+  }
   if (score1 !== null && score1 !== undefined && !isNaN(score1)) body.exact_score_team1 = score1;
   if (score2 !== null && score2 !== undefined && !isNaN(score2)) body.exact_score_team2 = score2;
 
@@ -49,9 +55,16 @@ function savePrediction(matchId, token, prediction, card, badge, score1, score2)
     body: JSON.stringify(body)
   }).then(function(r) { return r.json(); }).then(function(data) {
     if (data.success) showSaveBadge(badge);
+    if (!data.success && data.detail) alert(data.detail);
   }).catch(function() {
     // silently fail — user can retry
   });
+}
+
+function scoreOutcome(score1, score2) {
+  if (score1 > score2) return 'team1';
+  if (score2 > score1) return 'team2';
+  return 'draw';
 }
 
 function showSaveBadge(badge) {

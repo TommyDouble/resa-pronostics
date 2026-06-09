@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS participants (
   token      TEXT    NOT NULL UNIQUE,
   is_admin   INTEGER NOT NULL DEFAULT 0,
   is_confirmed INTEGER NOT NULL DEFAULT 0,
+  is_active  INTEGER NOT NULL DEFAULT 1,
   has_paid   INTEGER NOT NULL DEFAULT 0,
   favorite_team TEXT,
   bio        TEXT,
@@ -118,6 +119,21 @@ CREATE TABLE IF NOT EXISTS scores (
   UNIQUE(participant_id, match_id, bonus_question_id)
 );
 
+CREATE TABLE IF NOT EXISTS pre_tournament_official_answers (
+  key        TEXT PRIMARY KEY CHECK(key IN ('winner','finalist','top_scorer','revelation','total_goals')),
+  answer     TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS pre_tournament_scores (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  question_key   TEXT NOT NULL CHECK(question_key IN ('winner','finalist','top_scorer','revelation','total_goals')),
+  points         INTEGER NOT NULL DEFAULT 0,
+  calculated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(participant_id, question_key)
+);
+
 CREATE TABLE IF NOT EXISTS admin_users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   username      TEXT    NOT NULL UNIQUE,
@@ -143,10 +159,12 @@ CREATE INDEX IF NOT EXISTS idx_participants_token ON participants(token);
 CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_participant ON predictions(participant_id);
 CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
+CREATE INDEX IF NOT EXISTS idx_pre_tournament_scores_participant ON pre_tournament_scores(participant_id);
         """)
         await db.commit()
 
         participant_columns = [
+            "is_active INTEGER NOT NULL DEFAULT 1",
             "has_paid INTEGER NOT NULL DEFAULT 0",
             "first_name TEXT",
             "last_name TEXT",

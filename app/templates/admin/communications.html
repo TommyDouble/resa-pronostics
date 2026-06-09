@@ -26,7 +26,7 @@
       <div class="field" style="width:220px;">
         <select name="match_id" style="flex:1;">
           {% for m in upcoming_matches %}
-          <option value="{{ m.id }}">#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</option>
+          <option value="{{ m.id }}">#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }} · {{ m.kickoff_display }}</option>
           {% endfor %}
         </select>
       </div>
@@ -37,22 +37,26 @@
 
 <div class="card">
   <div class="lbl" style="margin-bottom:12px;">Configuration SMTP</div>
-  <form style="display:flex;flex-direction:column;gap:10px;">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-      <div class="field"><input type="text" placeholder="smtp.host" name="smtp_host" value="{{ smtp_host or '' }}" disabled></div>
-      <div class="field"><input type="number" placeholder="port 587" name="smtp_port" value="{{ smtp_port }}" disabled></div>
-      <div class="field"><input type="text" placeholder="Utilisateur" name="smtp_user" disabled></div>
-      <div class="field"><input type="password" placeholder="Mot de passe" name="smtp_pass" disabled></div>
-    </div>
-    <div class="row2">
-      <button type="button" class="btn ghost sm" disabled>Tester</button>
-      <button type="submit" class="btn sm" disabled>Enregistrer</button>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+    {% if smtp_configured %}
+      <span class="chip ok">SMTP configuré</span>
+    {% else %}
+      <span class="chip warn">SMTP absent</span>
+    {% endif %}
+    <span class="muted" style="font-size:11px;">{{ smtp_host or 'Aucun host' }} · port {{ smtp_port }} · from {{ smtp_from }}</span>
+  </div>
+  <form method="post" action="/admin/communications/test-smtp" style="display:flex;flex-direction:column;gap:10px;">
+    <div class="toolbar2">
+      <div class="field" style="max-width:280px;">
+        <input type="email" name="email" placeholder="email@exemple.com" required>
+      </div>
+      <button type="submit" class="btn sm">Envoyer un test</button>
     </div>
   </form>
 </div>
 
 <p class="muted" style="font-size:11px;">
-  Si SMTP non configuré, les envois sont journalisés dans les logs serveur.
+  Les paramètres SMTP se configurent via les variables d'environnement. Si SMTP est absent, aucun email n'est marqué comme envoyé.
 </p>
 
 {% endblock %}

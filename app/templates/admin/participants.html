@@ -6,6 +6,8 @@
 
 <div class="toolbar2">
   <input type="text" id="participant-search" class="input-search" placeholder="⌕ Rechercher…">
+  <a href="/admin/participants?show=active" class="btn ghost sm {{ 'on' if show == 'active' else '' }}">Actifs</a>
+  <a href="/admin/participants?show=inactive" class="btn ghost sm {{ 'on' if show == 'inactive' else '' }}">Inactifs</a>
   <button class="btn sm" onclick="document.getElementById('add-modal').style.display='flex'">+ Ajouter</button>
   <button class="btn ghost sm" onclick="document.getElementById('csv-modal').style.display='flex'">Import CSV</button>
 </div>
@@ -29,7 +31,9 @@
         <td style="font-weight:600;">{{ p.name }}</td>
         <td class="muted">{{ p.email }}</td>
         <td>
-          {% if p.is_confirmed %}
+          {% if not p.is_active %}
+            <span class="chip lock">inactif</span>
+          {% elif p.is_confirmed %}
             <span class="chip ok">confirmé</span>
           {% else %}
             <span class="chip warn">invité</span>
@@ -46,19 +50,39 @@
         <td>{{ '✓' if p.pt_submitted else '—' }}</td>
         <td>{{ '✓' if p.pred_count > 0 else '—' }}</td>
         <td>
+          {% if p.is_active %}
+          <button class="btn ghost sm" style="font-size:11px;padding:4px 8px;"
+                  onclick="document.getElementById('edit-{{ p.id }}').style.display='table-row'">Modifier</button>
           <button class="btn ghost sm" style="font-size:11px;padding:4px 8px;"
                   onclick="copyToken('{{ base_url }}p/{{ p.token }}')">⧉ Lien</button>
           <form method="post" action="/admin/participants/{{ p.id }}/invite" style="display:inline;">
             <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;">✉ Inviter</button>
           </form>
           <form method="post" action="/admin/participants/{{ p.id }}/delete"
-                style="display:inline;" onsubmit="return confirm('Supprimer {{ p.name }} ?')">
+                style="display:inline;" onsubmit="return confirm('Désactiver {{ p.name }} ? Son lien sera bloqué.')">
             <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;color:var(--error);">🗑</button>
+          </form>
+          {% else %}
+          <form method="post" action="/admin/participants/{{ p.id }}/reactivate" style="display:inline;">
+            <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;">Réactiver</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% if p.is_active %}
+      <tr id="edit-{{ p.id }}" style="display:none;">
+        <td colspan="7">
+          <form method="post" action="/admin/participants/{{ p.id }}/update" class="toolbar2">
+            <div class="field" style="max-width:260px;"><input type="text" name="name" value="{{ p.name }}" required></div>
+            <div class="field" style="max-width:300px;"><input type="email" name="email" value="{{ p.email }}" required></div>
+            <button type="submit" class="btn sm">Enregistrer</button>
+            <button type="button" class="btn ghost sm" onclick="document.getElementById('edit-{{ p.id }}').style.display='none'">Annuler</button>
           </form>
         </td>
       </tr>
+      {% endif %}
       {% else %}
-      <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--n400);">Aucun participant.</td></tr>
+      <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--n400);">Aucun participant.</td></tr>
       {% endfor %}
     </tbody>
   </table>

@@ -619,6 +619,7 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
   animation: slideDown 200ms ease-out;
 }
 .flash-msg.ok { background: #E6F0E6; color: var(--success); border: 1px solid rgba(46,125,50,.25); }
+.flash-msg.warn { background: #FFF8E1; color: #92400E; border: 1px solid rgba(245,158,11,.28); }
 .flash-msg.err { background: #FBE6E6; color: var(--error); border: 1px solid rgba(220,38,38,.25); }
 @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 

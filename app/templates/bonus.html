@@ -50,7 +50,7 @@
       {% else %}
         <span class="chip lock">Non répondue</span>
       {% endif %}
-      <span class="muted" style="font-size:11px;margin-left:auto;">Deadline · {{ q.deadline[:10] }} {{ q.deadline[11:16] }}</span>
+      <span class="muted" style="font-size:11px;margin-left:auto;">Deadline · {{ q.deadline_display }}</span>
     </div>
 
     <p style="font-family:var(--sketch);font-weight:600;font-size:24px;line-height:1.1;margin:9px 0 12px;">

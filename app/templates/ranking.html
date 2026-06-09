@@ -45,6 +45,7 @@
         {% elif r.is_me %}
           <small>c'est toi</small>
         {% endif %}
+        <small>{{ r.exact_count }} score{{ 's' if r.exact_count != 1 else '' }} exact{{ 's' if r.exact_count != 1 else '' }} · {{ r.outcome_count }} issue{{ 's' if r.outcome_count != 1 else '' }} correcte{{ 's' if r.outcome_count != 1 else '' }} · pré-tournoi {{ r.pre_tournament_points }} pts</small>
       </div>
       <span class="sc">{{ r.total_points }}</span>
     </div>
