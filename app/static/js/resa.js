@@ -109,6 +109,62 @@ function initCountdown() {
   update();
 }
 
+/* ---- Local time display ---- */
+function initLocalTimes() {
+  var locale = navigator.language || 'fr-BE';
+  var timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+
+  function dateFromIso(iso) {
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function fmt(d, mode) {
+    if (mode === 'time') {
+      return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(d);
+    }
+    if (mode === 'date') {
+      return new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
+    }
+    return new Intl.DateTimeFormat(locale, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(d);
+  }
+
+  document.querySelectorAll('[data-local-utc]').forEach(function(el) {
+    var d = dateFromIso(el.dataset.localUtc);
+    if (!d) return;
+    el.textContent = fmt(d, el.dataset.localFormat || 'datetime');
+    if (timeZone) el.title = timeZone;
+  });
+
+  document.querySelectorAll('input[data-local-input-utc]').forEach(function(inp) {
+    var d = dateFromIso(inp.dataset.localInputUtc);
+    if (!d) return;
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    inp.value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+      'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  });
+
+  document.querySelectorAll('[data-local-timezone]').forEach(function(el) {
+    el.textContent = timeZone ? 'heure locale (' + timeZone + ')' : 'heure locale';
+  });
+
+  document.querySelectorAll('form').forEach(function(form) {
+    if (!form.querySelector('input[type="datetime-local"]')) return;
+    if (form.querySelector('input[name="timezone_name"]')) return;
+    var hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = 'timezone_name';
+    hidden.value = timeZone;
+    form.appendChild(hidden);
+  });
+}
+
 /* ---- Pre-tournament outsider chips ---- */
 function initOutsiderChips() {
   var inp = document.getElementById('revelation-input');
@@ -249,6 +305,7 @@ function initPhaseFilter() {
 
 /* ---- Init all on DOM ready ---- */
 document.addEventListener('DOMContentLoaded', function() {
+  initLocalTimes();
   initPredictionPills();
   initMiniInputs();
   initCountdown();

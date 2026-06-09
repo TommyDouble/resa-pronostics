@@ -1,12 +1,9 @@
 """Participant-facing HTML page routes."""
-import json
 import logging
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from app.auth import require_participant
 from app.database import get_db
@@ -16,10 +13,17 @@ from app.pre_tournament import (
     get_pre_tournament_questions,
 )
 from app.scoring import get_rankings
+from app.templating import create_templates
+from app.timeutils import (
+    is_match_locked,
+    match_kickoff_utc,
+    minutes_until_match,
+    now_utc_iso,
+    utc_day_bounds_for_local_date,
+)
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
-templates.env.filters["fromjson"] = json.loads
+templates = create_templates()
 logger = logging.getLogger(__name__)
 
 PHASE_LABELS = {
@@ -89,7 +93,7 @@ SCORERS = [
 
 
 def _now_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    return now_utc_iso()
 
 
 def _split_name(name: str) -> tuple[str, str]:
@@ -121,20 +125,11 @@ def _initials(name: str) -> str:
 
 
 def _is_locked(match: dict) -> bool:
-    try:
-        kickoff = datetime.fromisoformat(f"{match['match_date']}T{match['kickoff_time']}").replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) >= kickoff
-    except Exception:
-        return False
+    return is_match_locked(match)
 
 
 def _minutes_until(match: dict) -> int:
-    try:
-        kickoff = datetime.fromisoformat(f"{match['match_date']}T{match['kickoff_time']}").replace(tzinfo=timezone.utc)
-        diff = (kickoff - datetime.now(timezone.utc)).total_seconds()
-        return int(diff / 60)
-    except Exception:
-        return 99999
+    return minutes_until_match(match)
 
 
 async def _get_participant_context(token: str, db, active_nav: str = "home") -> dict:
@@ -214,7 +209,7 @@ async def participant_home(request: Request, token: str):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "home")
         # Upcoming/today matches
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today_start_utc, today_end_utc = utc_day_bounds_for_local_date()
         rows = await db.execute(
             """SELECT m.*,
                  p.prediction, p.exact_score_team1, p.exact_score_team2,
@@ -222,9 +217,10 @@ async def participant_home(request: Request, token: str):
                FROM matches m
                LEFT JOIN predictions p ON p.match_id = m.id AND p.participant_id = ?
                LEFT JOIN scores s ON s.match_id = m.id AND s.participant_id = ?
-               WHERE m.match_date = ?
+               WHERE datetime(m.match_date || 'T' || m.kickoff_time) >= datetime(?)
+                 AND datetime(m.match_date || 'T' || m.kickoff_time) <= datetime(?)
                ORDER BY m.kickoff_time""",
-            (p["id"], p["id"], today)
+            (p["id"], p["id"], today_start_utc, today_end_utc)
         )
         today_matches = [dict(r) for r in await rows.fetchall()]
         for m in today_matches:
@@ -235,9 +231,7 @@ async def participant_home(request: Request, token: str):
             mins = _minutes_until(m)
             if not m["is_locked"] and m.get("prediction") is None and 0 < mins < 300:
                 m["mins_until"] = mins
-                m["kickoff_ts"] = int(datetime.fromisoformat(
-                    f"{m['match_date']}T{m['kickoff_time']}"
-                ).replace(tzinfo=timezone.utc).timestamp())
+                m["kickoff_ts"] = int(match_kickoff_utc(m).timestamp())
                 urgency = m
                 break
         # Unmatched today alert

@@ -15,7 +15,10 @@
         ⑤ Total buts en groupes (+8/+4 pts)
       </div>
     </div>
-    <span class="chip" style="white-space:nowrap;">Deadline · {{ pt_deadline[:10] }} {{ pt_deadline[11:16] }} UTC</span>
+    <span class="chip" style="white-space:nowrap;">
+      Deadline · <span data-local-utc="{{ pt_deadline|utc_iso }}">{{ pt_deadline|local_datetime }}</span>
+      · <span data-local-timezone>{{ display_tz_label }}</span>
+    </span>
   </div>
   <div style="margin-top:10px;font-size:12px;color:var(--n600);">
     <b>{{ pt_submitted_count }}</b> / {{ pt_total_count }} participants ont soumis leurs pronostics pré-tournoi.
@@ -73,7 +76,7 @@
       <textarea name="options_text" class="textarea" rows="3" placeholder="Une option par ligne, ou séparées par des virgules"></textarea>
     </div>
     <div>
-      <div class="lbl" style="margin-bottom:5px;">Deadline (ISO, UTC)</div>
+      <div class="lbl" style="margin-bottom:5px;">Deadline (<span data-local-timezone>{{ display_tz_label }}</span>)</div>
       <div class="field"><input type="datetime-local" name="deadline" required style="flex:1;"></div>
     </div>
     <div>
@@ -98,7 +101,8 @@
     <div style="flex:1;min-width:240px;">
       <b style="font-size:14px;">{{ q.question_text }}</b>
       <div class="muted" style="font-size:11px;margin-top:3px;">
-        {{ phase_labels.get(q.phase, q.phase) }} · {{ q.answer_type }} · {{ q.points_value }} pts · deadline: {{ q.deadline[:16] }}
+        {{ phase_labels.get(q.phase, q.phase) }} · {{ q.answer_type }} · {{ q.points_value }} pts · deadline:
+        <span data-local-utc="{{ q.deadline|utc_iso }}">{{ q.deadline|local_datetime }}</span>
       </div>
     </div>
     <span class="chip {{ 'ok' if q.correct_answer else 'warn' }}">
@@ -150,7 +154,7 @@
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div>
         <div class="lbl" style="margin-bottom:5px;">Deadline</div>
-        <div class="field"><input type="datetime-local" name="deadline" value="{{ q.deadline[:16] }}" required></div>
+        <div class="field"><input type="datetime-local" name="deadline" value="{{ q.deadline|local_input }}" data-local-input-utc="{{ q.deadline|utc_iso }}" required></div>
       </div>
       <div>
         <div class="lbl" style="margin-bottom:5px;">Réponse correcte</div>
@@ -199,7 +203,7 @@
               {% endif %}
             </td>
             <td class="s">{{ a.points }}</td>
-            <td class="muted" style="font-size:10px;">{{ a.submitted_at[:16] }}</td>
+            <td class="muted" style="font-size:10px;" data-local-utc="{{ a.submitted_at|utc_iso }}">{{ a.submitted_at|local_datetime }}</td>
           </tr>
           {% endfor %}
         </tbody>

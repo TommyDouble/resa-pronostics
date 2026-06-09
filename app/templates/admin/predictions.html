@@ -63,7 +63,7 @@
         <td>{% if r.exact_score_team1 is not none %}{{ r.exact_score_team1 }}–{{ r.exact_score_team2 }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% if r.result %}{{ r.score_team1 }}–{{ r.score_team2 }}{% else %}<span class="muted">À venir</span>{% endif %}</td>
         <td class="s">{{ r.points }}</td>
-        <td class="muted" style="font-size:10px;">{{ r.submitted_at[:16] }}</td>
+        <td class="muted" style="font-size:10px;" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}</td>
       </tr>
       {% else %}
       <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--n400);">Aucun pronostic match.</td></tr>
@@ -102,7 +102,9 @@
         <td>
           {% if r.submitted %}
           <span class="chip ok">Soumis</span>
-          <div class="muted" style="font-size:10px;margin-top:3px;">{{ r.submitted_at[:16] if r.submitted_at else '' }}</div>
+          {% if r.submitted_at %}
+          <div class="muted" style="font-size:10px;margin-top:3px;" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}</div>
+          {% endif %}
           {% elif r.winner or r.finalist or r.top_scorer or r.revelation or r.total_goals %}
           <span class="chip warn">Brouillon</span>
           {% else %}
@@ -142,7 +144,7 @@
         <td>{{ r.answer }}</td>
         <td>{{ r.correct_answer or '—' }}</td>
         <td class="s">{{ r.points }}</td>
-        <td class="muted" style="font-size:10px;">{{ r.submitted_at[:16] }}</td>
+        <td class="muted" style="font-size:10px;" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}</td>
       </tr>
       {% else %}
       <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--n400);">Aucune réponse bonus.</td></tr>

@@ -13,7 +13,7 @@
 <div class="page-content">
 
   <div class="scoreboard">
-    <div class="ph">{{ match_phase_label }} · {{ match.match_date }}</div>
+    <div class="ph">{{ match_phase_label }} · <span data-local-utc="{{ match|match_utc_iso }}">{{ match|match_datetime }}</span></div>
     <div class="grid">
       <div class="t">
         <span class="flag">{{ match.team1_name[:2] }}</span>

@@ -4,11 +4,9 @@ import io
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
 
 from app.auth import require_admin, verify_password, hash_password
 from app.config import settings
@@ -25,9 +23,11 @@ from app.pre_tournament import (
     get_pre_tournament_questions,
 )
 from app.scoring import recalculate_match_scores, get_rankings, calculate_bonus_scores
+from app.templating import create_templates
+from app.timeutils import is_match_locked, local_input_to_utc_iso, now_utc_iso
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+templates = create_templates()
 logger = logging.getLogger(__name__)
 
 PHASE_LABELS = {
@@ -50,17 +50,11 @@ STATUSES = {
 
 
 def _now_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    return now_utc_iso()
 
 
 def _is_played(match: dict) -> bool:
-    try:
-        kickoff = datetime.fromisoformat(
-            f"{match['match_date']}T{match['kickoff_time']}"
-        ).replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) >= kickoff
-    except Exception:
-        return False
+    return is_match_locked(match)
 
 
 def _flash(request: Request, msg: str, kind: str = "ok"):
@@ -144,9 +138,11 @@ async def dashboard(request: Request):
         has_pred = (await has_pred_row.fetchone())["cnt"]
         next_row = await db.execute(
             """SELECT match_number, team1_name, team2_name
-               FROM matches WHERE result IS NULL AND match_date >= ?
+               FROM matches
+               WHERE result IS NULL
+               AND datetime(match_date || 'T' || kickoff_time) >= datetime(?)
                ORDER BY match_date, kickoff_time LIMIT 1""",
-            (now[:10],)
+            (now,)
         )
         next_match = await next_row.fetchone()
         # 5 last encoded
@@ -478,17 +474,23 @@ async def pre_tournament_admin(request: Request):
 
 
 @router.post("/pre-tournoi/deadline")
-async def update_pre_tournament_deadline(request: Request, deadline: str = Form(...)):
+async def update_pre_tournament_deadline(
+    request: Request,
+    deadline: str = Form(...),
+    timezone_name: str = Form(default=""),
+):
     await require_admin(request)
     deadline = deadline.strip()
-    if "T" not in deadline:
+    try:
+        deadline_utc = local_input_to_utc_iso(deadline, timezone_name)
+    except Exception:
         _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/pre-tournoi", status_code=303)
     async with get_db() as db:
         await db.execute(
             """INSERT INTO app_settings (key, value) VALUES ('pre_tournament_deadline', ?)
                ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
-            (deadline,)
+            (deadline_utc,)
         )
         await db.commit()
     _flash(request, "Deadline pré-tournoi mise à jour.")
@@ -708,7 +710,8 @@ async def bonus_admin(request: Request):
 async def create_bonus(request: Request,
                        question_text: str = Form(...), phase: str = Form(...),
                        answer_type: str = Form(...), points_value: int = Form(...),
-                       deadline: str = Form(...), options_text: str = Form(default=""),
+                       deadline: str = Form(...), timezone_name: str = Form(default=""),
+                       options_text: str = Form(default=""),
                        correct_answer: str = Form(default="")):
     await require_admin(request)
     if answer_type not in ("choice", "number", "text"):
@@ -716,6 +719,11 @@ async def create_bonus(request: Request,
         return RedirectResponse("/admin/bonus", status_code=303)
     if phase not in BONUS_PHASES:
         _flash(request, "Phase de question bonus invalide.", "err")
+        return RedirectResponse("/admin/bonus", status_code=303)
+    try:
+        deadline_utc = local_input_to_utc_iso(deadline, timezone_name)
+    except Exception:
+        _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
     options = _normalize_bonus_options(answer_type, options_text)
     async with get_db() as db:
@@ -730,7 +738,7 @@ async def create_bonus(request: Request,
                 options,
                 points_value,
                 correct_answer.strip() or None,
-                deadline,
+                deadline_utc,
             )
         )
         question_id = cursor.lastrowid
@@ -750,6 +758,7 @@ async def update_bonus_question(
     answer_type: str = Form(...),
     points_value: int = Form(...),
     deadline: str = Form(...),
+    timezone_name: str = Form(default=""),
     options_text: str = Form(default=""),
     correct_answer: str = Form(default=""),
 ):
@@ -759,6 +768,11 @@ async def update_bonus_question(
         return RedirectResponse("/admin/bonus", status_code=303)
     if phase not in BONUS_PHASES:
         _flash(request, "Phase de question bonus invalide.", "err")
+        return RedirectResponse("/admin/bonus", status_code=303)
+    try:
+        deadline_utc = local_input_to_utc_iso(deadline, timezone_name)
+    except Exception:
+        _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
     options = _normalize_bonus_options(answer_type, options_text)
     async with get_db() as db:
@@ -777,7 +791,7 @@ async def update_bonus_question(
                 options,
                 points_value,
                 correct_answer.strip() or None,
-                deadline,
+                deadline_utc,
                 question_id,
             ),
         )
@@ -830,10 +844,13 @@ async def communications(request: Request):
         )
         no_pt = (await ns_row.fetchone())["cnt"]
         # Upcoming matches
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        now = _now_utc()
         m_rows = await db.execute(
-            "SELECT * FROM matches WHERE match_date >= ? AND result IS NULL ORDER BY match_date, kickoff_time LIMIT 20",
-            (today,)
+            """SELECT * FROM matches
+               WHERE result IS NULL
+               AND datetime(match_date || 'T' || kickoff_time) >= datetime(?)
+               ORDER BY match_date, kickoff_time LIMIT 20""",
+            (now,)
         )
         upcoming = [dict(r) for r in await m_rows.fetchall()]
     return templates.TemplateResponse("admin/communications.html", {

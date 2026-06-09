@@ -14,7 +14,10 @@
       <span class="chip warn">Brouillon</span>
     {% endif %}
   </div>
-  <div class="sub1">Deadline · {{ pt_deadline[:10] }} à {{ pt_deadline[11:16] }} UTC</div>
+  <div class="sub1">
+    Deadline · <span data-local-utc="{{ pt_deadline|utc_iso }}">{{ pt_deadline|local_datetime }}</span>
+    · <span data-local-timezone>{{ display_tz_label }}</span>
+  </div>
 </div>
 
 <div class="page-content">

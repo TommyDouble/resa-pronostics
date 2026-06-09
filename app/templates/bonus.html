@@ -50,7 +50,9 @@
       {% else %}
         <span class="chip lock">Non répondue</span>
       {% endif %}
-      <span class="muted" style="font-size:11px;margin-left:auto;">Deadline · {{ q.deadline[:10] }} {{ q.deadline[11:16] }}</span>
+      <span class="muted" style="font-size:11px;margin-left:auto;">
+        Deadline · <span data-local-utc="{{ q.deadline|utc_iso }}">{{ q.deadline|local_datetime }}</span>
+      </span>
     </div>
 
     <p style="font-family:var(--sketch);font-weight:600;font-size:24px;line-height:1.1;margin:9px 0 12px;">
@@ -61,7 +63,9 @@
     <div class="banner acc" style="margin-bottom:12px;">
       <span>✓</span>
       <span>Ta réponse : <b>{{ q.answer }}</b></span>
-      {% if q.answered_at %}<span class="muted" style="margin-left:auto;font-size:11px;">{{ q.answered_at[:16] }}</span>{% endif %}
+      {% if q.answered_at %}
+      <span class="muted" style="margin-left:auto;font-size:11px;" data-local-utc="{{ q.answered_at|utc_iso }}">{{ q.answered_at|local_datetime }}</span>
+      {% endif %}
     </div>
     {% elif not q.can_edit %}
     <div class="banner" style="background:var(--n100);color:var(--n600);margin-bottom:12px;">

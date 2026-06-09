@@ -1,17 +1,16 @@
 """RESA Pronostics 2026 — FastAPI application entry point."""
-import json
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
 from app.database import init_db
 from app.routers import admin, api, pages
+from app.templating import create_templates
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,8 +42,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Templates (also used by routers)
-templates = Jinja2Templates(directory="app/templates")
-templates.env.filters["fromjson"] = json.loads
+templates = create_templates()
 
 # Routers
 app.include_router(pages.router)

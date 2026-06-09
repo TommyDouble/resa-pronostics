@@ -31,9 +31,10 @@
 
   {% set ns = namespace(current_date=None) %}
   {% for m in matches if m.phase == current_phase %}
-    {% if m.match_date != ns.current_date %}
-      {% set ns.current_date = m.match_date %}
-      <div class="daybar">JOURNÉE · {{ m.match_date }}</div>
+    {% set display_date = m|match_date %}
+    {% if display_date != ns.current_date %}
+      {% set ns.current_date = display_date %}
+      <div class="daybar">JOURNÉE · <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="date">{{ display_date }}</span></div>
     {% endif %}
 
     <div class="match-card {% if m.is_top_match and not m.is_locked %}top{% endif %} {% if m.is_locked %}past{% endif %}"
@@ -42,9 +43,10 @@
         {% if m.is_locked and m.result %}
           <span class="dot r"></span> Terminé
         {% elif m.prediction %}
-          <span class="dot g"></span> {{ m.kickoff_time[:5] }}
+          <span class="dot g"></span> <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
         {% else %}
-          <span class="dot {% if m.is_locked %}r{% else %}gr{% endif %}"></span> {{ m.kickoff_time[:5] }}
+          <span class="dot {% if m.is_locked %}r{% else %}gr{% endif %}"></span>
+          <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
         {% endif %}
         <span class="sp"></span>
         {% if m.is_top_match %}

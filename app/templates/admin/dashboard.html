@@ -55,7 +55,9 @@
         <td>{{ m.match_number }}</td>
         <td>{{ m.team1_name }} – {{ m.team2_name }}</td>
         <td style="color:var(--primary);font-weight:700;font-family:var(--display);">{{ m.score_team1 }}–{{ m.score_team2 }}</td>
-        <td class="muted" style="font-size:11px;">{{ m.created_at[:16] if m.created_at else '—' }}</td>
+        <td class="muted" style="font-size:11px;">
+          {% if m.created_at %}<span data-local-utc="{{ m.created_at|utc_iso }}">{{ m.created_at|local_datetime }}</span>{% else %}—{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

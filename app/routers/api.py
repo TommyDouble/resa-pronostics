@@ -1,6 +1,5 @@
 """JSON API endpoints called by the frontend JS."""
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -8,23 +7,14 @@ from pydantic import BaseModel
 
 from app.auth import get_participant_by_token
 from app.database import get_db
+from app.timeutils import is_match_locked
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _now_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-
-
 def _is_locked(match: dict) -> bool:
-    try:
-        kickoff = datetime.fromisoformat(
-            f"{match['match_date']}T{match['kickoff_time']}"
-        ).replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) >= kickoff
-    except Exception:
-        return False
+    return is_match_locked(match)
 
 
 class PredictionIn(BaseModel):

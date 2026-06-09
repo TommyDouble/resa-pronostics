@@ -18,5 +18,14 @@ class Settings:
     # Timezone
     TZ_DISPLAY: str = "Europe/Brussels"
 
+    @property
+    def is_railway(self) -> bool:
+        return bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
+
+    def validate(self):
+        if self.is_railway and self.SECRET_KEY == "change-me-32-bytes-hex-default-key":
+            raise RuntimeError("SECRET_KEY must be configured before deploying to Railway.")
+
 
 settings = Settings()
+settings.validate()
