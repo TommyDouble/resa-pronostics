@@ -1,5 +1,15 @@
 from app.database import get_db
+from app.settings_store import KNOCKOUT_OPEN_KEY, set_setting
 from tests.conftest import run
+
+
+def open_knockout_predictions():
+    async def _open():
+        async with get_db() as db:
+            await set_setting(db, KNOCKOUT_OPEN_KEY, "1")
+            await db.commit()
+
+    return run(_open())
 
 
 def get_match_score(participant_id, match_id):
@@ -42,8 +52,24 @@ def create_knockout_match(participant_id):
     return run(_create())
 
 
+def test_knockout_prediction_blocked_until_opened(admin_client, participant):
+    match_id = create_knockout_match(participant["id"])
+
+    blocked = admin_client.post(
+        f"/api/predictions?token={participant['token']}",
+        json={
+            "match_id": match_id,
+            "exact_score_team1": 1,
+            "exact_score_team2": 0,
+        },
+    )
+    assert blocked.status_code == 403
+    assert "phase finale" in blocked.json()["detail"]
+
+
 def test_knockout_draw_result_requires_qualifier_and_scores_by_winner(admin_client, participant):
     match_id = create_knockout_match(participant["id"])
+    open_knockout_predictions()
 
     response = admin_client.post(
         f"/api/predictions?token={participant['token']}",

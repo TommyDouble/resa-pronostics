@@ -4,6 +4,24 @@
 
 <h1>Gestion des matchs</h1>
 
+<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+  <div style="flex:1;min-width:240px;">
+    <b style="font-size:13px;">Pronostics de phase finale</b>
+    <div class="muted" style="font-size:11px;margin-top:2px;">
+      {% if knockout_open %}
+        Ouverts — les participants peuvent pronostiquer les matchs à élimination.
+      {% else %}
+        Verrouillés — à ouvrir quand les affiches se précisent. Les participants voient un cadenas en attendant.
+      {% endif %}
+    </div>
+  </div>
+  <span class="chip {{ 'ok' if knockout_open else 'lock' }}">{{ 'Ouverts' if knockout_open else '🔒 Verrouillés' }}</span>
+  <form method="post" action="/admin/matches/knockout-pronos/toggle"
+        onsubmit="return confirm('{{ 'Verrouiller les pronostics de phase finale ?' if knockout_open else 'Ouvrir les pronostics de phase finale aux participants ?' }}')">
+    <button type="submit" class="btn ghost sm">{{ 'Verrouiller' if knockout_open else 'Ouvrir' }}</button>
+  </form>
+</div>
+
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
   {% for ph, label in phase_labels.items() %}
   <a href="/admin/matches?phase={{ ph }}"

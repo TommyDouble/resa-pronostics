@@ -30,6 +30,11 @@ from app.scoring import (
     recalculate_match_scores,
     recalculate_pre_tournament_scores,
 )
+from app.settings_store import (
+    KNOCKOUT_OPEN_KEY,
+    knockout_predictions_open,
+    set_setting,
+)
 from app.templating import create_templates
 from app.timeutils import is_match_locked, local_input_to_utc_iso, now_utc_iso
 
@@ -656,6 +661,7 @@ async def matches_list(request: Request, phase: str = "group"):
         for ph in PHASE_LABELS:
             c_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE phase=?", (ph,))
             counts[ph] = (await c_row.fetchone())["cnt"]
+        knockout_open = await knockout_predictions_open(db)
     return templates.TemplateResponse(request, "admin/matches.html", {
         "request": request,
         "active": "matches",
@@ -664,7 +670,22 @@ async def matches_list(request: Request, phase: str = "group"):
         "current_phase": phase,
         "phase_labels": PHASE_LABELS,
         "phase_counts": counts,
+        "knockout_open": knockout_open,
     })
+
+
+@router.post("/matches/knockout-pronos/toggle")
+async def toggle_knockout_pronos(request: Request):
+    await require_admin(request)
+    async with get_db() as db:
+        is_open = await knockout_predictions_open(db)
+        await set_setting(db, KNOCKOUT_OPEN_KEY, "0" if is_open else "1")
+        await db.commit()
+    if is_open:
+        _flash(request, "Pronostics de phase finale verrouillés.")
+    else:
+        _flash(request, "Pronostics de phase finale ouverts aux participants.")
+    return RedirectResponse("/admin/matches", status_code=303)
 
 
 @router.post("/matches/{match_id}/toggle-top")
@@ -847,8 +868,10 @@ async def create_bonus(request: Request,
                        options_text: str = Form(default=""),
                        correct_answer: str = Form(default="")):
     await require_admin(request)
-    if answer_type not in ("choice", "number", "text"):
-        _flash(request, "Type de question invalide.", "err")
+    # Seul le choix unique est autorisé : les réponses libres (texte/nombre)
+    # créent des litiges d'arbitrage (accents, orthographe, formats).
+    if answer_type != "choice":
+        _flash(request, "Seules les questions à choix unique sont autorisées.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
     if phase not in BONUS_PHASES:
         _flash(request, "Phase de question bonus invalide.", "err")
@@ -859,6 +882,9 @@ async def create_bonus(request: Request,
         _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
     options = _normalize_bonus_options(answer_type, options_text)
+    if not options or len(json.loads(options)) < 2:
+        _flash(request, "Ajoute au moins deux options de réponse.", "err")
+        return RedirectResponse("/admin/bonus", status_code=303)
     async with get_db() as db:
         cursor = await db.execute(
             """INSERT INTO bonus_questions
@@ -888,7 +914,6 @@ async def update_bonus_question(
     question_id: int,
     question_text: str = Form(...),
     phase: str = Form(...),
-    answer_type: str = Form(...),
     points_value: int = Form(...),
     deadline: str = Form(...),
     timezone_name: str = Form(default=""),
@@ -896,9 +921,6 @@ async def update_bonus_question(
     correct_answer: str = Form(default=""),
 ):
     await require_admin(request)
-    if answer_type not in ("choice", "number", "text"):
-        _flash(request, "Type de question invalide.", "err")
-        return RedirectResponse("/admin/bonus", status_code=303)
     if phase not in BONUS_PHASES:
         _flash(request, "Phase de question bonus invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
@@ -907,11 +929,17 @@ async def update_bonus_question(
     except Exception:
         _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
-    options = _normalize_bonus_options(answer_type, options_text)
     async with get_db() as db:
-        row = await db.execute("SELECT id FROM bonus_questions WHERE id=?", (question_id,))
-        if not await row.fetchone():
+        row = await db.execute("SELECT answer_type FROM bonus_questions WHERE id=?", (question_id,))
+        existing = await row.fetchone()
+        if not existing:
             raise HTTPException(404)
+        # Le type est figé à la création (choix unique pour les nouvelles questions).
+        answer_type = existing["answer_type"]
+        options = _normalize_bonus_options(answer_type, options_text)
+        if answer_type == "choice" and (not options or len(json.loads(options)) < 2):
+            _flash(request, "Ajoute au moins deux options de réponse.", "err")
+            return RedirectResponse("/admin/bonus", status_code=303)
         await db.execute(
             """UPDATE bonus_questions
                SET question_text=?, phase=?, answer_type=?, options=?,

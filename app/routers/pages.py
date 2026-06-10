@@ -10,6 +10,7 @@ from PIL import Image, ImageOps
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.auth import hash_password, require_participant, verify_password
+from app.config import settings
 from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import get_db
 from app.players import (
@@ -24,6 +25,8 @@ from app.pre_tournament import (
     get_pre_tournament_question_map,
     get_pre_tournament_questions,
 )
+from app.prizes import get_prize_info
+from app.settings_store import knockout_predictions_open
 from app.scoring import (
     get_rankings,
     is_match_prediction_correct,
@@ -190,7 +193,10 @@ def _prediction_sections(matches: list[dict]) -> list[dict]:
         section_matches = [m for m in matches if m.get("section_key") == key]
         total = len(section_matches)
         done = sum(1 for m in section_matches if m.get("has_score_prediction"))
-        open_count = sum(1 for m in section_matches if not m.get("is_locked"))
+        open_count = sum(
+            1 for m in section_matches
+            if not m.get("is_locked") and not m.get("pronos_closed")
+        )
         sections.append({
             "key": key,
             "label": PREDICTION_SECTION_LABELS[key],
@@ -482,6 +488,9 @@ async def predictions_page(request: Request, token: str, section: str = "", phas
         )
         all_matches = [dict(r) for r in await rows.fetchall()]
         _enrich_prediction_matches(all_matches)
+        knockout_open = await knockout_predictions_open(db)
+        for match in all_matches:
+            match["pronos_closed"] = match["phase"] != "group" and not knockout_open
         sections = _prediction_sections(all_matches)
         requested_section = section
         if not requested_section and phase:
@@ -506,6 +515,7 @@ async def predictions_page(request: Request, token: str, section: str = "", phas
             "prediction_sections": sections,
             "phase_labels": PHASE_LABELS,
             "pt_submitted": pt_submitted,
+            "knockout_open": knockout_open,
             "page_wide": True,
         })
     return templates.TemplateResponse(request, "predictions.html", {"request": request, **ctx})
@@ -516,6 +526,8 @@ async def rules_page(request: Request, token: str):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "rules")
         ctx["page_wide"] = True
+        ctx["prize_info"] = await get_prize_info(db)
+        ctx["knockout_open"] = await knockout_predictions_open(db)
     return templates.TemplateResponse(request, "rules.html", {"request": request, **ctx})
 
 
@@ -652,7 +664,8 @@ async def ranking_page(request: Request, token: str):
         for r in rankings:
             r["is_me"] = (r["id"] == p["id"])
             r["color_class"] = f"c{((r['id'] - 1) % 8) + 1}"
-        ctx.update({"rankings": rankings})
+        prize_info = await get_prize_info(db)
+        ctx.update({"rankings": rankings, "prize_info": prize_info})
     return templates.TemplateResponse(request, "ranking.html", {"request": request, **ctx})
 
 
@@ -742,7 +755,7 @@ PROFILE_EDIT_MESSAGES = {
     "avatar_invalid": ("err", "Fichier non reconnu — utilise une image JPEG, PNG ou WebP."),
 }
 
-AVATARS_DIR = "/data/avatars"
+AVATARS_DIR = settings.AVATARS_DIR
 
 
 @router.get("/p/{token}/profil/edit", response_class=HTMLResponse)

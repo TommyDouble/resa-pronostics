@@ -4,6 +4,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _resolve_avatars_dir() -> str:
+    """Volume persistant Railway si accessible, sinon dossier local (dev/tests)."""
+    preferred = os.getenv("AVATARS_DIR", "/data/avatars")
+    try:
+        os.makedirs(preferred, exist_ok=True)
+        return preferred
+    except OSError:
+        fallback = os.path.join(os.getcwd(), "data", "avatars")
+        os.makedirs(fallback, exist_ok=True)
+        return fallback
+
+
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "./resa.db")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-32-bytes-hex-default-key")
@@ -17,6 +29,7 @@ class Settings:
     EMAIL_WEBHOOK_SECRET: str = os.getenv("EMAIL_WEBHOOK_SECRET", "")
     EMAIL_SENDER_NAME: str = os.getenv("EMAIL_SENDER_NAME", "RESA Pronostics 2026")
     ADMIN_PASSWORD_HASH: str = os.getenv("ADMIN_PASSWORD_HASH", "")
+    AVATARS_DIR: str = _resolve_avatars_dir()
 
     # Timezone
     TZ_DISPLAY: str = "Europe/Brussels"

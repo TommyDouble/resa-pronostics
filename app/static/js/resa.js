@@ -8,6 +8,9 @@ function initPredictionScores() {
     var token = document.body.dataset.token;
     var score1 = card.querySelector('.score-pick[data-side="1"]');
     var score2 = card.querySelector('.score-pick[data-side="2"]');
+    // Carte verrouillée ou pronos pas encore ouverts: rien d'interactif,
+    // le rendu serveur fait foi.
+    if (score1 && score1.disabled) return;
     var outcome = card.querySelector('[data-outcome]');
     var qualifierRow = card.querySelector('.qualifier-row');
     var qualifierBtns = card.querySelectorAll('.qualifier-btn');

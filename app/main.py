@@ -4,7 +4,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -42,9 +42,8 @@ app.add_middleware(
 # Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-# Avatars servis depuis le volume persistant /data/avatars
-os.makedirs("/data/avatars", exist_ok=True)
-app.mount("/avatars", StaticFiles(directory="/data/avatars"), name="avatars")
+# Avatars servis depuis le volume persistant (Railway) ou un dossier local
+app.mount("/avatars", StaticFiles(directory=settings.AVATARS_DIR), name="avatars")
 
 # Templates (also used by routers)
 templates = create_templates()
@@ -76,6 +75,12 @@ async def unauthorized_handler(request: Request, exc):
 
 @app.exception_handler(403)
 async def forbidden_handler(request: Request, exc):
+    # Les routes API sont appelées en fetch: le JS affiche `detail` à l'utilisateur.
+    if request.url.path.startswith("/api"):
+        return JSONResponse(
+            {"detail": getattr(exc, "detail", None) or "Accès refusé."},
+            status_code=403,
+        )
     return templates.TemplateResponse(request, "error.html",
         {"request": request, "code": 403, "message": "Accès refusé."},
         status_code=403,

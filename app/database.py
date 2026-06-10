@@ -3,6 +3,7 @@ import os
 from contextlib import asynccontextmanager
 from app.config import settings
 from app.pre_tournament import ensure_pre_tournament_defaults
+from app.settings_store import ensure_default_settings
 
 DB_PATH = settings.DATABASE_URL.replace("./", "")
 
@@ -209,4 +210,5 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
                 pass
 
         await ensure_pre_tournament_defaults(db)
+        await ensure_default_settings(db)
         await db.commit()

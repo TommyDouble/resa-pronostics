@@ -62,15 +62,23 @@
     {% endfor %}
   </div>
 
-  <div class="card flat pot-card">
-    <span style="font-size:22px;">🏆</span>
-    <div>
-      <div class="lbl">Cagnotte</div>
-      <div class="muted" style="font-size:12px;">
-        Podium général + prix spéciaux · montants à préciser
-        <span class="help-tip" tabindex="0" data-tip="Les montants dépendront du nombre final de participants. En cas d'ex æquo pour un gain, les cagnottes concernées sont partagées.">?</span>
-      </div>
+  <div class="card p0">
+    <div class="list-head">
+      <span>🏆 Cagnotte · {{ prize_info.pot }} €</span>
+      <span class="help-tip" tabindex="0" data-tip="{{ prize_info.entry_fee }} € par inscrit ({{ prize_info.count }} actuellement). Les montants évoluent avec les inscriptions, arrondis à la dizaine. En cas d'ex æquo pour un gain, les cagnottes concernées sont partagées.">?</span>
+      <span class="sp"></span>
+      <span class="muted" style="font-size:10px;font-weight:600;text-transform:none;letter-spacing:0;">{{ prize_info.count }} inscrits × {{ prize_info.entry_fee }} €</span>
     </div>
+    {% for pr in prize_info.prizes %}
+    <div class="prize-row">
+      <span class="ico">{{ pr.icon }}</span>
+      <div>
+        {{ pr.label }}
+        <span class="desc">{{ pr.description }}</span>
+      </div>
+      <span class="v">{{ pr.amount }} €</span>
+    </div>
+    {% endfor %}
   </div>
 
 </div>

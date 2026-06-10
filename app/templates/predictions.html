@@ -25,7 +25,7 @@
     <a href="/p/{{ token }}/pronos?section={{ sec.key }}"
        class="{{ 'on' if current_section == sec.key else '' }}"
        title="{{ sec.label }} · {{ sec.done }}/{{ sec.total }} complétés">
-      {{ sec.short_label }}
+      {% if not knockout_open and not sec.key.startswith('group_match') %}🔒 {% endif %}{{ sec.short_label }}
       <span>{{ sec.done }}/{{ sec.total }}</span>
     </a>
     {% endfor %}
@@ -42,14 +42,21 @@
   </div>
   {% endif %}
 
+  {% if not knockout_open and not current_section.startswith('group_match') %}
+  <div class="banner soft">
+    <span>🔒</span>
+    <span>Les pronostics de phase finale ne sont pas encore ouverts. Ils seront débloqués quand les affiches se préciseront — tu seras prévenu.</span>
+  </div>
+  {% else %}
   <div class="banner soft">
     <span>i</span>
     <span>{{ current_section_help }}</span>
   </div>
+  {% endif %}
 
   {% set next_open = namespace(id=None) %}
   {% for m in current_matches %}
-    {% if next_open.id is none and not m.is_locked and not m.has_score_prediction %}
+    {% if next_open.id is none and not m.is_locked and not m.pronos_closed and not m.has_score_prediction %}
       {% set next_open.id = m.id %}
     {% endif %}
   {% endfor %}
@@ -112,12 +119,12 @@
         <input class="score-pick" type="number" min="0" max="30" inputmode="numeric"
                data-side="1" aria-label="Score {{ m.team1_name }}"
                value="{{ m.exact_score_team1 if m.exact_score_team1 is not none else '' }}"
-               placeholder="-" {% if m.is_locked %}disabled{% endif %}>
+               placeholder="-" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>
         <span class="score-dash">-</span>
         <input class="score-pick" type="number" min="0" max="30" inputmode="numeric"
                data-side="2" aria-label="Score {{ m.team2_name }}"
                value="{{ m.exact_score_team2 if m.exact_score_team2 is not none else '' }}"
-               placeholder="-" {% if m.is_locked %}disabled{% endif %}>
+               placeholder="-" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>
         <div class="score-team r" title="{{ m.team2_name }}">{{ m.team2_name }}</div>
       </div>
 
@@ -125,7 +132,7 @@
         <span class="outcome-chip {{ '' if m.has_score_prediction else 'empty' }}" data-outcome>
           {% if m.has_score_prediction %}
             {% if m.prediction == 'team1' %}Victoire {{ m.team1_name }}{% elif m.prediction == 'team2' %}Victoire {{ m.team2_name }}{% else %}Match nul{% endif %}
-          {% else %}Score requis{% endif %}
+          {% elif m.pronos_closed %}Pas encore ouvert{% else %}Score requis{% endif %}
         </span>
         {% if m.points is not none %}
           <span class="chip ok tip" tabindex="0" data-tip="Points obtenus sur ce match après résultat officiel.">+{{ m.points }} pts</span>
@@ -140,7 +147,11 @@
         {% endif %}
       </div>
 
-      {% if m.phase != 'group' and ('Groupe' in m.team1_name or 'Groupe' in m.team2_name) %}
+      {% if m.pronos_closed %}
+      <div class="placeholder-note">
+        Les équipes de cette affiche seront confirmées plus tard. Le pronostic ouvrira à ce moment-là.
+      </div>
+      {% elif m.phase != 'group' and ('Groupe' in m.team1_name or 'Groupe' in m.team2_name) %}
       <div class="placeholder-note">
         Les équipes de cette affiche seront confirmées plus tard. Ton score restera modifiable jusqu'au coup d'envoi.
       </div>
@@ -154,10 +165,10 @@
         </span>
         <button type="button"
                 class="qualifier-btn {{ 'on' if m.qualifier_prediction == 'team1' else '' }}"
-                data-value="team1" {% if m.is_locked %}disabled{% endif %}>{{ m.team1_name }}</button>
+                data-value="team1" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team1_name }}</button>
         <button type="button"
                 class="qualifier-btn {{ 'on' if m.qualifier_prediction == 'team2' else '' }}"
-                data-value="team2" {% if m.is_locked %}disabled{% endif %}>{{ m.team2_name }}</button>
+                data-value="team2" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team2_name }}</button>
         {% if m.qualifier_label %}
           <span class="muted qualifier-saved">Qualifié: {{ m.qualifier_label }}</span>
         {% endif %}

@@ -951,6 +951,28 @@ img.av { object-fit: cover; display: block; }
   background: var(--paper2);
 }
 
+/* ---- Cagnotte / prix ---- */
+.prize-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.prize-row:last-child { border-bottom: none; }
+.prize-row .ico { font-size: 15px; width: 20px; text-align: center; flex: none; }
+.prize-row .desc { display: block; font-weight: 400; font-size: 10.5px; color: var(--n600); margin-top: 1px; }
+.prize-row .v {
+  margin-left: auto;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
 /* Avatar gradients */
 .av.c1 { background: linear-gradient(135deg, #D3450D, #F59E0B); }
 .av.c2 { background: linear-gradient(135deg, #2E7D32, #7BB661); }
