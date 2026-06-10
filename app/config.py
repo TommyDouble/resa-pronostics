@@ -35,6 +35,14 @@ class Settings:
     SCHEDULER_ENABLED: bool = os.getenv("SCHEDULER_ENABLED", "1") == "1"
     SCHEDULER_INTERVAL: int = int(os.getenv("SCHEDULER_INTERVAL", "600"))
 
+    # Notifications push web (volet B) — désactivées si les clés sont absentes.
+    # Générer: python -c "from py_vapid import Vapid01; v=Vapid01(); v.generate_keys();
+    #          print(v.private_pem().decode()); print(v.public_pem().decode())"
+    # ou via scripts/generate_vapid_keys.py
+    VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "")
+    VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "")
+    VAPID_CLAIMS_EMAIL: str = os.getenv("VAPID_CLAIMS_EMAIL", "pronos@resa.be")
+
     # Timezone
     TZ_DISPLAY: str = "Europe/Brussels"
 

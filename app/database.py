@@ -146,6 +146,15 @@ CREATE TABLE IF NOT EXISTS pre_tournament_questions (
   correct_answer TEXT
 );
 
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  endpoint       TEXT    NOT NULL UNIQUE,
+  p256dh         TEXT    NOT NULL,
+  auth           TEXT    NOT NULL,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS notification_log (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,

@@ -5,7 +5,7 @@ import os
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -61,6 +61,12 @@ templates = create_templates()
 app.include_router(pages.router)
 app.include_router(api.router, prefix="/api")
 app.include_router(admin.router, prefix="/admin")
+
+
+@app.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    # Servi à la racine pour donner au service worker un scope "/" complet.
+    return FileResponse("app/static/js/sw.js", media_type="application/javascript")
 
 
 @app.exception_handler(404)

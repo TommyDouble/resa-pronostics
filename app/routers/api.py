@@ -6,7 +6,9 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.auth import get_participant_by_token
+from app.config import settings
 from app.database import get_db
+from app.push import push_enabled
 from app.settings_store import knockout_predictions_open
 from app.timeutils import is_match_locked
 
@@ -86,3 +88,59 @@ async def submit_prediction(body: PredictionIn, token: str = Query(...)):
         "prediction": prediction,
         "qualifier_prediction": qualifier_prediction,
     }
+
+
+# ---- Notifications push (volet B) ----
+
+class PushSubscriptionIn(BaseModel):
+    endpoint: str
+    keys: dict
+
+
+class PushUnsubscribeIn(BaseModel):
+    endpoint: str
+
+
+@router.get("/push/config")
+async def push_config(token: str = Query(...)):
+    p = await get_participant_by_token(token)
+    if not p:
+        raise HTTPException(403, "Token invalide")
+    return {"enabled": push_enabled(), "publicKey": settings.VAPID_PUBLIC_KEY}
+
+
+@router.post("/push/subscribe")
+async def push_subscribe(body: PushSubscriptionIn, token: str = Query(...)):
+    p = await get_participant_by_token(token)
+    if not p:
+        raise HTTPException(403, "Token invalide")
+    p256dh = (body.keys or {}).get("p256dh", "")
+    auth = (body.keys or {}).get("auth", "")
+    if not body.endpoint or not p256dh or not auth:
+        raise HTTPException(400, "Abonnement incomplet")
+    async with get_db() as db:
+        await db.execute(
+            """INSERT INTO push_subscriptions (participant_id, endpoint, p256dh, auth)
+               VALUES (?,?,?,?)
+               ON CONFLICT(endpoint) DO UPDATE SET
+                 participant_id=excluded.participant_id,
+                 p256dh=excluded.p256dh,
+                 auth=excluded.auth""",
+            (p["id"], body.endpoint, p256dh, auth),
+        )
+        await db.commit()
+    return {"success": True}
+
+
+@router.post("/push/unsubscribe")
+async def push_unsubscribe(body: PushUnsubscribeIn, token: str = Query(...)):
+    p = await get_participant_by_token(token)
+    if not p:
+        raise HTTPException(403, "Token invalide")
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM push_subscriptions WHERE endpoint=? AND participant_id=?",
+            (body.endpoint, p["id"]),
+        )
+        await db.commit()
+    return {"success": True}

@@ -91,6 +91,21 @@
   </div>
   {% endif %}
 
+  <div class="card" data-push-card data-push-promo style="display:none;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:18px;">🔔</span>
+      <p class="muted" style="flex:1;margin:0;font-size:13px;line-height:1.4;" data-push-status>
+        Active les notifications pour ne rater aucun match ni question bonus.
+      </p>
+      <button type="button" class="btn sm" data-push-toggle style="display:none;white-space:nowrap;">Activer</button>
+      <button type="button" class="btn ghost sm" data-push-dismiss title="Ne plus afficher">✕</button>
+    </div>
+    <div class="banner soft" data-push-ios-help style="display:none;margin-top:10px;">
+      <span>📲</span>
+      <span>Sur iPhone : <b>Partager</b> → « <b>Sur l'écran d'accueil</b> », puis ouvre l'app depuis l'icône pour activer les notifications.</span>
+    </div>
+  </div>
+
   {% if yesterday and yesterday.cnt > 0 %}
   <div class="card yesterday-card">
     <div>
