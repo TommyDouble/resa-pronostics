@@ -1146,12 +1146,44 @@ img.av { object-fit: cover; display: block; }
 .urgency .sub { font-size: 12px; opacity: .9; margin-bottom: 12px; }
 .countdown { font-family: var(--sketch); font-size: 22px; font-weight: 700; }
 
+/* ---- "Tout est à jour" + prochain match ---- */
+.all-good {
+  background: #F0FDF4;
+  border-color: #BBF7D0;
+}
+.all-good .next-match {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #BBF7D0;
+}
+.all-good .nm-line {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-weight: 800;
+  font-size: 15px;
+  margin: 3px 0 2px;
+}
+.all-good .countdown { font-size: 16px; color: var(--primary); }
+
+/* ---- Ligne rival (mini classement) ---- */
+.rival-line {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--n600);
+}
+.rival-line b { color: var(--primary); }
+
 /* ---- Today's matches list ---- */
 .match-list-item {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
+a.match-list-item.linked {
+  color: inherit;
+  text-decoration: none;
+}
+a.match-list-item.linked:hover { background: var(--n50); }
 .match-list-item:last-child { border-bottom: none; }
 .match-list-item .info { flex: 1; min-width: 0; }
 .match-list-item .info .name { font-weight: 700; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

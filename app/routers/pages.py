@@ -442,22 +442,55 @@ async def participant_home(request: Request, token: str):
                 break
         # Unmatched today alert
         unpredicted_today = sum(1 for m in today_matches if not m["is_locked"] and not m.get("prediction"))
-        # Mini ranking (top 3 + self)
+        # Next upcoming match (today or later) for the "all caught up" state
+        next_row = await db.execute(
+            """SELECT m.*, p.prediction
+               FROM matches m
+               LEFT JOIN predictions p ON p.match_id = m.id AND p.participant_id = ?
+               WHERE datetime(m.match_date || 'T' || m.kickoff_time) > datetime(?)
+               ORDER BY m.match_date, m.kickoff_time LIMIT 1""",
+            (p["id"], _now_utc())
+        )
+        next_match = await next_row.fetchone()
+        next_match = dict(next_match) if next_match else None
+        if next_match:
+            next_match["kickoff_ts"] = int(match_kickoff_utc(next_match).timestamp())
+        # Mini ranking (top 3 + self) + nearest rivals
         rankings = await get_rankings(db)
         mini_rank = rankings[:3]
         me_rank = next((r for r in rankings if r["id"] == p["id"]), None)
-        if me_rank and me_rank["rank"] > 3:
+        if me_rank and me_rank["rank"] > 3 and me_rank not in mini_rank:
             mini_rank.append(me_rank)
+        rival_ahead = None
+        rival_behind = None
+        if me_rank:
+            my_points = me_rank["total_points"]
+            for r in rankings:
+                if r["total_points"] > my_points:
+                    rival_ahead = {"name": r["name"], "gap": r["total_points"] - my_points}
+                elif r["total_points"] < my_points and rival_behind is None:
+                    rival_behind = {"name": r["name"], "gap": my_points - r["total_points"]}
+                    break
         # Encoded count
         encoded_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE result IS NOT NULL")
         encoded_count = (await encoded_row.fetchone())["cnt"]
         # Pre-tournament status
         pt_status = await _pt_status(db, p["id"])
+        all_caught_up = (
+            urgency is None
+            and unpredicted_today == 0
+            and (not pt_status["open"] or pt_status["complete"])
+            and ctx["pending_bonus"] == 0
+        )
         ctx.update({
             "today_matches": today_matches,
             "urgency": urgency,
             "unpredicted_today": unpredicted_today,
+            "next_match": next_match,
+            "all_caught_up": all_caught_up,
             "mini_rank": mini_rank,
+            "rival_ahead": rival_ahead,
+            "rival_behind": rival_behind,
             "encoded_count": encoded_count,
             "pt_complete": pt_status["complete"],
             "pt_filled_count": pt_status["filled_count"],
@@ -490,7 +523,8 @@ async def confirm_onboarding(request: Request, token: str,
 
 
 @router.get("/p/{token}/pronos", response_class=HTMLResponse)
-async def predictions_page(request: Request, token: str, section: str = "", phase: str = ""):
+async def predictions_page(request: Request, token: str, section: str = "",
+                           phase: str = "", match: int = 0):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "pronos")
         p = ctx["participant"]
@@ -511,6 +545,11 @@ async def predictions_page(request: Request, token: str, section: str = "", phas
             match["pronos_closed"] = match["phase"] != "group" and not knockout_open
         sections = _prediction_sections(all_matches)
         requested_section = section
+        if not requested_section and match:
+            # Lien profond depuis la home: ouvrir la section du match visé.
+            target = next((m for m in all_matches if m["id"] == match), None)
+            if target:
+                requested_section = target.get("section_key") or ""
         if not requested_section and phase:
             requested_section = "group_match_1" if phase == "group" else phase
         if requested_section not in PREDICTION_SECTION_ORDER:

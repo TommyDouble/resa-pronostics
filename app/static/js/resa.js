@@ -331,22 +331,28 @@ function initStepper(id, min, max) {
   if (btnP) btnP.addEventListener('click', function() { setVal(getVal() + 1); });
 }
 
-/* ---- Countdown timer ---- */
+/* ---- Countdown timers ---- */
 function initCountdown() {
-  var el = document.querySelector('[data-countdown]');
-  if (!el) return;
-  var target = parseInt(el.dataset.countdown);
-  function update() {
-    var diff = target - Math.floor(Date.now() / 1000);
-    if (diff <= 0) { el.textContent = 'Commencé !'; return; }
-    var h = Math.floor(diff / 3600);
-    var m = Math.floor((diff % 3600) / 60);
-    var s = diff % 60;
-    el.textContent = (h > 0 ? h + 'h ' : '') + pad(m) + 'min ' + pad(s) + 's';
-    setTimeout(update, 1000);
-  }
   function pad(n) { return n < 10 ? '0' + n : String(n); }
-  update();
+  document.querySelectorAll('[data-countdown]').forEach(function(el) {
+    var target = parseInt(el.dataset.countdown);
+    function update() {
+      var diff = target - Math.floor(Date.now() / 1000);
+      if (diff <= 0) { el.textContent = 'Commencé !'; return; }
+      var d = Math.floor(diff / 86400);
+      var h = Math.floor((diff % 86400) / 3600);
+      var m = Math.floor((diff % 3600) / 60);
+      var s = diff % 60;
+      if (d > 0) {
+        el.textContent = d + 'j ' + h + 'h ' + pad(m) + 'min';
+        setTimeout(update, 30000);
+      } else {
+        el.textContent = (h > 0 ? h + 'h ' : '') + pad(m) + 'min ' + pad(s) + 's';
+        setTimeout(update, 1000);
+      }
+    }
+    update();
+  });
 }
 
 /* ---- Local time display ---- */

@@ -19,94 +19,87 @@
 <div class="page-content">
 
   {% if not participant.has_paid %}
-  <div class="banner" style="background:var(--warn-l,#FFF8E1);border-left:3px solid #F59E0B;color:#92400E;font-size:12px;padding:10px 14px;border-radius:8px;display:flex;gap:8px;align-items:center;">
-    <span>💳</span> Paiement en attente — contacte l'organisateur pour régulariser.
-  </div>
-  {% else %}
-  <div class="banner" style="background:#F0FDF4;border-left:3px solid #22C55E;color:#166534;font-size:12px;padding:10px 14px;border-radius:8px;display:flex;gap:8px;align-items:center;">
-    <span>✅</span> Paiement reçu — bonne chance !
+  <div class="banner" style="background:#FFF8E1;border-left:3px solid #F59E0B;color:#92400E;">
+    <span>💳</span> Participation 10 € à remettre à l'organisateur — indispensable pour toucher tes gains.
   </div>
   {% endif %}
 
-  {% set cta = namespace(kind='pronos', href='/p/' ~ token ~ '/pronos', label='Compléter mes scores', kicker='Prochaine action', text='Indique simplement les scores que tu imagines pour les prochains matchs. Les points seront calculés automatiquement.') %}
-  {% if urgency or unpredicted_today > 0 %}
-    {% set cta.kind = 'pronos' %}
-    {% set cta.href = '/p/' ~ token ~ '/pronos' %}
-    {% set cta.label = 'Compléter mes scores' %}
-    {% set cta.text = 'Il reste des scores à compléter avant le début des matchs.' %}
-  {% elif pt_open and not pt_complete %}
-    {% set cta.kind = 'pretournoi' %}
-    {% set cta.href = '/p/' ~ token ~ '/pre-tournoi' %}
-    {% set cta.label = 'Compléter le pré-tournoi' %}
-    {% set cta.text = (pt_filled_count ~ '/' ~ pt_question_count ~ ' questions répondues — chaque réponse enregistrée compte.') if pt_filled_count > 0 else 'Champion, finalistes, meilleur buteur… 5 questions à remplir avant le coup d’envoi.' %}
-  {% elif pending_bonus > 0 %}
-    {% set cta.kind = 'bonus' %}
-    {% set cta.href = '/p/' ~ token ~ '/bonus' %}
-    {% set cta.label = 'Répondre aux bonus' %}
-    {% set cta.text = pending_bonus ~ ' question' ~ ('s' if pending_bonus > 1 else '') ~ ' bonus attendent ta réponse.' %}
-  {% endif %}
-
-  <div class="card home-cta">
-    <div>
-      <div class="lbl">{{ cta.kicker }}</div>
-      <p>{{ cta.text }}</p>
-    </div>
-    <a href="{{ cta.href }}" class="btn sm">{{ cta.label }}</a>
-  </div>
-
-  {% if pending_bonus > 0 %}
-  <div class="banner acc">
-    <span>★</span>
-    {{ pending_bonus }} question{{ 's' if pending_bonus > 1 else '' }} bonus à répondre.
-    <a href="/p/{{ token }}/bonus" class="inline-link">Voir</a>
-  </div>
-  {% endif %}
-
-  {% if pt_open and not pt_complete and cta.kind != 'pretournoi' %}
-  <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
-    <div>
-      <div style="font-weight:700;font-size:13px;color:#1D4ED8;">🏆 Pronostics pré-tournoi</div>
-      <div style="font-size:12px;color:#3B82F6;margin-top:2px;">
-        Champion, finalistes, buteur, révélation… à remplir avant le
-        <span data-local-utc="{{ pt_deadline|utc_iso }}">{{ pt_deadline|local_datetime }}</span> !
-      </div>
-    </div>
-    <a href="/p/{{ token }}/pre-tournoi" class="btn" style="font-size:12px;white-space:nowrap;padding:7px 14px;">Répondre</a>
-  </div>
-  {% endif %}
-
+  {# --- Une seule action prioritaire --- #}
   {% if urgency %}
   <div class="urgency">
-    <div class="lbl">À compléter bientôt</div>
+    <div class="lbl">À compléter avant le coup d'envoi</div>
     <h2>{{ urgency.team1_name }} – {{ urgency.team2_name }}</h2>
     <div class="sub">
-      {% if urgency.is_top_match %}⏳ <span class="countdown" data-countdown="{{ urgency.kickoff_ts }}">...</span> · ★ Top Match ×2{% else %}⏳ <span class="countdown" data-countdown="{{ urgency.kickoff_ts }}">...</span>{% endif %}
+      ⏳ <span class="countdown" data-countdown="{{ urgency.kickoff_ts }}">...</span>{% if urgency.is_top_match %} · ★ Top Match ×2{% endif %}
+      {% if unpredicted_today > 1 %} · {{ unpredicted_today }} matchs du jour à compléter{% endif %}
     </div>
-    <a href="/p/{{ token }}/pronos" class="btn white full" style="margin-top:10px;">Compléter maintenant</a>
+    <a href="/p/{{ token }}/pronos?match={{ urgency.id }}#match-{{ urgency.id }}" class="btn white full" style="margin-top:10px;">Compléter maintenant</a>
   </div>
-  {% endif %}
-
-  {% if unpredicted_today > 0 %}
-  <div class="banner red">
-    <span>⚠</span>
-    {{ unpredicted_today }} match{{ 's' if unpredicted_today > 1 else '' }} d'aujourd'hui à compléter
-  </div>
-  {% endif %}
-
-  <div class="card rules-entry">
+  {% elif pt_open and not pt_complete %}
+  <div class="card home-cta">
     <div>
-      <div class="lbl">Règlement</div>
-      <p>Barème, dates limites, matchs importants et bonus: tout est résumé au même endroit.</p>
+      <div class="lbl">Prochaine action</div>
+      <p>
+        {% if pt_filled_count > 0 %}
+          Pré-tournoi: {{ pt_filled_count }}/{{ pt_question_count }} questions répondues. Chaque réponse enregistrée compte —
+        {% else %}
+          Champion, finalistes, meilleur buteur… 5 questions à remplir
+        {% endif %}
+        avant le <span data-local-utc="{{ pt_deadline|utc_iso }}">{{ pt_deadline|local_datetime }}</span>.
+      </p>
     </div>
-    <a href="/p/{{ token }}/reglement" class="btn ghost sm">Lire</a>
+    <a href="/p/{{ token }}/pre-tournoi" class="btn sm">Compléter</a>
   </div>
+  {% elif pending_bonus > 0 %}
+  <div class="card home-cta">
+    <div>
+      <div class="lbl">Prochaine action</div>
+      <p>{{ pending_bonus }} question{{ 's' if pending_bonus > 1 else '' }} bonus attend{{ 'ent' if pending_bonus > 1 else '' }} ta réponse.</p>
+    </div>
+    <a href="/p/{{ token }}/bonus" class="btn sm">Répondre</a>
+  </div>
+  {% elif unpredicted_today > 0 %}
+  <div class="card home-cta">
+    <div>
+      <div class="lbl">Prochaine action</div>
+      <p>{{ unpredicted_today }} match{{ 's' if unpredicted_today > 1 else '' }} d'aujourd'hui encore sans score.</p>
+    </div>
+    <a href="/p/{{ token }}/pronos" class="btn sm">Compléter</a>
+  </div>
+  {% else %}
+  <div class="card all-good">
+    <div class="row1" style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:20px;">✅</span>
+      <b>Tout est à jour, {{ greeting_name }} !</b>
+    </div>
+    {% if next_match %}
+    <div class="next-match">
+      <span class="lbl">Prochain match</span>
+      <div class="nm-line">
+        {{ next_match.team1_name }} – {{ next_match.team2_name }}
+        {% if next_match.is_top_match %}<span class="chip warn">★ ×2</span>{% endif %}
+      </div>
+      <div class="muted" style="font-size:12.5px;">
+        <span data-local-utc="{{ next_match|match_utc_iso }}">{{ next_match|match_datetime }}</span>
+        · dans <span class="countdown" data-countdown="{{ next_match.kickoff_ts }}">...</span>
+      </div>
+    </div>
+    {% else %}
+    <p class="muted" style="margin:6px 0 0;font-size:13px;">Plus aucun match au calendrier — merci d'avoir joué !</p>
+    {% endif %}
+  </div>
+  {% endif %}
 
   {% if today_matches %}
   <div>
     <div class="lbl" style="margin-bottom:8px;">Matchs du jour</div>
     <div class="card p0">
       {% for m in today_matches %}
-      <div class="match-list-item">
+      {% if m.is_locked %}
+      <a class="match-list-item linked" href="/p/{{ token }}/match/{{ m.id }}">
+      {% else %}
+      <a class="match-list-item linked" href="/p/{{ token }}/pronos?match={{ m.id }}#match-{{ m.id }}">
+      {% endif %}
         {% if m.is_locked %}
           <span class="dot r"></span>
         {% elif m.prediction %}
@@ -143,7 +136,7 @@
             <span class="chip gr">à faire</span>
           {% endif %}
         </div>
-      </div>
+      </a>
       {% endfor %}
     </div>
   </div>
@@ -160,8 +153,21 @@
         <span class="sc">{{ r.total_points }}<small> pts</small></span>
       </div>
       {% endfor %}
+      {% if rival_ahead %}
+      <div class="rival-line">🎯 Il te manque <b>{{ rival_ahead.gap }} pt{{ 's' if rival_ahead.gap > 1 else '' }}</b> pour rattraper {{ rival_ahead.name }}</div>
+      {% elif rival_behind %}
+      <div class="rival-line">👑 Tu mènes avec <b>{{ rival_behind.gap }} pt{{ 's' if rival_behind.gap > 1 else '' }}</b> d'avance sur {{ rival_behind.name }}</div>
+      {% endif %}
       <a href="/p/{{ token }}/classement" class="mini-rank-link">Voir tout le classement →</a>
     </div>
+  </div>
+
+  <div class="card rules-entry">
+    <div>
+      <div class="lbl">Règlement</div>
+      <p>Barème, dates limites, matchs importants et bonus: tout est résumé au même endroit.</p>
+    </div>
+    <a href="/p/{{ token }}/reglement" class="btn ghost sm">Lire</a>
   </div>
 
   <div style="text-align:center;font-size:11px;color:var(--n600);padding-bottom:8px;">
