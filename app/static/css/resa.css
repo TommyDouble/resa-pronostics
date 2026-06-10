@@ -889,7 +889,9 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
   border-radius: 99px;
   display: flex; align-items: center; justify-content: center;
   font-family: var(--display); font-weight: 800; color: #fff;
+  overflow: hidden; flex-shrink: 0;
 }
+img.av { object-fit: cover; display: block; }
 .pod .av { width: 42px; height: 42px; font-size: 14px; border: 2px solid #fff; box-shadow: var(--sh); }
 .pod .bar {
   width: 58px; border-radius: 8px 8px 0 0;

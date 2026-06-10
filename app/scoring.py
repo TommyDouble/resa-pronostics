@@ -136,6 +136,7 @@ _RANKINGS_SQL = """
         p.name,
         p.nickname,
         p.email,
+        p.avatar_path,
         COALESCE((SELECT SUM(s.points) FROM scores s WHERE s.participant_id = p.id), 0)
           + COALESCE((SELECT SUM(ps.points) FROM pre_tournament_scores ps WHERE ps.participant_id = p.id), 0)
           as total_points,
@@ -165,6 +166,7 @@ async def _rankings_from_db(db) -> list:
             "name": p["nickname"] or p["name"],
             "nickname": p["nickname"],
             "email": p["email"],
+            "avatar_path": p["avatar_path"],
             "total_points": p["total_points"],
             "matches_scored": p["matches_scored"],
         })

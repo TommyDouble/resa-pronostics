@@ -172,6 +172,7 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
             "email_opt_in INTEGER NOT NULL DEFAULT 1",
             "password_hash TEXT",
             "department TEXT",
+            "avatar_path TEXT",
         ]
         for column in participant_columns:
             try:

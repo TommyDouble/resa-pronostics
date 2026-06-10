@@ -1,9 +1,12 @@
 """Participant-facing HTML page routes."""
 from collections import defaultdict
+import io
 import logging
+import os
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request, Form
+from fastapi import APIRouter, File, HTTPException, Request, Form, UploadFile
+from PIL import Image
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.auth import hash_password, require_participant, verify_password
@@ -736,7 +739,10 @@ PROFILE_EDIT_MESSAGES = {
     "password_set": ("ok", "Mot de passe enregistré — tu peux maintenant te connecter avec ton email."),
     "password_mismatch": ("err", "Les deux mots de passe ne correspondent pas."),
     "password_short": ("err", f"Le mot de passe doit faire au moins {MIN_PASSWORD_LENGTH} caractères."),
+    "avatar_invalid": ("err", "Fichier non reconnu — utilise une image JPEG, PNG ou WebP."),
 }
+
+AVATARS_DIR = "app/static/uploads/avatars"
 
 
 @router.get("/p/{token}/profil/edit", response_class=HTMLResponse)
@@ -765,6 +771,8 @@ async def save_profile(
     email_opt_in: str = Form(default="0"),
     new_password: str = Form(default=""),
     new_password_confirm: str = Form(default=""),
+    avatar: UploadFile = File(None),
+    delete_avatar: str = Form(default="0"),
 ):
     p = await require_participant(token)
     first_name = first_name.strip()[:80]
@@ -790,6 +798,39 @@ async def save_profile(
             password_hash = hash_password(new_password)
             password_msg = "password_set"
 
+    # Handle avatar upload / deletion
+    avatar_new_path = None   # None = no change
+    avatar_delete = False
+    avatar_msg = ""
+
+    if delete_avatar == "1":
+        avatar_delete = True
+        existing = p.get("avatar_path")
+        if existing:
+            try:
+                os.remove(os.path.join(AVATARS_DIR, existing))
+            except OSError:
+                pass
+    elif avatar and avatar.filename:
+        content = await avatar.read()
+        if content:
+            try:
+                image = Image.open(io.BytesIO(content))
+                image.thumbnail((400, 400))
+                if image.mode in ("RGBA", "P", "LA"):
+                    bg = Image.new("RGB", image.size, (255, 255, 255))
+                    converted = image.convert("RGBA") if image.mode == "P" else image
+                    bg.paste(converted, mask=converted.split()[-1])
+                    image = bg
+                elif image.mode != "RGB":
+                    image = image.convert("RGB")
+                os.makedirs(AVATARS_DIR, exist_ok=True)
+                filename = f"{p['id']}.jpg"
+                image.save(os.path.join(AVATARS_DIR, filename), "JPEG", quality=85)
+                avatar_new_path = filename
+            except Exception:
+                avatar_msg = "avatar_invalid"
+
     async with get_db() as db:
         await db.execute(
             """UPDATE participants
@@ -809,12 +850,22 @@ async def save_profile(
                 token,
             ),
         )
+        if avatar_delete:
+            await db.execute("UPDATE participants SET avatar_path=NULL WHERE token=?", (token,))
+        elif avatar_new_path:
+            await db.execute(
+                "UPDATE participants SET avatar_path=? WHERE token=?",
+                (avatar_new_path, token),
+            )
         if password_hash:
             await db.execute(
                 "UPDATE participants SET password_hash=? WHERE token=?",
                 (password_hash, token),
             )
         await db.commit()
+
+    if avatar_msg:
+        return RedirectResponse(url=f"/p/{token}/profil/edit?msg={avatar_msg}", status_code=303)
     if password_msg and password_msg != "password_set":
         return RedirectResponse(url=f"/p/{token}/profil/edit?msg={password_msg}", status_code=303)
     if password_msg == "password_set":
@@ -932,6 +983,7 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     return {
         "participant": p,
         "name": display_name,
+        "avatar_path": p.get("avatar_path"),
         "full_name": p["name"],
         "nickname": p.get("nickname"),
         "favorite_team": "" if is_limited_view else p.get("favorite_team"),
