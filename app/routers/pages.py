@@ -24,6 +24,7 @@ from app.pre_tournament import (
     get_pre_tournament_deadline,
     get_pre_tournament_question_map,
     get_pre_tournament_questions,
+    pt_filled_keys,
 )
 from app.prizes import get_prize_info
 from app.settings_store import knockout_predictions_open
@@ -88,6 +89,27 @@ PREDICTION_SECTION_LABELS = {
 
 def _now_utc() -> str:
     return now_utc_iso()
+
+
+async def _pt_status(db, participant_id: int) -> dict:
+    """Avancement pré-tournoi: questions remplies / total, complétude."""
+    row = await db.execute(
+        "SELECT * FROM pre_tournament_predictions WHERE participant_id = ?",
+        (participant_id,),
+    )
+    pt = await row.fetchone()
+    questions = await get_pre_tournament_questions(db)
+    enabled_keys = [q["key"] for q in questions]
+    filled = pt_filled_keys(dict(pt) if pt else None, enabled_keys)
+    deadline = await get_pre_tournament_deadline(db)
+    return {
+        "pt": dict(pt) if pt else {},
+        "filled_count": len(filled),
+        "question_count": len(enabled_keys),
+        "complete": len(filled) == len(enabled_keys) and len(enabled_keys) > 0,
+        "open": _now_utc() < deadline,
+        "deadline": deadline,
+    }
 
 
 def _split_name(name: str) -> tuple[str, str]:
@@ -430,22 +452,18 @@ async def participant_home(request: Request, token: str):
         encoded_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE result IS NOT NULL")
         encoded_count = (await encoded_row.fetchone())["cnt"]
         # Pre-tournament status
-        pt_row2 = await db.execute(
-            "SELECT submitted FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
-        )
-        pt2 = await pt_row2.fetchone()
-        pt_submitted = bool(pt2 and pt2["submitted"])
-        pt_deadline = await get_pre_tournament_deadline(db)
-        pt_open = _now_utc() < pt_deadline
+        pt_status = await _pt_status(db, p["id"])
         ctx.update({
             "today_matches": today_matches,
             "urgency": urgency,
             "unpredicted_today": unpredicted_today,
             "mini_rank": mini_rank,
             "encoded_count": encoded_count,
-            "pt_submitted": pt_submitted,
-            "pt_open": pt_open,
-            "pt_deadline": pt_deadline,
+            "pt_complete": pt_status["complete"],
+            "pt_filled_count": pt_status["filled_count"],
+            "pt_question_count": pt_status["question_count"],
+            "pt_open": pt_status["open"],
+            "pt_deadline": pt_status["deadline"],
         })
     return templates.TemplateResponse(request, "home.html", {"request": request, **ctx})
 
@@ -501,11 +519,7 @@ async def predictions_page(request: Request, token: str, section: str = "", phas
             match for match in all_matches
             if match.get("section_key") == requested_section
         ]
-        pt_row = await db.execute(
-            "SELECT submitted FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
-        )
-        pt = await pt_row.fetchone()
-        pt_submitted = bool(pt and pt["submitted"])
+        pt_status = await _pt_status(db, p["id"])
         ctx.update({
             "matches": all_matches,
             "current_matches": current_matches,
@@ -514,7 +528,10 @@ async def predictions_page(request: Request, token: str, section: str = "", phas
             "current_section_help": _section_help(requested_section),
             "prediction_sections": sections,
             "phase_labels": PHASE_LABELS,
-            "pt_submitted": pt_submitted,
+            "pt_complete": pt_status["complete"],
+            "pt_filled_count": pt_status["filled_count"],
+            "pt_question_count": pt_status["question_count"],
+            "pt_open": pt_status["open"],
             "knockout_open": knockout_open,
             "page_wide": True,
         })
@@ -539,19 +556,16 @@ PT_ERRORS = {
 
 
 @router.get("/p/{token}/pre-tournoi", response_class=HTMLResponse)
-async def pre_tournament_page(request: Request, token: str, error: str = ""):
+async def pre_tournament_page(request: Request, token: str, error: str = "", saved: str = ""):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "bonus")
         p = ctx["participant"]
-        row = await db.execute(
-            "SELECT * FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
-        )
-        pt = await row.fetchone()
         outsiders = OUTSIDERS
-        pt_deadline = await get_pre_tournament_deadline(db)
+        pt_status = await _pt_status(db, p["id"])
+        pt_deadline = pt_status["deadline"]
         pt_questions = await get_pre_tournament_question_map(db)
-        pt_editable = _now_utc() < pt_deadline
-        pt_dict = dict(pt) if pt else {}
+        pt_editable = pt_status["open"]
+        pt_dict = pt_status["pt"]
         if pt_dict.get("top_scorer"):
             pt_dict["top_scorer"] = normalize_scorer(pt_dict["top_scorer"])
         # Results once correct answers are encoded (after deadline)
@@ -570,6 +584,10 @@ async def pre_tournament_page(request: Request, token: str, error: str = ""):
             "pt_deadline": pt_deadline,
             "pt_scores": pt_scores,
             "pt_error": PT_ERRORS.get(error),
+            "pt_saved": saved == "1",
+            "pt_filled_count": pt_status["filled_count"],
+            "pt_question_count": pt_status["question_count"],
+            "pt_complete": pt_status["complete"],
         })
     return templates.TemplateResponse(request, "pre_tournament.html", {"request": request, **ctx})
 
@@ -582,7 +600,6 @@ async def save_pre_tournament(
     top_scorer: str = Form(default=""),
     revelation: str = Form(default=""),
     total_goals: int = Form(default=0),
-    action: str = Form(default="draft"),
 ):
     p = await require_participant(token)
     winner = winner.strip()
@@ -632,26 +649,26 @@ async def save_pre_tournament(
         }
         for key in enabled:
             values[key] = incoming[key]
-        submitted = 1 if action == "submit" else 0
-        submitted_at = _now_utc() if submitted else None
+        # Toute sauvegarde compte pour les points : pas de notion de brouillon.
+        submitted_at = _now_utc()
         if existing:
             await db.execute(
                 """UPDATE pre_tournament_predictions
                    SET winner=?, finalist=?, top_scorer=?, revelation=?, total_goals=?,
-                       submitted=?, submitted_at=?
+                       submitted=1, submitted_at=?
                    WHERE participant_id=?""",
                 (values["winner"], values["finalist"], values["top_scorer"], values["revelation"], values["total_goals"],
-                 submitted, submitted_at, p["id"])
+                 submitted_at, p["id"])
             )
         else:
             await db.execute(
                 """INSERT INTO pre_tournament_predictions
                    (participant_id, winner, finalist, top_scorer, revelation, total_goals, submitted, submitted_at)
-                   VALUES (?,?,?,?,?,?,?,?)""",
-                (p["id"], values["winner"], values["finalist"], values["top_scorer"], values["revelation"], values["total_goals"], submitted, submitted_at)
+                   VALUES (?,?,?,?,?,?,1,?)""",
+                (p["id"], values["winner"], values["finalist"], values["top_scorer"], values["revelation"], values["total_goals"], submitted_at)
             )
         await db.commit()
-    return RedirectResponse(url=f"/p/{token}/pre-tournoi", status_code=303)
+    return RedirectResponse(url=f"/p/{token}/pre-tournoi?saved=1", status_code=303)
 
 
 @router.get("/p/{token}/classement", response_class=HTMLResponse)

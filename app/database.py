@@ -209,6 +209,13 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
             except Exception:
                 pass
 
+        # Les anciens brouillons comptent désormais comme des réponses valides.
+        await db.execute(
+            """UPDATE pre_tournament_predictions
+               SET submitted=1, submitted_at=COALESCE(submitted_at, created_at)
+               WHERE submitted=0"""
+        )
+
         await ensure_pre_tournament_defaults(db)
         await ensure_default_settings(db)
         await db.commit()

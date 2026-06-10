@@ -111,6 +111,25 @@ async def ensure_pre_tournament_defaults(db):
         )
 
 
+def pt_filled_keys(pt: dict | None, enabled_keys) -> set:
+    """Questions auxquelles le participant a répondu (valeur non vide).
+
+    Toute réponse enregistrée compte pour les points : il n'y a plus de
+    distinction brouillon/soumission. total_goals à 0 = pas encore répondu.
+    """
+    filled = set()
+    if not pt:
+        return filled
+    for key in enabled_keys:
+        value = pt.get(key)
+        if key == "total_goals":
+            if value:
+                filled.add(key)
+        elif str(value or "").strip():
+            filled.add(key)
+    return filled
+
+
 async def get_pre_tournament_deadline(db) -> str:
     row = await db.execute(
         "SELECT value FROM app_settings WHERE key='pre_tournament_deadline'"

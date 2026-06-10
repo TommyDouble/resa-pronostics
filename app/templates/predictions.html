@@ -34,10 +34,10 @@
 
 <div class="page-content predictions-page">
 
-  {% if not pt_submitted %}
+  {% if pt_open and not pt_complete %}
   <div class="banner acc">
     <span>✎</span>
-    Pré-tournoi non soumis —
+    Pré-tournoi incomplet ({{ pt_filled_count }}/{{ pt_question_count }}) —
     <a href="/p/{{ token }}/pre-tournoi" style="color:var(--primary);font-weight:700;margin-left:4px;">Compléter →</a>
   </div>
   {% endif %}

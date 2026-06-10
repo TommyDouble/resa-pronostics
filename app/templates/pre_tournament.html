@@ -8,10 +8,12 @@
     <span class="sp"></span>
     {% if not pt_editable %}
       <span class="chip lock">Verrouillé</span>
-    {% elif pt.submitted %}
-      <span class="chip ok">Soumis ✓</span>
+    {% elif pt_complete %}
+      <span class="chip ok">Complet ✓</span>
+    {% elif pt_filled_count > 0 %}
+      <span class="chip warn">{{ pt_filled_count }}/{{ pt_question_count }} répondues</span>
     {% else %}
-      <span class="chip warn">À soumettre</span>
+      <span class="chip warn">À compléter</span>
     {% endif %}
   </div>
   <div class="sub1">
@@ -44,16 +46,30 @@
   </div>
   {% endif %}
 
+  {% if pt_saved and pt_editable %}
+  <div class="banner" style="background:#ECFDF5;border-left:3px solid #22C55E;color:#166534;font-size:13px;padding:10px 14px;border-radius:8px;">
+    <span>✓</span> Réponses enregistrées — elles comptent pour les points. Modifiables jusqu'à la deadline.
+  </div>
+  {% endif %}
+
   {% if not pt_editable %}
-  <div class="banner" style="background:#F3F4F6;border-left:3px solid #9CA3AF;color:#374151;font-size:12px;padding:10px 14px;border-radius:8px;">
+  <div class="banner" style="background:#F3F4F6;border-left:3px solid #9CA3AF;color:#374151;font-size:13px;padding:10px 14px;border-radius:8px;">
     <span>🔒</span> La deadline est passée — pronostics verrouillés.
   </div>
-  {% elif pt.submitted %}
-  <div class="banner" style="background:#ECFDF5;border-left:3px solid #22C55E;color:#166534;font-size:12px;padding:10px 14px;border-radius:8px;">
-    <span>✓</span> Soumis ! Tu peux encore modifier depuis cet écran jusqu'à la deadline.
+  {% elif pt_complete %}
+  {% if not pt_saved %}
+  <div class="banner" style="background:#ECFDF5;border-left:3px solid #22C55E;color:#166534;font-size:13px;padding:10px 14px;border-radius:8px;">
+    <span>✓</span> Tes 5 réponses sont enregistrées et comptent pour les points. Tu peux encore les modifier jusqu'à la deadline.
   </div>
+  {% endif %}
   {% else %}
-  <div class="banner acc"><span>✎</span> Pas encore soumis — enregistre un brouillon ou valide ta soumission avant la deadline.</div>
+  <div class="banner acc"><span>✎</span>
+    {% if pt_filled_count > 0 %}
+      Encore {{ pt_question_count - pt_filled_count }} question{{ 's' if pt_question_count - pt_filled_count > 1 else '' }} sans réponse — chaque réponse enregistrée compte, même si tout n'est pas rempli.
+    {% else %}
+      Réponds aux 5 questions et enregistre avant la deadline. Chaque réponse enregistrée compte.
+    {% endif %}
+  </div>
   {% endif %}
 
   <form method="post" action="/p/{{ token }}/pre-tournoi" id="pt-form">
@@ -167,13 +183,12 @@
     {% endif %}
 
     {% if pt_editable %}
-    <div class="row2">
-      <button type="submit" name="action" value="draft" class="btn ghost">Enregistrer en brouillon</button>
-      <button type="submit" name="action" value="submit" class="btn"
-              onclick="return confirm('Confirmer tes pronostics pré-tournoi ?')">
-        {% if pt.submitted %}Mettre à jour ma soumission{% else %}Soumettre mes pronos{% endif %}
-      </button>
-    </div>
+    <button type="submit" class="btn full">
+      {% if pt_filled_count > 0 %}Enregistrer mes réponses{% else %}Enregistrer mes pronos{% endif %}
+    </button>
+    <p class="muted helper-text" style="text-align:center;">
+      Modifiable autant de fois que tu veux jusqu'à la deadline. Toute réponse enregistrée compte.
+    </p>
     {% endif %}
 
   </form>

@@ -299,8 +299,9 @@ async def recalculate_pre_tournament_scores():
         questions = [dict(r) for r in await q_rows.fetchall()]
         correct_answers = {q["key"]: q.get("correct_answer") for q in questions}
 
+        # Toute réponse enregistrée compte — pas de piège du brouillon oublié.
         p_rows = await db.execute(
-            "SELECT * FROM pre_tournament_predictions WHERE submitted=1"
+            "SELECT * FROM pre_tournament_predictions"
         )
         predictions = [dict(r) for r in await p_rows.fetchall()]
 
