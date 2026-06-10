@@ -16,7 +16,7 @@ from app.mail import (
     send_match_reminder as send_match_reminder_email,
     send_pre_tournament_reminder,
 )
-from app.players import TEAMS_48, get_scorer_choices, is_valid_scorer
+from app.players import TEAMS_48, get_scorer_options, is_valid_scorer
 from app.pre_tournament import (
     DEFAULT_PRE_TOURNAMENT_QUESTIONS,
     get_pre_tournament_deadline,
@@ -487,7 +487,7 @@ async def pre_tournament_admin(request: Request):
         "submitted_count": submitted_count,
         "total_count": total_count,
         "teams": TEAMS_48,
-        "scorer_choices": get_scorer_choices(),
+        "scorer_options": get_scorer_options(),
         "answers": answers,
         "hits": hits,
     })

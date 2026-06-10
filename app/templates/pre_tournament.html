@@ -95,29 +95,15 @@
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
       <div class="lbl">③ {{ q.label }} · {{ q.points_label }}</div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
-      <div class="field" style="margin-top:8px;">
-        <input type="text" id="scorer-filter" placeholder="🔍 Filtrer par joueur ou équipe…"
-               autocomplete="off" {% if not pt_editable %}disabled{% endif %}
-               style="margin-bottom:8px;">
+      <div class="autocomplete-wrap" data-scorer-combo style="margin-top:8px;">
+        <div class="field">
+          <input type="text" data-combo-input placeholder="🔍 Rechercher un joueur ou une équipe…"
+                 value="{{ pt.top_scorer or '' }}" autocomplete="off"
+                 {% if not pt_editable %}disabled{% endif %}>
+        </div>
+        <input type="hidden" name="top_scorer" data-combo-value value="{{ pt.top_scorer or '' }}">
+        <ul class="autocomplete-list" data-combo-list style="display:none;"></ul>
       </div>
-      <div class="field">
-        <select name="top_scorer" id="top-scorer-select" size="1" {% if not pt_editable %}disabled{% endif %}>
-          <option value="">Choisir un joueur…</option>
-          {% for team, players in players_by_team.items() %}
-          <optgroup label="{{ team }}">
-            {% for pl in players %}
-            <option value="{{ pl.choice }}" data-search="{{ pl.name|lower }} {{ team|lower }}"
-                    {{ 'selected' if pt.top_scorer == pl.choice else '' }}>
-              {{ pl.name }}{% if pl.pos_label %} · {{ pl.pos_label }}{% endif %}{% if pl.club %} · {{ pl.club }}{% endif %}
-            </option>
-            {% endfor %}
-          </optgroup>
-          {% endfor %}
-        </select>
-      </div>
-      {% if pt.top_scorer %}
-      <div class="muted" style="font-size:11px;margin-top:6px;">Sélection actuelle : <b>{{ pt.top_scorer }}</b></div>
-      {% endif %}
     </div>
     {% endif %}
 
@@ -166,6 +152,10 @@
     {% endif %}
 
   </form>
+
+  {% if pt_editable %}
+  <script type="application/json" id="scorer-data">{{ scorer_options|list|tojson }}</script>
+  {% endif %}
 
 </div>
 {% endblock %}

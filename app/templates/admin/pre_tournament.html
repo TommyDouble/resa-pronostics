@@ -63,13 +63,13 @@
     <div class="grid2">
       <div>
         <div class="lbl" style="margin-bottom:5px;">③ Meilleur buteur</div>
-        <div class="field">
-          <select name="top_scorer">
-            <option value="">— Pas encore connu —</option>
-            {% for scorer in scorer_choices %}
-            <option value="{{ scorer }}" {{ 'selected' if answers.top_scorer == scorer else '' }}>{{ scorer }}</option>
-            {% endfor %}
-          </select>
+        <div class="autocomplete-wrap" data-scorer-combo>
+          <div class="field">
+            <input type="text" data-combo-input placeholder="🔍 Rechercher un joueur ou une équipe…"
+                   value="{{ answers.top_scorer }}" autocomplete="off">
+          </div>
+          <input type="hidden" name="top_scorer" data-combo-value value="{{ answers.top_scorer }}">
+          <ul class="autocomplete-list" data-combo-list style="display:none;"></ul>
         </div>
         {% if hits.top_scorer %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.top_scorer.winners }}/{{ hits.top_scorer.scored }} participants l'avaient.</div>{% endif %}
       </div>
@@ -97,6 +97,7 @@
       <button type="submit" class="btn sm">Enregistrer et recalculer les points</button>
     </div>
   </form>
+  <script type="application/json" id="scorer-data">{{ scorer_options|list|tojson }}</script>
 </div>
 
 {% for q in questions %}

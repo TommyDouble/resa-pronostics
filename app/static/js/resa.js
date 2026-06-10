@@ -346,42 +346,116 @@ function initWinnerFinalistGuard() {
   });
 }
 
-/* ---- Top scorer select filter (1200+ players) ---- */
-function initScorerFilter() {
-  var filter = document.getElementById('scorer-filter');
-  var select = document.getElementById('top-scorer-select');
-  if (!filter || !select) return;
-  var groups = Array.prototype.slice.call(select.querySelectorAll('optgroup'));
+/* ---- Top scorer combobox (1200+ players) ---- */
+function initScorerCombos() {
+  var dataEl = document.getElementById('scorer-data');
+  var combos = document.querySelectorAll('[data-scorer-combo]');
+  if (!dataEl || !combos.length) return;
+  var players;
+  try { players = JSON.parse(dataEl.textContent); } catch (e) { return; }
 
-  filter.addEventListener('input', function() {
-    var q = filter.value.toLowerCase().trim();
-    groups.forEach(function(group) {
-      var visible = 0;
-      Array.prototype.forEach.call(group.querySelectorAll('option'), function(opt) {
-        var match = !q || (opt.dataset.search || '').indexOf(q) !== -1;
-        opt.hidden = !match;
-        if (match) visible++;
+  function fold(s) {
+    return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+  players.forEach(function(p) { p.search = fold(p.name + ' ' + p.team); });
+
+  combos.forEach(function(combo) {
+    var input = combo.querySelector('[data-combo-input]');
+    var hidden = combo.querySelector('[data-combo-value]');
+    var list = combo.querySelector('[data-combo-list]');
+    if (!input || !hidden || !list || input.disabled) return;
+    var activeIndex = -1;
+
+    function close() {
+      list.style.display = 'none';
+      list.innerHTML = '';
+      activeIndex = -1;
+    }
+
+    function commit(value) {
+      hidden.value = value;
+      input.value = value;
+      close();
+      input.dispatchEvent(new Event('combo-change'));
+    }
+
+    function setActive(index) {
+      var items = list.querySelectorAll('li[data-value]');
+      if (!items.length) return;
+      activeIndex = (index + items.length) % items.length;
+      Array.prototype.forEach.call(items, function(li, i) {
+        li.classList.toggle('on', i === activeIndex);
       });
-      group.hidden = visible === 0;
+      items[activeIndex].scrollIntoView({ block: 'nearest' });
+    }
+
+    function render() {
+      var q = fold(input.value.trim());
+      list.innerHTML = '';
+      activeIndex = -1;
+      if (q.length < 2) {
+        if (q.length === 1) {
+          list.innerHTML = '<li class="hint">Tape au moins 2 lettres…</li>';
+          list.style.display = 'block';
+        } else {
+          close();
+        }
+        return;
+      }
+      var matches = players.filter(function(p) { return p.search.indexOf(q) !== -1; });
+      if (!matches.length) {
+        list.innerHTML = '<li class="hint">Aucun joueur trouvé.</li>';
+        list.style.display = 'block';
+        return;
+      }
+      matches.slice(0, 30).forEach(function(p) {
+        var li = document.createElement('li');
+        li.dataset.value = p.value;
+        li.innerHTML = '<b></b><span class="meta"></span>';
+        li.querySelector('b').textContent = p.name;
+        li.querySelector('.meta').textContent =
+          (p.position ? p.position + ' · ' : '') + p.team;
+        // mousedown fires before the input's blur, so the click isn't lost
+        li.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          commit(p.value);
+        });
+        list.appendChild(li);
+      });
+      if (matches.length > 30) {
+        var more = document.createElement('li');
+        more.className = 'hint';
+        more.textContent = (matches.length - 30) + ' autres joueurs — affine ta recherche…';
+        list.appendChild(more);
+      }
+      list.style.display = 'block';
+    }
+
+    input.addEventListener('input', render);
+    input.addEventListener('focus', function() {
+      // Start a fresh search instead of editing the long canonical value.
+      if (input.value === hidden.value) input.select();
     });
-    if (q) {
-      // Expand the list while filtering so matches are visible at a glance.
-      var visibleCount = select.querySelectorAll('option:not([hidden])').length;
-      select.size = Math.min(Math.max(visibleCount + 1, 2), 10);
-    } else {
-      select.size = 1;
-    }
-  });
-
-  select.addEventListener('change', function() {
-    if (select.value) {
-      filter.value = '';
-      groups.forEach(function(group) {
-        group.hidden = false;
-        Array.prototype.forEach.call(group.querySelectorAll('option'), function(opt) { opt.hidden = false; });
-      });
-      select.size = 1;
-    }
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'ArrowDown') { setActive(activeIndex + 1); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { setActive(activeIndex - 1); e.preventDefault(); }
+      else if (e.key === 'Enter') {
+        var items = list.querySelectorAll('li[data-value]');
+        if (list.style.display !== 'none' && items.length) {
+          commit(items[activeIndex === -1 ? 0 : activeIndex].dataset.value);
+          e.preventDefault();
+        }
+      } else if (e.key === 'Escape') {
+        close();
+        input.value = hidden.value;
+      }
+    });
+    input.addEventListener('blur', function() {
+      close();
+      // Keep only confirmed picks: empty clears, anything else reverts.
+      if (input.value.trim() === '') hidden.value = '';
+      else input.value = hidden.value;
+    });
   });
 }
 
@@ -503,5 +577,5 @@ document.addEventListener('DOMContentLoaded', function() {
   initPhaseFilter();
   initStepper('goals-stepper', 50, 300);
   initWinnerFinalistGuard();
-  initScorerFilter();
+  initScorerCombos();
 });

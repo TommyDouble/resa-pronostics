@@ -60,6 +60,14 @@ def scorer_choice(player: dict) -> str:
     return player["name"]
 
 
+POSITION_LABELS_FR = {
+    "GK": "Gardien",
+    "DF": "Défenseur",
+    "MF": "Milieu",
+    "FW": "Attaquant",
+}
+
+
 @lru_cache(maxsize=1)
 def get_scorer_choices() -> tuple:
     """Canonical top-scorer values, sorted by player name."""
@@ -70,18 +78,20 @@ def get_scorer_choices() -> tuple:
 
 
 @lru_cache(maxsize=1)
-def get_players_by_team() -> dict:
-    """Players grouped by team (teams sorted alphabetically), attackers first."""
-    position_order = {"FW": 0, "MF": 1, "DF": 2, "GK": 3}
-    grouped: dict[str, list] = {}
-    for player in get_players():
-        grouped.setdefault(player.get("team") or "Autres", []).append(player)
-    for team_players in grouped.values():
-        team_players.sort(key=lambda p: (
-            position_order.get(p.get("position", ""), 4),
-            p["name"].casefold(),
-        ))
-    return dict(sorted(grouped.items(), key=lambda kv: kv[0].casefold()))
+def get_scorer_options() -> tuple:
+    """Structured options for the top-scorer combobox, sorted by player name."""
+    return tuple(sorted(
+        (
+            {
+                "value": scorer_choice(p),
+                "name": p["name"],
+                "team": p.get("team") or "",
+                "position": POSITION_LABELS_FR.get(p.get("position", ""), ""),
+            }
+            for p in get_players()
+        ),
+        key=lambda o: o["name"].casefold(),
+    ))
 
 
 def is_valid_scorer(value: str) -> bool:

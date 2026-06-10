@@ -842,7 +842,11 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
   border-bottom: 1px solid var(--line);
 }
 .autocomplete-list li:last-child { border-bottom: none; }
-.autocomplete-list li:hover { background: var(--primary-l); color: var(--primary); }
+.autocomplete-list li:hover, .autocomplete-list li.on { background: var(--primary-l); color: var(--primary); }
+.autocomplete-list li b { font-weight: 700; }
+.autocomplete-list li .meta { display: block; font-size: 11px; color: var(--n600); margin-top: 1px; }
+.autocomplete-list li.hint { color: var(--n600); font-size: 12px; cursor: default; }
+.autocomplete-list li.hint:hover { background: none; color: var(--n600); }
 .autocomplete-wrap { position: relative; }
 
 /* ---- Flash messages ---- */

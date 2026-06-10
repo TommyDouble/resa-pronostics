@@ -10,10 +10,9 @@ from app.auth import require_participant
 from app.database import get_db
 from app.players import (
     TEAMS_48,
-    get_players_by_team,
+    get_scorer_options,
     is_valid_scorer,
     normalize_scorer,
-    scorer_choice,
 )
 from app.pre_tournament import (
     get_pre_tournament_deadline,
@@ -73,9 +72,6 @@ PREDICTION_SECTION_LABELS = {
     "third_place": PHASE_LABELS["third_place"],
     "final": PHASE_LABELS["final"],
 }
-
-POSITION_LABELS = {"GK": "G", "DF": "D", "MF": "M", "FW": "A"}
-
 
 def _now_utc() -> str:
     return now_utc_iso()
@@ -432,19 +428,11 @@ async def pre_tournament_page(request: Request, token: str, error: str = ""):
             (p["id"],),
         )
         pt_scores = {r["question_key"]: r["points"] for r in await score_rows.fetchall()}
-        players_by_team = {
-            team: [
-                {**pl, "choice": scorer_choice(pl),
-                 "pos_label": POSITION_LABELS.get(pl.get("position", ""), "")}
-                for pl in team_players
-            ]
-            for team, team_players in get_players_by_team().items()
-        }
         ctx.update({
             "pt": pt_dict,
             "pt_questions": pt_questions,
             "teams": TEAMS_48,
-            "players_by_team": players_by_team,
+            "scorer_options": get_scorer_options(),
             "outsiders": outsiders,
             "pt_editable": pt_editable,
             "pt_deadline": pt_deadline,
