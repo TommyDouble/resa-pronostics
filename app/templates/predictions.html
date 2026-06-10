@@ -119,7 +119,7 @@
       </div>
 
       <div class="score-entry">
-        <div class="score-team" title="{{ m.team1_name }}">{{ m.team1_name }}</div>
+        <div class="score-team" title="{{ m.team1_name }}">{{ m.team1_name|team }}</div>
         <input class="score-pick" type="number" min="0" max="30" inputmode="numeric"
                data-side="1" aria-label="Score {{ m.team1_name }}"
                value="{{ m.exact_score_team1 if m.exact_score_team1 is not none else '' }}"
@@ -129,7 +129,7 @@
                data-side="2" aria-label="Score {{ m.team2_name }}"
                value="{{ m.exact_score_team2 if m.exact_score_team2 is not none else '' }}"
                placeholder="-" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>
-        <div class="score-team r" title="{{ m.team2_name }}">{{ m.team2_name }}</div>
+        <div class="score-team r" title="{{ m.team2_name }}">{{ m.team2_name|team }}</div>
       </div>
 
       <div class="prediction-meta">
@@ -169,10 +169,10 @@
         </span>
         <button type="button"
                 class="qualifier-btn {{ 'on' if m.qualifier_prediction == 'team1' else '' }}"
-                data-value="team1" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team1_name }}</button>
+                data-value="team1" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team1_name|team }}</button>
         <button type="button"
                 class="qualifier-btn {{ 'on' if m.qualifier_prediction == 'team2' else '' }}"
-                data-value="team2" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team2_name }}</button>
+                data-value="team2" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team2_name|team }}</button>
         {% if m.qualifier_label %}
           <span class="muted qualifier-saved">Qualifié: {{ m.qualifier_label }}</span>
         {% endif %}

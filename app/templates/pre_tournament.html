@@ -83,7 +83,7 @@
         <select name="winner" {% if not pt_editable %}disabled{% endif %}>
           <option value="">Choisir le champion parmi les 48 équipes…</option>
           {% for team in teams %}
-          <option value="{{ team }}" {{ 'selected' if pt.winner == team else '' }}>{{ team }}</option>
+          <option value="{{ team }}" {{ 'selected' if pt.winner == team else '' }}>{{ team|team }}</option>
           {% endfor %}
         </select>
       </div>
@@ -111,7 +111,7 @@
             <select name="finalist" {% if not pt_editable %}disabled{% endif %}>
               <option value="">Sélectionner l'autre finaliste (≠ champion)…</option>
               {% for team in teams %}
-              <option value="{{ team }}" {{ 'selected' if pt.finalist == team else '' }}>{{ team }}</option>
+              <option value="{{ team }}" {{ 'selected' if pt.finalist == team else '' }}>{{ team|team }}</option>
               {% endfor %}
             </select>
           </div>
@@ -157,7 +157,7 @@
         <div class="outsider-chip {{ 'on' if pt.revelation == o else '' }}"
              data-value="{{ o }}"
              {% if not pt_editable %}style="pointer-events:none"{% endif %}>
-          {{ o }}
+          {{ o|team }}
         </div>
         {% endfor %}
       </div>

@@ -53,7 +53,7 @@
     {% endif %}
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       {% if profile.department %}<span class="chip">🏢 {{ profile.department }}</span>{% endif %}
-      {% if profile.favorite_team %}<span class="chip acc">{{ profile.favorite_team }}</span>{% endif %}
+      {% if profile.favorite_team %}<span class="chip acc">{{ profile.favorite_team|team }}</span>{% endif %}
       {% if is_own %}
         <span class="chip {{ 'ok' if profile.email_opt_in else 'gr' }}">{{ 'Emails activés' if profile.email_opt_in else 'Emails coupés' }}</span>
         <span class="chip {{ 'gr' if profile.profile_visibility == 'limited' else 'ok' }}">{{ 'Profil limité' if profile.profile_visibility == 'limited' else 'Profil complet' }}</span>

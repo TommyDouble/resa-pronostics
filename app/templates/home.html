@@ -28,7 +28,7 @@
   {% if urgency %}
   <div class="urgency">
     <div class="lbl">À compléter avant le coup d'envoi</div>
-    <h2>{{ urgency.team1_name }} – {{ urgency.team2_name }}</h2>
+    <h2>{{ urgency.team1_name|team }} – {{ urgency.team2_name|team }}</h2>
     <div class="sub">
       ⏳ <span class="countdown" data-countdown="{{ urgency.kickoff_ts }}">...</span>{% if urgency.is_top_match %} · ★ Top Match ×2{% endif %}
       {% if unpredicted_today > 1 %} · {{ unpredicted_today }} matchs du jour à compléter{% endif %}
@@ -76,7 +76,7 @@
     <div class="next-match">
       <span class="lbl">Prochain match</span>
       <div class="nm-line">
-        {{ next_match.team1_name }} – {{ next_match.team2_name }}
+        {{ next_match.team1_name|team }} – {{ next_match.team2_name|team }}
         {% if next_match.is_top_match %}<span class="chip warn">★ ×2</span>{% endif %}
       </div>
       <div class="muted" style="font-size:12.5px;">
@@ -108,7 +108,7 @@
           <span class="dot gr"></span>
         {% endif %}
         <div class="info">
-          <div class="name">{{ m.team1_name }} – {{ m.team2_name }}</div>
+          <div class="name">{{ m.team1_name|team }} – {{ m.team2_name|team }}</div>
           <div class="sub">
             {% if m.live_state == 'live' %}
               🔴 En cours
