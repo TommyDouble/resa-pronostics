@@ -30,7 +30,10 @@ from app.pre_tournament import (
 from app.prizes import get_prize_info
 from app.settings_store import knockout_predictions_open
 from app.scoring import (
+    get_department_rankings,
+    get_rank_evolution,
     get_rankings,
+    get_remontada,
     is_match_prediction_correct,
     is_match_score_exact,
     predicted_match_winner,
@@ -752,18 +755,54 @@ async def save_pre_tournament(
     return RedirectResponse(url=f"/p/{token}/pre-tournoi?saved=1", status_code=303)
 
 
+RANKING_VIEWS = {
+    "general": "Général",
+    "groups": "Groupes",
+    "knockout": "Phase finale",
+    "bonus": "Bonus",
+    "remontada": "Remontada",
+    "departments": "Départements",
+}
+
+
 @router.get("/p/{token}/classement", response_class=HTMLResponse)
-async def ranking_page(request: Request, token: str):
+async def ranking_page(request: Request, token: str, view: str = "general"):
+    if view not in RANKING_VIEWS:
+        view = "general"
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "rank")
-        rankings = await get_rankings(db)
         p = ctx["participant"]
-        # Annotate own position
+        rankings = []
+        departments = []
+        evolution = {}
+        if view == "remontada":
+            rankings = await get_remontada(db)
+        elif view == "departments":
+            departments = await get_department_rankings(db)
+        else:
+            rankings = await get_rankings(db, scope=view)
+            if view == "general":
+                evolution = await get_rank_evolution(db)
         for r in rankings:
             r["is_me"] = (r["id"] == p["id"])
             r["color_class"] = f"c{((r['id'] - 1) % 8) + 1}"
+            r["evolution"] = evolution.get(r["id"])
+        # La remontada n'a de sens qu'une fois la phase finale entamée.
+        ko_row = await db.execute(
+            "SELECT COUNT(*) AS cnt FROM matches WHERE phase != 'group' AND result IS NOT NULL"
+        )
+        knockout_started = (await ko_row.fetchone())["cnt"] > 0
         prize_info = await get_prize_info(db)
-        ctx.update({"rankings": rankings, "prize_info": prize_info})
+        my_department = (p.get("department") or "").strip() or "Sans département"
+        ctx.update({
+            "rankings": rankings,
+            "departments": departments,
+            "my_department": my_department,
+            "view": view,
+            "ranking_views": RANKING_VIEWS,
+            "knockout_started": knockout_started,
+            "prize_info": prize_info,
+        })
     return templates.TemplateResponse(request, "ranking.html", {"request": request, **ctx})
 
 

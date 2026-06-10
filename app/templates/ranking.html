@@ -6,39 +6,94 @@
   <div class="row1">
     <h1>Classement</h1>
   </div>
+  <div class="fchips prono-tabs">
+    {% for key, label in ranking_views.items() %}
+    <a href="/p/{{ token }}/classement?view={{ key }}" class="{{ 'on' if view == key else '' }}">{{ label }}</a>
+    {% endfor %}
+  </div>
 </div>
 
 <div class="page-content">
 
+  {% if view == 'departments' %}
+
+  <div class="banner soft">
+    <span>🏢</span>
+    <span>Moyenne de points par inscrit, département par département. Défends le tien !</span>
+  </div>
+  <div class="card p0">
+    <div class="list-head"><span>Classement des départements</span></div>
+    {% for d in departments %}
+    <div class="rrow {{ 'me' if d.department == my_department else '' }}">
+      <span class="rk">{{ d.rank }}</span>
+      <div class="nm">
+        {{ d.department }}
+        <small>{{ d.members }} inscrit{{ 's' if d.members > 1 else '' }}{% if d.department == my_department %} · ton équipe{% endif %}</small>
+      </div>
+      <span class="sc">{{ d.average }}<small> pts/pers</small></span>
+    </div>
+    {% else %}
+    <div style="padding:24px;text-align:center;color:var(--n600);">
+      <p style="font-family:var(--sketch);font-size:20px;">Aucun département renseigné.</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% elif view == 'remontada' %}
+
+  {% if not knockout_started %}
+  <div class="banner soft">
+    <span>📈</span>
+    <span>La remontada démarre avec la phase finale : tout le monde repart de zéro. Elle mesure les places gagnées entre la fin des groupes et le classement final — le prix {{ (prize_info.prizes | selectattr('key', 'equalto', 'remontada') | first).amount }} € se joue là.</span>
+  </div>
+  {% else %}
+  <div class="banner soft">
+    <span>📈</span>
+    <span>Places gagnées (ou perdues) depuis la fin de la phase de groupes.</span>
+  </div>
+  {% endif %}
+  <div class="card p0">
+    <div class="list-head"><span>Remontada</span></div>
+    {% for r in rankings %}
+    <a class="rrow {{ 'me' if r.is_me else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}">
+      <span class="rk">{{ r.remontada_rank }}</span>
+      {% if r.avatar_path %}<img src="/avatars/{{ r.avatar_path }}" class="av" alt="">{% else %}<div class="av {{ r.color_class }}">{{ r.name[:2].upper() }}</div>{% endif %}
+      <div class="nm">
+        {{ r.name }}
+        <small>{{ r.baseline_rank }}e fin de groupes → {{ r.rank }}e aujourd'hui{% if r.is_me %} · c'est toi{% endif %}</small>
+      </div>
+      <span class="chip {{ 'up' if r.delta > 0 else ('dn' if r.delta < 0 else 'fl') }}">
+        {% if r.delta > 0 %}▲ +{{ r.delta }}{% elif r.delta < 0 %}▼ {{ r.delta }}{% else %}=={% endif %}
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+
+  {% else %}
+
   {% if rankings|length >= 3 %}
   <div class="podium">
-    <a class="pod p2" href="/p/{{ token }}/profil{{ '' if rankings[1].is_me else '/' ~ rankings[1].id }}">
-      <span class="medal">{% if rankings[1].rank == 1 %}🥇{% elif rankings[1].rank == 2 %}🥈{% elif rankings[1].rank == 3 %}🥉{% else %}#{{ rankings[1].rank }}{% endif %}</span>
-      {% if rankings[1].avatar_path %}<img src="/avatars/{{ rankings[1].avatar_path }}" class="av" alt="">{% else %}<div class="av {{ rankings[1].color_class }}">{{ rankings[1].name[:2].upper() }}</div>{% endif %}
-      <div class="bar">{{ rankings[1].rank }}</div>
-      <span class="pod-name">{{ rankings[1].name }}</span>
-      <span class="pts">{{ rankings[1].total_points }} pts</span>
+    {% for pos in [1, 0, 2] %}
+    {% set r = rankings[pos] %}
+    <a class="pod p{{ pos + 1 }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}">
+      <span class="medal">{% if r.rank == 1 %}🥇{% elif r.rank == 2 %}🥈{% elif r.rank == 3 %}🥉{% else %}#{{ r.rank }}{% endif %}</span>
+      {% if r.avatar_path %}<img src="/avatars/{{ r.avatar_path }}" class="av" alt="">{% else %}<div class="av {{ r.color_class }}">{{ r.name[:2].upper() }}</div>{% endif %}
+      <div class="bar">{{ r.rank }}</div>
+      <span class="pod-name">{{ r.name }}</span>
+      <span class="pts">{{ r.total_points }} pts</span>
     </a>
-    <a class="pod p1" href="/p/{{ token }}/profil{{ '' if rankings[0].is_me else '/' ~ rankings[0].id }}">
-      <span class="medal">{% if rankings[0].rank == 1 %}🥇{% elif rankings[0].rank == 2 %}🥈{% elif rankings[0].rank == 3 %}🥉{% else %}#{{ rankings[0].rank }}{% endif %}</span>
-      {% if rankings[0].avatar_path %}<img src="/avatars/{{ rankings[0].avatar_path }}" class="av" alt="">{% else %}<div class="av {{ rankings[0].color_class }}">{{ rankings[0].name[:2].upper() }}</div>{% endif %}
-      <div class="bar">{{ rankings[0].rank }}</div>
-      <span class="pod-name">{{ rankings[0].name }}</span>
-      <span class="pts">{{ rankings[0].total_points }} pts</span>
-    </a>
-    <a class="pod p3" href="/p/{{ token }}/profil{{ '' if rankings[2].is_me else '/' ~ rankings[2].id }}">
-      <span class="medal">{% if rankings[2].rank == 1 %}🥇{% elif rankings[2].rank == 2 %}🥈{% elif rankings[2].rank == 3 %}🥉{% else %}#{{ rankings[2].rank }}{% endif %}</span>
-      {% if rankings[2].avatar_path %}<img src="/avatars/{{ rankings[2].avatar_path }}" class="av" alt="">{% else %}<div class="av {{ rankings[2].color_class }}">{{ rankings[2].name[:2].upper() }}</div>{% endif %}
-      <div class="bar">{{ rankings[2].rank }}</div>
-      <span class="pod-name">{{ rankings[2].name }}</span>
-      <span class="pts">{{ rankings[2].total_points }} pts</span>
-    </a>
+    {% endfor %}
   </div>
   {% endif %}
 
   <div class="card p0">
     <div class="list-head">
-      <span>Classement général</span>
+      <span>
+        {% if view == 'groups' %}Points en phase de groupes
+        {% elif view == 'knockout' %}Points en phase finale
+        {% elif view == 'bonus' %}Points bonus (pré-tournoi inclus)
+        {% else %}Classement général{% endif %}
+      </span>
       <span class="help-tip" tabindex="0" data-tip="Le rang dépend uniquement du total de points. À égalité, les participants gardent le même rang.">?</span>
     </div>
     {% for r in rankings %}
@@ -53,6 +108,15 @@
           <small>c'est toi</small>
         {% endif %}
       </div>
+      {% if view == 'general' and r.evolution is not none %}
+        {% if r.evolution > 0 %}
+          <span class="chip up">▲ {{ r.evolution }}</span>
+        {% elif r.evolution < 0 %}
+          <span class="chip dn">▼ {{ -r.evolution }}</span>
+        {% else %}
+          <span class="chip fl">=</span>
+        {% endif %}
+      {% endif %}
       <span class="sc">{{ r.total_points }}<small> pts</small></span>
     </a>
     {% else %}
@@ -61,6 +125,8 @@
     </div>
     {% endfor %}
   </div>
+
+  {% endif %}
 
   <div class="card p0">
     <div class="list-head">

@@ -2,6 +2,7 @@
 import json
 
 from app.database import get_db
+from app.timeutils import DISPLAY_TZ, now_utc
 
 
 def parse_revelation_winners(correct_answer) -> set:
@@ -127,30 +128,69 @@ async def recalculate_match_scores(match_id: int):
                 (pred_dict["participant_id"], match_id, points),
             )
 
+        await record_ranking_snapshot(db)
         await db.commit()
 
 
-_RANKINGS_SQL = """
+# Expression SQL des points par périmètre de classement.
+_SCOPE_POINTS = {
+    "general": """
+        COALESCE((SELECT SUM(s.points) FROM scores s WHERE s.participant_id = p.id), 0)
+          + COALESCE((SELECT SUM(ps.points) FROM pre_tournament_scores ps WHERE ps.participant_id = p.id), 0)
+    """,
+    "groups": """
+        COALESCE((SELECT SUM(s.points) FROM scores s
+                  JOIN matches m ON m.id = s.match_id
+                  WHERE s.participant_id = p.id AND m.phase = 'group'), 0)
+    """,
+    "knockout": """
+        COALESCE((SELECT SUM(s.points) FROM scores s
+                  JOIN matches m ON m.id = s.match_id
+                  WHERE s.participant_id = p.id AND m.phase != 'group'), 0)
+    """,
+    "bonus": """
+        COALESCE((SELECT SUM(s.points) FROM scores s
+                  WHERE s.participant_id = p.id AND s.bonus_question_id IS NOT NULL), 0)
+          + COALESCE((SELECT SUM(ps.points) FROM pre_tournament_scores ps WHERE ps.participant_id = p.id), 0)
+    """,
+    # Classement « fin de phase de groupes » servant de base à la remontada:
+    # matchs de groupes + pré-tournoi + bonus publiés avant la phase finale.
+    "groups_baseline": """
+        COALESCE((SELECT SUM(s.points) FROM scores s
+                  JOIN matches m ON m.id = s.match_id
+                  WHERE s.participant_id = p.id AND m.phase = 'group'), 0)
+          + COALESCE((SELECT SUM(s.points) FROM scores s
+                      JOIN bonus_questions bq ON bq.id = s.bonus_question_id
+                      WHERE s.participant_id = p.id AND bq.phase = 'pre_tournament'), 0)
+          + COALESCE((SELECT SUM(ps.points) FROM pre_tournament_scores ps WHERE ps.participant_id = p.id), 0)
+    """,
+}
+
+RANKING_SCOPES = ("general", "groups", "knockout", "bonus")
+
+
+def _rankings_sql(scope: str) -> str:
+    points_expr = _SCOPE_POINTS[scope]
+    return f"""
     SELECT
         p.id,
         p.name,
         p.nickname,
         p.email,
         p.avatar_path,
-        COALESCE((SELECT SUM(s.points) FROM scores s WHERE s.participant_id = p.id), 0)
-          + COALESCE((SELECT SUM(ps.points) FROM pre_tournament_scores ps WHERE ps.participant_id = p.id), 0)
-          as total_points,
+        p.department,
+        {points_expr} as total_points,
         (SELECT COUNT(DISTINCT s.match_id) FROM scores s
          WHERE s.participant_id = p.id AND s.match_id IS NOT NULL) as matches_scored
     FROM participants p
     WHERE p.is_confirmed = 1 AND p.is_admin = 0
     ORDER BY total_points DESC,
              COALESCE(NULLIF(p.nickname, ''), p.name) ASC
-"""
+    """
 
 
-async def _rankings_from_db(db) -> list:
-    rows = await db.execute(_RANKINGS_SQL)
+async def _rankings_from_db(db, scope: str = "general") -> list:
+    rows = await db.execute(_rankings_sql(scope))
     participants = await rows.fetchall()
     rankings = []
     previous_points = None
@@ -167,18 +207,112 @@ async def _rankings_from_db(db) -> list:
             "nickname": p["nickname"],
             "email": p["email"],
             "avatar_path": p["avatar_path"],
+            "department": p["department"],
             "total_points": p["total_points"],
             "matches_scored": p["matches_scored"],
         })
     return rankings
 
 
-async def get_rankings(db=None) -> list:
-    """Return ranked list of participants with total scores."""
+async def get_rankings(db=None, scope: str = "general") -> list:
+    """Return ranked list of participants for the given scope."""
+    if scope not in _SCOPE_POINTS:
+        scope = "general"
     if db is not None:
-        return await _rankings_from_db(db)
+        return await _rankings_from_db(db, scope)
     async with get_db() as db:
-        return await _rankings_from_db(db)
+        return await _rankings_from_db(db, scope)
+
+
+async def get_remontada(db) -> list:
+    """Progression de rang entre la fin des groupes et le général actuel.
+
+    Baseline déterministe: points de groupes + pré-tournoi + bonus
+    pré-tournoi. delta > 0 = places gagnées depuis la fin des groupes.
+    """
+    baseline = await _rankings_from_db(db, "groups_baseline")
+    current = await _rankings_from_db(db, "general")
+    baseline_rank = {r["id"]: r["rank"] for r in baseline}
+    rows = []
+    for r in current:
+        old_rank = baseline_rank.get(r["id"], r["rank"])
+        rows.append({**r, "baseline_rank": old_rank, "delta": old_rank - r["rank"]})
+    rows.sort(key=lambda r: (-r["delta"], r["rank"]))
+    previous_delta = None
+    current_rank = 0
+    for index, r in enumerate(rows, start=1):
+        if previous_delta is None or r["delta"] != previous_delta:
+            current_rank = index
+            previous_delta = r["delta"]
+        r["remontada_rank"] = current_rank
+    return rows
+
+
+async def get_department_rankings(db) -> list:
+    """Classement des départements à la moyenne de points par inscrit."""
+    rankings = await _rankings_from_db(db, "general")
+    departments = {}
+    for r in rankings:
+        dept = (r.get("department") or "").strip() or "Sans département"
+        bucket = departments.setdefault(dept, {"department": dept, "members": 0, "total": 0})
+        bucket["members"] += 1
+        bucket["total"] += r["total_points"]
+    rows = []
+    for bucket in departments.values():
+        bucket["average"] = round(bucket["total"] / bucket["members"], 1) if bucket["members"] else 0.0
+        rows.append(bucket)
+    rows.sort(key=lambda r: (-r["average"], -r["members"], r["department"]))
+    previous_avg = None
+    current_rank = 0
+    for index, r in enumerate(rows, start=1):
+        if previous_avg is None or r["average"] != previous_avg:
+            current_rank = index
+            previous_avg = r["average"]
+        r["rank"] = current_rank
+    return rows
+
+
+def _local_today() -> str:
+    return now_utc().astimezone(DISPLAY_TZ).strftime("%Y-%m-%d")
+
+
+async def record_ranking_snapshot(db):
+    """Photographie du classement général pour la date locale du jour.
+
+    Appelée après chaque recalcul: les flèches d'évolution comparent le
+    classement courant au dernier snapshot d'un jour précédent.
+    """
+    today = _local_today()
+    rankings = await _rankings_from_db(db, "general")
+    for r in rankings:
+        await db.execute(
+            """INSERT INTO ranking_snapshots (snapshot_date, participant_id, rank, total_points)
+               VALUES (?,?,?,?)
+               ON CONFLICT(snapshot_date, participant_id)
+               DO UPDATE SET rank=excluded.rank, total_points=excluded.total_points""",
+            (today, r["id"], r["rank"], r["total_points"]),
+        )
+
+
+async def get_rank_evolution(db) -> dict:
+    """participant_id → delta de rang depuis le dernier jour photographié.
+
+    Positif = places gagnées. Vide tant qu'aucun snapshot antérieur n'existe.
+    """
+    row = await db.execute(
+        "SELECT MAX(snapshot_date) AS d FROM ranking_snapshots WHERE snapshot_date < ?",
+        (_local_today(),),
+    )
+    last = (await row.fetchone())["d"]
+    if not last:
+        return {}
+    rows = await db.execute(
+        "SELECT participant_id, rank FROM ranking_snapshots WHERE snapshot_date=?",
+        (last,),
+    )
+    old = {r["participant_id"]: r["rank"] for r in await rows.fetchall()}
+    current = await _rankings_from_db(db, "general")
+    return {r["id"]: old[r["id"]] - r["rank"] for r in current if r["id"] in old}
 
 
 def answers_match(answer_type: str, given: str, correct: str) -> bool:
@@ -227,6 +361,7 @@ async def calculate_bonus_scores(question_id: int):
                     (ans["participant_id"], question_id, points),
                 )
 
+        await record_ranking_snapshot(db)
         await db.commit()
 
 
@@ -323,4 +458,5 @@ async def recalculate_pre_tournament_scores():
                     (pred["participant_id"], question["key"], points),
                 )
 
+        await record_ranking_snapshot(db)
         await db.commit()

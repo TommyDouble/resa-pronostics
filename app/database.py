@@ -146,6 +146,16 @@ CREATE TABLE IF NOT EXISTS pre_tournament_questions (
   correct_answer TEXT
 );
 
+CREATE TABLE IF NOT EXISTS ranking_snapshots (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  snapshot_date  TEXT    NOT NULL,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  rank           INTEGER NOT NULL,
+  total_points   INTEGER NOT NULL,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(snapshot_date, participant_id)
+);
+
 CREATE TABLE IF NOT EXISTS pre_tournament_scores (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
