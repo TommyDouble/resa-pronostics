@@ -61,10 +61,26 @@ _RANKINGS_SQL = """
           + COALESCE((SELECT SUM(ps.points) FROM pre_tournament_scores ps WHERE ps.participant_id = p.id), 0)
           as total_points,
         (SELECT COUNT(DISTINCT s.match_id) FROM scores s
-         WHERE s.participant_id = p.id AND s.match_id IS NOT NULL) as matches_scored
+         WHERE s.participant_id = p.id AND s.match_id IS NOT NULL) as matches_scored,
+        (SELECT COUNT(*) FROM predictions pr
+         JOIN matches m ON m.id = pr.match_id
+         WHERE pr.participant_id = p.id
+           AND m.result IS NOT NULL
+           AND pr.prediction = m.result
+           AND pr.exact_score_team1 IS NOT NULL
+           AND pr.exact_score_team1 = m.score_team1
+           AND pr.exact_score_team2 = m.score_team2) as exact_count,
+        (SELECT COUNT(*) FROM predictions pr
+         JOIN matches m ON m.id = pr.match_id
+         WHERE pr.participant_id = p.id
+           AND m.result IS NOT NULL
+           AND pr.prediction = m.result) as correct_outcome_count
     FROM participants p
     WHERE p.is_confirmed = 1 AND p.is_admin = 0
-    ORDER BY total_points DESC, COALESCE(NULLIF(p.nickname, ''), p.name) ASC
+    ORDER BY total_points DESC,
+             exact_count DESC,
+             correct_outcome_count DESC,
+             COALESCE(NULLIF(p.nickname, ''), p.name) ASC
 """
 
 
@@ -81,6 +97,8 @@ async def _rankings_from_db(db) -> list:
             "email": p["email"],
             "total_points": p["total_points"],
             "matches_scored": p["matches_scored"],
+            "exact_count": p["exact_count"],
+            "correct_outcome_count": p["correct_outcome_count"],
         }
         for i, p in enumerate(participants)
     ]
@@ -146,14 +164,37 @@ async def calculate_bonus_scores(question_id: int):
 # Points awarded for a near miss on the total-goals question (exact = points_value).
 TOTAL_GOALS_NEAR_POINTS = 4
 TOTAL_GOALS_NEAR_MARGIN = 3
+FINALIST_POINTS = 7
 
 
-def calculate_pre_tournament_points(question: dict, prediction_value) -> int:
+def calculate_finalists_points(prediction: dict, correct_answers: dict) -> int:
+    """Award points for the two finalists: champion pick + other finalist pick."""
+    predicted_finalists = {
+        (prediction.get("winner") or "").strip(),
+        (prediction.get("finalist") or "").strip(),
+    }
+    correct_finalists = {
+        (correct_answers.get("winner") or "").strip(),
+        (correct_answers.get("finalist") or "").strip(),
+    }
+    predicted_finalists.discard("")
+    correct_finalists.discard("")
+    return len(predicted_finalists & correct_finalists) * FINALIST_POINTS
+
+
+def calculate_pre_tournament_points(
+    question: dict,
+    prediction_value,
+    prediction: dict | None = None,
+    correct_answers: dict | None = None,
+) -> int:
     """Points for one pre-tournament question given its correct answer.
 
     `question` needs: key, points_value, correct_answer.
     total_goals: full points if exact, TOTAL_GOALS_NEAR_POINTS if within ±3.
     """
+    if question["key"] == "finalist" and prediction is not None and correct_answers is not None:
+        return calculate_finalists_points(prediction, correct_answers)
     correct = question.get("correct_answer")
     if correct is None or str(correct).strip() == "":
         return 0
@@ -182,6 +223,7 @@ async def recalculate_pre_tournament_scores():
                FROM pre_tournament_questions WHERE is_enabled=1"""
         )
         questions = [dict(r) for r in await q_rows.fetchall()]
+        correct_answers = {q["key"]: q.get("correct_answer") for q in questions}
 
         p_rows = await db.execute(
             "SELECT * FROM pre_tournament_predictions WHERE submitted=1"
@@ -195,7 +237,10 @@ async def recalculate_pre_tournament_scores():
                 continue
             for pred in predictions:
                 points = calculate_pre_tournament_points(
-                    question, pred.get(question["key"])
+                    question,
+                    pred.get(question["key"]),
+                    prediction=pred,
+                    correct_answers=correct_answers,
                 )
                 await db.execute(
                     """INSERT INTO pre_tournament_scores (participant_id, question_key, points)

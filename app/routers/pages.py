@@ -420,7 +420,7 @@ async def rules_page(request: Request, token: str):
 
 
 PT_ERRORS = {
-    "winner_finalist": "Le finaliste doit être différent du vainqueur.",
+    "winner_finalist": "L'autre finaliste doit être différent du champion.",
     "invalid_team": "Une des équipes choisies est invalide.",
     "invalid_scorer": "Le joueur choisi est invalide.",
 }

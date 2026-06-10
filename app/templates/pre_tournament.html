@@ -35,7 +35,7 @@
       {% for key, q in pt_questions.items() %}
         {% if key in pt_scores %}
         <span class="chip {{ 'ok' if pt_scores[key] > 0 else 'gr' }}">
-          {{ q.label }} · {{ pt_scores[key] }} pt{{ 's' if pt_scores[key] > 1 else '' }}
+          {{ 'Finalistes' if key == 'finalist' else q.label }} · {{ pt_scores[key] }} pt{{ 's' if pt_scores[key] > 1 else '' }}
         </span>
         {% endif %}
       {% endfor %}
@@ -61,11 +61,11 @@
     {% set q = pt_questions.get('winner') %}
     {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">① {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Cette question rapporte des points quand le résultat final du tournoi est connu.">?</span></div>
+      <div class="lbl">① {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Le champion correct rapporte 8 points. Cette équipe compte aussi parmi tes deux finalistes pour le bonus Finalistes.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="field" style="margin-top:8px;">
         <select name="winner" {% if not pt_editable %}disabled{% endif %}>
-          <option value="">Choisir parmi les 48 équipes…</option>
+          <option value="">Choisir le champion parmi les 48 équipes…</option>
           {% for team in teams %}
           <option value="{{ team }}" {{ 'selected' if pt.winner == team else '' }}>{{ team }}</option>
           {% endfor %}
@@ -77,11 +77,11 @@
     {% set q = pt_questions.get('finalist') %}
     {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">② {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Choisis une équipe différente du vainqueur. L'application empêche de sélectionner deux fois la même équipe.">?</span></div>
+      <div class="lbl">② {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Tes deux finalistes sont ton champion et cette équipe. Chaque équipe réellement finaliste rapporte 7 points, même si tu inverses champion et finaliste.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="field" style="margin-top:8px;">
         <select name="finalist" {% if not pt_editable %}disabled{% endif %}>
-          <option value="">Sélectionner (≠ vainqueur)…</option>
+          <option value="">Sélectionner l'autre finaliste (≠ champion)…</option>
           {% for team in teams %}
           <option value="{{ team }}" {{ 'selected' if pt.finalist == team else '' }}>{{ team }}</option>
           {% endfor %}
@@ -95,7 +95,7 @@
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
       <div class="lbl">③ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Tape quelques lettres du joueur ou de son équipe, puis sélectionne une proposition.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
-      <div class="muted helper-text">Pas besoin de connaître toute la liste: cherche un nom, un pays ou parcours les joueurs par équipe.</div>
+      <div class="muted helper-text">Ce que tu paries: le joueur qui terminera meilleur buteur officiel. Pas besoin de connaître toute la liste: cherche un nom, un pays ou parcours les joueurs par équipe.</div>
       <div class="autocomplete-wrap" data-scorer-combo style="margin-top:8px;">
         <div class="field">
           <input type="text" data-combo-input placeholder="🔍 Rechercher un joueur ou une équipe…"
@@ -111,9 +111,9 @@
     {% set q = pt_questions.get('revelation') %}
     {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">④ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Choisis l'équipe surprise parmi les propositions. C'est un pari fun, pas besoin d'être spécialiste.">?</span></div>
+      <div class="lbl">④ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Pari sur l'outsider qui fera le meilleur parcours surprise parmi la liste figée. Le stade atteint est le critère principal.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
-      <div class="muted helper-text">Ici, l'idée est de choisir une équipe qui pourrait aller plus loin que prévu.</div>
+      <div class="muted helper-text">Ce que tu paries: quelle équipe de cette liste ira le plus loin ou créera la plus belle surprise. La liste est volontairement limitée aux outsiders.</div>
       <div class="outsider-chips">
         {% for o in outsiders %}
         <div class="outsider-chip {{ 'on' if pt.revelation == o else '' }}"
@@ -130,9 +130,9 @@
     {% set q = pt_questions.get('total_goals') %}
     {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:16px;">
-      <div class="lbl">⑤ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Score exact: tous les buts du tournoi. À ±3 buts, tu marques une partie des points.">?</span></div>
+      <div class="lbl">⑤ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Compte uniquement les buts de la phase de groupes. Exact: 8 points. À trois buts ou moins: 4 points. Les deux ne se cumulent pas.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
-      <div class="muted helper-text">Repère simple: 140 buts correspond à environ 1,35 but par match sur 104 matchs.</div>
+      <div class="muted helper-text">Repère simple: 144 buts sur 72 matchs de groupes correspond à 2 buts par match.</div>
       <div id="goals-stepper" class="stepper" style="margin-top:10px;">
         <div class="b" data-action="minus" {% if not pt_editable %}style="pointer-events:none;opacity:.4"{% endif %}>–</div>
         <input type="number" name="total_goals" min="50" max="300"

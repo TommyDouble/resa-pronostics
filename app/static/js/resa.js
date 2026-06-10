@@ -319,7 +319,7 @@ function initWinnerFinalistGuard() {
     var errorBox = form.querySelector('#winner-finalist-error');
 
     function syncDisabled() {
-      // The selected winner can't be picked as finalist, and vice versa.
+      // The selected champion can't be picked as the other finalist, and vice versa.
       Array.prototype.forEach.call(finalist.options, function(opt) {
         opt.disabled = !!opt.value && opt.value === winner.value;
       });
@@ -351,7 +351,7 @@ function initWinnerFinalistGuard() {
     form.addEventListener('submit', function(e) {
       if (conflict()) {
         showError(true);
-        alert('Le vainqueur et le finaliste ne peuvent pas être identiques.');
+        alert("Le champion et l'autre finaliste ne peuvent pas être identiques.");
         e.preventDefault();
       }
     });

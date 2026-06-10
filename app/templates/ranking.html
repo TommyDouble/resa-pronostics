@@ -39,7 +39,7 @@
   <div class="card p0">
     <div class="list-head">
       <span>Classement général</span>
-      <span class="help-tip" tabindex="0" data-tip="Les points viennent des matchs, du pré-tournoi et des questions bonus déjà scorées.">?</span>
+      <span class="help-tip" tabindex="0" data-tip="Les points viennent des matchs, du pré-tournoi et des bonus. À égalité: scores exacts, puis bonnes issues, puis ordre alphabétique.">?</span>
     </div>
     {% for r in rankings %}
     <a class="rrow {{ 'me' if r.is_me else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}">
@@ -67,8 +67,8 @@
     <div>
       <div class="lbl">Cagnotte</div>
       <div class="muted" style="font-size:12px;">
-        <b style="color:var(--primary);">500 €</b> · 1er 180 € · 2e 100 € · 3e 60 €
-        <span class="help-tip" tabindex="0" data-tip="Répartition indicative affichée aux participants.">?</span>
+        Podium général + prix spéciaux · montants à préciser
+        <span class="help-tip" tabindex="0" data-tip="Les montants dépendront du nombre final de participants. La philosophie de répartition est détaillée dans le règlement.">?</span>
       </div>
     </div>
   </div>

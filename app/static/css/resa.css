@@ -479,6 +479,28 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
   font-size: 11px;
   line-height: 1.35;
 }
+.rules-example {
+  margin-top: 10px;
+  border-left: 3px solid var(--primary);
+  border-radius: var(--r-sm);
+  background: var(--primary-l);
+  padding: 10px 11px;
+}
+.rules-example b {
+  display: block;
+  color: var(--primary-d);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.rules-example span {
+  display: block;
+  color: var(--n900);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.gains-grid div {
+  background: #fff;
+}
 
 /* ---- Prediction pills ---- */
 .pills { display: flex; gap: 8px; }

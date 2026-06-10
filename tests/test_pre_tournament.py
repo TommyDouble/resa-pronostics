@@ -141,12 +141,12 @@ class TestAdminAnswers:
             },
             follow_redirects=False,
         )
-        # Admin encodes answers: winner + scorer correct, finalist/revelation wrong, goals within ±3
+        # Admin encodes answers: champion + both finalists + scorer correct, revelation wrong, goals within ±3
         response = admin_client.post(
             "/admin/pre-tournoi/reponses",
             data={
                 "winner": "Argentine",
-                "finalist": "Angleterre",
+                "finalist": "France",
                 "top_scorer": scorer,
                 "revelation": "Japon",
                 "total_goals": "152",
@@ -157,5 +157,37 @@ class TestAdminAnswers:
 
         rankings = run(get_rankings())
         me = next(r for r in rankings if r["id"] == participant["id"])
-        # winner 8 + scorer 5 + goals near 4 = 17
-        assert me["total_points"] == 17
+        # finalists 14 + champion 8 + scorer 8 + goals near 4 = 34
+        assert me["total_points"] == 34
+
+    def test_inverted_finalists_still_score_finalist_points(self, admin_client, participant):
+        set_deadline_future()
+        admin_client.post(
+            f"/p/{participant['token']}/pre-tournoi",
+            data={
+                "winner": "France",
+                "finalist": "Argentine",
+                "top_scorer": "",
+                "revelation": "",
+                "total_goals": "140",
+                "action": "submit",
+            },
+            follow_redirects=False,
+        )
+        response = admin_client.post(
+            "/admin/pre-tournoi/reponses",
+            data={
+                "winner": "Argentine",
+                "finalist": "France",
+                "top_scorer": "",
+                "revelation": "",
+                "total_goals": "",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+
+        rankings = run(get_rankings())
+        me = next(r for r in rankings if r["id"] == participant["id"])
+        # The two finalists are right (+14), but champion is wrong (+0).
+        assert me["total_points"] == 14

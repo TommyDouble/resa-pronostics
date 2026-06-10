@@ -25,11 +25,13 @@ Score exact par match ; l'issue (1/X/2) est déduite. Bonne issue = +2 × poids
 (top match et phase finale ×2), score exact = +2. Verrouillage au coup d'envoi.
 
 ### Pré-tournoi (5 questions fixes)
-Vainqueur (+8), finaliste (+5), meilleur buteur (+5), révélation (+5),
-total de buts en phase de groupes (+8 exact, +4 à ±3). Vainqueur et finaliste
-doivent être différents (validation client + serveur). L'admin encode les
-réponses correctes dans `/admin/pre-tournoi` au fil du tournoi ; chaque
-enregistrement recalcule les points de tous les participants.
+Champion du Monde (+8), finalistes (+7 par finaliste correct, le champion
+pronostiqué compte comme un des deux finalistes), meilleur buteur (+8),
+révélation (+5), total de buts en phase de groupes (+8 exact, +4 à ±3).
+Champion et autre finaliste doivent être différents (validation client +
+serveur). L'admin encode les réponses correctes dans `/admin/pre-tournoi` au fil
+du tournoi ; chaque enregistrement recalcule les points de tous les
+participants.
 
 ### Questions bonus
 Questions libres créées par l'admin (choix / nombre / texte) avec deadline et

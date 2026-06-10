@@ -13,7 +13,7 @@
   <div class="rules-hero">
     <div class="eyebrow">Coupe du Monde 2026</div>
     <h2>Simple: tu pronostiques, le score fait le reste.</h2>
-    <p>Les pronos sont verrouillés au coup d'envoi officiel du match. Après ce moment, ils ne peuvent plus être modifiés.</p>
+    <p>Tu encodes les scores, les choix bonus et les réponses pré-tournoi avant les deadlines. Les points sont ensuite calculés automatiquement quand les résultats officiels sont encodés.</p>
     <div class="rules-actions">
       <a href="/p/{{ token }}/pronos" class="btn white sm">Faire mes pronos</a>
       <a href="/p/{{ token }}/bonus" class="btn ghost sm">Voir les bonus</a>
@@ -21,14 +21,18 @@
   </div>
 
   <section class="card rules-section">
-    <h2>Pronostics de matchs</h2>
-    <p>Pour chaque match, tu encodes le score prévu. L'application déduit automatiquement l'issue: 1, X ou 2.</p>
+    <h2>Matchs: le principe</h2>
+    <p>Pour chaque match, tu encodes uniquement le score prévu. L'application déduit automatiquement l'issue: 1, X ou 2.</p>
     <p><b>1</b> = victoire de l'équipe de gauche, <b>X</b> = match nul, <b>2</b> = victoire de l'équipe de droite.</p>
     <div class="rules-grid">
       <div><b>Bonne issue</b><span>+2 × poids du match</span></div>
       <div><b>Score exact</b><span>+2 points fixes en plus</span></div>
       <div><b>Mauvaise issue</b><span>0 point</span></div>
       <div><b>Score faux</b><span>0 bonus exact</span></div>
+    </div>
+    <div class="rules-example">
+      <b>Exemple normal</b>
+      <span>Résultat réel: Belgique 2-1 Canada. Si tu as mis 2-0, tu as la bonne issue: +2 pts. Si tu as mis 2-1, tu as bonne issue + score exact: +4 pts. Si tu as mis 1-1, tu marques 0.</span>
     </div>
   </section>
 
@@ -40,6 +44,10 @@
       <li>Phase finale: ×2, maximum 6 points.</li>
     </ul>
     <p>Le Top Match est signalé par une étoile et double uniquement les points de bonne issue.</p>
+    <div class="rules-example">
+      <b>Exemple Top Match</b>
+      <span>Résultat réel: Brésil 3-1 Japon. Prono 2-1: bonne issue sur un match ×2, donc +4 pts. Prono 3-1: +4 pts de bonne issue +2 pts de score exact, donc +6 pts.</span>
+    </div>
   </section>
 
   <section class="card rules-section">
@@ -47,30 +55,95 @@
     <p>Le score reste celui du temps réglementaire: le résultat après 90 minutes, hors prolongations et tirs au but.</p>
     <p>Si tu pronostiques une égalité en match à élimination directe, tu choisis aussi l'équipe qualifiée.</p>
     <p>Ce choix de qualifié est enregistré pour le suivi du prono, mais ne change pas le barème de cette version.</p>
+    <div class="rules-example">
+      <b>Exemple phase finale</b>
+      <span>Résultat après 90 minutes: Espagne 1-1 Allemagne, Espagne qualifiée aux tirs au but. Si tu avais mis 1-1, tu marques +6 pts car la phase finale vaut ×2 et le score exact ajoute +2. Le choix du qualifié sert au suivi, pas à des points supplémentaires.</span>
+    </div>
   </section>
 
   <section class="card rules-section">
-    <h2>Pré-tournoi et bonus</h2>
+    <h2>Pré-tournoi</h2>
+    <p>Le pré-tournoi est à remplir avant le premier match du tournoi. Tu peux sauvegarder un brouillon, puis soumettre quand tout est prêt.</p>
+    <p>Pour les finalistes, ton champion et ton autre finaliste forment tes deux finalistes. Chaque équipe réellement présente en finale rapporte 7 points, même si tu as inversé champion et finaliste.</p>
+    <div class="rules-grid">
+      <div><b>Champion du Monde</b><span>+8 points</span></div>
+      <div><b>Finalistes</b><span>+7 points par finaliste correct</span></div>
+      <div><b>Meilleur buteur</b><span>+8 points</span></div>
+      <div><b>Révélation</b><span>+5 points</span></div>
+      <div><b>Total buts groupes exact</b><span>+8 points</span></div>
+      <div><b>Total buts groupes à ±3</b><span>+4 points</span></div>
+    </div>
+    <div class="rules-example">
+      <b>Exemple finalistes</b>
+      <span>Finale réelle: Argentine bat France. Si tu as mis Argentine champion et Brésil autre finaliste: Argentine est bien finaliste (+7) et championne (+8), total +15. Si tu as mis France championne et Argentine autre finaliste: tes deux finalistes sont bons (+14), mais ton champion est faux (+0). Si tu as mis Argentine championne et France autre finaliste: +14 finalistes +8 champion = +22.</span>
+    </div>
+    <div class="rules-example">
+      <b>Exemple meilleur buteur</b>
+      <span>Si tu choisis Kylian Mbappé et qu'il termine meilleur buteur officiel du tournoi, tu marques +8 pts. Sinon, 0.</span>
+    </div>
+    <div class="rules-example">
+      <b>Exemple révélation</b>
+      <span>Tu choisis un outsider dans la liste figée. Ce que tu paries: l'équipe qui fera le meilleur parcours surprise. Le stade atteint est le critère principal; en cas de situation ambiguë, l'organisateur tranche selon le parcours sportif.</span>
+    </div>
+    <div class="rules-example">
+      <b>Exemple total de buts</b>
+      <span>Total réel en phase de groupes: 151 buts. Ton prono 151 vaut +8 pts. Ton prono 149 ou 154 vaut +4 pts. Ton prono 145 vaut 0. Les bonus exact et ±3 ne se cumulent pas.</span>
+    </div>
+  </section>
+
+  <section class="card rules-section">
+    <h2>Questions bonus</h2>
     <ul>
-      <li>Les pronos pré-tournoi sont à remplir avant le premier match du tournoi.</li>
       <li>Les questions bonus ont leur propre deadline, affichée sur la page Bonus.</li>
       <li>Une réponse bonus déjà scorée ne peut plus être modifiée.</li>
+      <li>Le nombre de points est affiché sur chaque question.</li>
     </ul>
-    <div class="rules-grid">
-      <div><b>Vainqueur</b><span>+8 points</span></div>
-      <div><b>Finaliste</b><span>+5 points</span></div>
-      <div><b>Meilleur buteur</b><span>+5 points</span></div>
-      <div><b>Révélation</b><span>+5 points</span></div>
-      <div><b>Total buts (exact)</b><span>+8 points</span></div>
-      <div><b>Total buts (±3)</b><span>+4 points</span></div>
+    <div class="rules-example">
+      <b>Exemple bonus</b>
+      <span>Question à 5 pts: "Y aura-t-il au moins un match à 5 buts en huitièmes ?" Si ta réponse est correcte, tu marques +5 pts. Sinon, 0.</span>
     </div>
-    <p>Le vainqueur et le finaliste doivent être deux équipes différentes. Les points pré-tournoi sont attribués au fil du tournoi, dès que les réponses sont connues.</p>
   </section>
 
   <section class="card rules-section">
-    <h2>Classement et visibilité</h2>
+    <h2>Dates limites et visibilité</h2>
     <p>Le classement est recalculé après l'encodage des résultats par l'organisateur.</p>
     <p>Les pronostics des autres participants restent cachés jusqu'au coup d'envoi du match concerné.</p>
+    <ul>
+      <li>Un match est verrouillé au coup d'envoi officiel.</li>
+      <li>Le pré-tournoi est verrouillé au coup d'envoi du premier match du tournoi.</li>
+      <li>Une question bonus est verrouillée à sa deadline propre.</li>
+    </ul>
+  </section>
+
+  <section class="card rules-section">
+    <h2>Classements et gains</h2>
+    <p>La cagnotte finale dépendra du nombre de participants. Elle sera répartie entre le podium général et plusieurs prix spéciaux. Les montants exacts seront confirmés plus tard, mais les catégories de gains sont fixées à l'avance.</p>
+    <div class="rules-grid gains-grid">
+      <div><b>Podium général</b><span>1er, 2e et 3e du classement total. Montants: à préciser.</span></div>
+      <div><b>Phase de groupes</b><span>Meilleur pronostiqueur de la phase 1, sur les matchs de groupes. Montant: à préciser.</span></div>
+      <div><b>Phase finale</b><span>Meilleur score sur les matchs éliminatoires uniquement. Montant: à préciser.</span></div>
+      <div><b>Bonus</b><span>Meilleur cumul sur pré-tournoi et questions bonus. Montant: à préciser.</span></div>
+      <div><b>Remontada</b><span>Meilleure progression au classement entre fin des groupes et classement final. Montant: à préciser.</span></div>
+      <div><b>Cumul possible</b><span>Un participant peut cumuler plusieurs gains s'il gagne plusieurs catégories.</span></div>
+    </div>
+    <div class="rules-example">
+      <b>Exemple remontada</b>
+      <span>Après les groupes, Alice est 18e. À la fin, elle est 6e: 6 - 18 = -12. Bob passe de 14e à 8e: 8 - 14 = -6. Alice gagne la meilleure remontée car -12 est une progression plus forte que -6.</span>
+    </div>
+  </section>
+
+  <section class="card rules-section">
+    <h2>Départage</h2>
+    <p>En cas d'égalité de points, le classement départage dans cet ordre:</p>
+    <ul>
+      <li>Plus grand nombre de scores exacts.</li>
+      <li>Plus grand nombre de bonnes issues.</li>
+      <li>Ordre alphabétique du nom si l'égalité persiste.</li>
+    </ul>
+    <div class="rules-example">
+      <b>Exemple égalité</b>
+      <span>Deux joueurs ont 80 pts. Celui qui a 12 scores exacts passe devant celui qui en a 10. S'ils ont aussi le même nombre de scores exacts, on compare les bonnes issues.</span>
+    </div>
   </section>
 </div>
 {% endblock %}

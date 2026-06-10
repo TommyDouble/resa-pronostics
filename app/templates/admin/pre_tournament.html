@@ -33,7 +33,7 @@
   <form method="post" action="/admin/pre-tournoi/reponses" id="pt-answers-form" style="display:flex;flex-direction:column;gap:10px;">
     <div class="grid2">
       <div>
-        <div class="lbl" style="margin-bottom:5px;">① Vainqueur</div>
+        <div class="lbl" style="margin-bottom:5px;">① Champion du Monde</div>
         <div class="field">
           <select name="winner" id="answer-winner">
             <option value="">— Pas encore connu —</option>
@@ -45,7 +45,7 @@
         {% if hits.winner %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.winner.winners }}/{{ hits.winner.scored }} participants l'avaient.</div>{% endif %}
       </div>
       <div>
-        <div class="lbl" style="margin-bottom:5px;">② Finaliste (perdant de la finale)</div>
+        <div class="lbl" style="margin-bottom:5px;">② Autre finaliste</div>
         <div class="field">
           <select name="finalist" id="answer-finalist">
             <option value="">— Pas encore connu —</option>
@@ -55,14 +55,14 @@
           </select>
         </div>
         <div class="muted err-hint" id="winner-finalist-error" style="display:none;font-size:11px;margin-top:4px;color:var(--error);">
-          Le finaliste doit être différent du vainqueur.
+          L'autre finaliste doit être différent du champion.
         </div>
-        {% if hits.finalist %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.finalist.winners }}/{{ hits.finalist.scored }} participants l'avaient.</div>{% endif %}
+        {% if hits.finalist %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.finalist.winners }}/{{ hits.finalist.scored }} participants ont au moins un finaliste correct.</div>{% endif %}
       </div>
     </div>
     <div class="grid2">
       <div>
-        <div class="lbl" style="margin-bottom:5px;">③ Meilleur buteur</div>
+        <div class="lbl" style="margin-bottom:5px;">③ Meilleur buteur <span class="muted" style="font-weight:400;">(+8 pts)</span></div>
         <div class="autocomplete-wrap" data-scorer-combo>
           <div class="field">
             <input type="text" data-combo-input placeholder="🔍 Rechercher un joueur ou une équipe…"

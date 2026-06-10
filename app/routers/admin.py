@@ -510,9 +510,9 @@ async def update_pre_tournament_answers(
     total_goals = total_goals.strip()
 
     if winner and finalist and winner == finalist:
-        _flash(request, "Le vainqueur et le finaliste ne peuvent pas être identiques.", "err")
+        _flash(request, "Le champion et l'autre finaliste ne peuvent pas être identiques.", "err")
         return RedirectResponse("/admin/pre-tournoi", status_code=303)
-    for team_value, label in ((winner, "vainqueur"), (finalist, "finaliste"), (revelation, "révélation")):
+    for team_value, label in ((winner, "champion"), (finalist, "autre finaliste"), (revelation, "révélation")):
         if team_value and team_value not in TEAMS_48:
             _flash(request, f"Équipe inconnue pour {label} : {team_value}.", "err")
             return RedirectResponse("/admin/pre-tournoi", status_code=303)

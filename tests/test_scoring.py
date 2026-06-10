@@ -1,5 +1,6 @@
 from app.scoring import (
     answers_match,
+    calculate_finalists_points,
     calculate_match_score,
     calculate_pre_tournament_points,
 )
@@ -66,6 +67,39 @@ class TestPreTournamentPoints:
         question = self.question("total_goals", 8, answer="140")
         assert calculate_pre_tournament_points(question, 144) == 0
         assert calculate_pre_tournament_points(question, 100) == 0
+
+    def test_two_finalists_score_even_when_ordered_normally(self):
+        prediction = {"winner": "Argentine", "finalist": "France"}
+        correct = {"winner": "Argentine", "finalist": "France"}
+
+        assert calculate_finalists_points(prediction, correct) == 14
+
+    def test_two_finalists_score_even_when_champion_is_inverted(self):
+        prediction = {"winner": "France", "finalist": "Argentine"}
+        correct = {"winner": "Argentine", "finalist": "France"}
+
+        assert calculate_finalists_points(prediction, correct) == 14
+
+    def test_one_finalist_scores_seven_points(self):
+        prediction = {"winner": "Argentine", "finalist": "Brésil"}
+        correct = {"winner": "Argentine", "finalist": "France"}
+
+        assert calculate_finalists_points(prediction, correct) == 7
+
+    def test_finalist_question_uses_both_finalist_picks(self):
+        question = self.question("finalist", 7, answer="France")
+        prediction = {"winner": "France", "finalist": "Argentine"}
+        correct = {"winner": "Argentine", "finalist": "France"}
+
+        assert (
+            calculate_pre_tournament_points(
+                question,
+                "Argentine",
+                prediction=prediction,
+                correct_answers=correct,
+            )
+            == 14
+        )
 
 
 class TestAnswersMatch:
