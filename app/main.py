@@ -1,5 +1,6 @@
 """RESA Pronostics 2026 — FastAPI application entry point."""
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -40,6 +41,10 @@ app.add_middleware(
 
 # Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+# Avatars servis depuis le volume persistant /data/avatars
+os.makedirs("/data/avatars", exist_ok=True)
+app.mount("/avatars", StaticFiles(directory="/data/avatars"), name="avatars")
 
 # Templates (also used by routers)
 templates = create_templates()

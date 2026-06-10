@@ -22,7 +22,7 @@
   <!-- Header -->
   <div class="phead">
     {% if profile.avatar_path %}
-    <img src="/static/uploads/avatars/{{ profile.avatar_path }}" class="av" style="width:60px;height:60px;" alt="">
+    <img src="/avatars/{{ profile.avatar_path }}" class="av" style="width:60px;height:60px;" alt="">
     {% else %}
     <div class="av {{ profile.color_class }}" style="width:60px;height:60px;font-size:22px;">
       {{ profile.initials }}

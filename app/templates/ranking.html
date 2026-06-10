@@ -14,21 +14,21 @@
   <div class="podium">
     <a class="pod p2" href="/p/{{ token }}/profil{{ '' if rankings[1].is_me else '/' ~ rankings[1].id }}">
       <span class="medal">{% if rankings[1].rank == 1 %}🥇{% elif rankings[1].rank == 2 %}🥈{% elif rankings[1].rank == 3 %}🥉{% else %}#{{ rankings[1].rank }}{% endif %}</span>
-      {% if rankings[1].avatar_path %}<img src="/static/uploads/avatars/{{ rankings[1].avatar_path }}" class="av" alt="">{% else %}<div class="av {{ rankings[1].color_class }}">{{ rankings[1].name[:2].upper() }}</div>{% endif %}
+      {% if rankings[1].avatar_path %}<img src="/avatars/{{ rankings[1].avatar_path }}" class="av" alt="">{% else %}<div class="av {{ rankings[1].color_class }}">{{ rankings[1].name[:2].upper() }}</div>{% endif %}
       <div class="bar">{{ rankings[1].rank }}</div>
       <span class="pod-name">{{ rankings[1].name }}</span>
       <span class="pts">{{ rankings[1].total_points }} pts</span>
     </a>
     <a class="pod p1" href="/p/{{ token }}/profil{{ '' if rankings[0].is_me else '/' ~ rankings[0].id }}">
       <span class="medal">{% if rankings[0].rank == 1 %}🥇{% elif rankings[0].rank == 2 %}🥈{% elif rankings[0].rank == 3 %}🥉{% else %}#{{ rankings[0].rank }}{% endif %}</span>
-      {% if rankings[0].avatar_path %}<img src="/static/uploads/avatars/{{ rankings[0].avatar_path }}" class="av" alt="">{% else %}<div class="av {{ rankings[0].color_class }}">{{ rankings[0].name[:2].upper() }}</div>{% endif %}
+      {% if rankings[0].avatar_path %}<img src="/avatars/{{ rankings[0].avatar_path }}" class="av" alt="">{% else %}<div class="av {{ rankings[0].color_class }}">{{ rankings[0].name[:2].upper() }}</div>{% endif %}
       <div class="bar">{{ rankings[0].rank }}</div>
       <span class="pod-name">{{ rankings[0].name }}</span>
       <span class="pts">{{ rankings[0].total_points }} pts</span>
     </a>
     <a class="pod p3" href="/p/{{ token }}/profil{{ '' if rankings[2].is_me else '/' ~ rankings[2].id }}">
       <span class="medal">{% if rankings[2].rank == 1 %}🥇{% elif rankings[2].rank == 2 %}🥈{% elif rankings[2].rank == 3 %}🥉{% else %}#{{ rankings[2].rank }}{% endif %}</span>
-      {% if rankings[2].avatar_path %}<img src="/static/uploads/avatars/{{ rankings[2].avatar_path }}" class="av" alt="">{% else %}<div class="av {{ rankings[2].color_class }}">{{ rankings[2].name[:2].upper() }}</div>{% endif %}
+      {% if rankings[2].avatar_path %}<img src="/avatars/{{ rankings[2].avatar_path }}" class="av" alt="">{% else %}<div class="av {{ rankings[2].color_class }}">{{ rankings[2].name[:2].upper() }}</div>{% endif %}
       <div class="bar">{{ rankings[2].rank }}</div>
       <span class="pod-name">{{ rankings[2].name }}</span>
       <span class="pts">{{ rankings[2].total_points }} pts</span>
@@ -44,7 +44,7 @@
     {% for r in rankings %}
     <a class="rrow {{ 'me' if r.is_me else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}">
       <span class="rk">{{ r.rank }}</span>
-      {% if r.avatar_path %}<img src="/static/uploads/avatars/{{ r.avatar_path }}" class="av" alt="">{% else %}<div class="av {{ r.color_class }}">{{ r.name[:2].upper() }}</div>{% endif %}
+      {% if r.avatar_path %}<img src="/avatars/{{ r.avatar_path }}" class="av" alt="">{% else %}<div class="av {{ r.color_class }}">{{ r.name[:2].upper() }}</div>{% endif %}
       <div class="nm">
         {{ r.name }}
         {% if r.full_name and r.full_name != r.name %}

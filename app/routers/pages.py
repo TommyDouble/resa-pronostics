@@ -742,7 +742,7 @@ PROFILE_EDIT_MESSAGES = {
     "avatar_invalid": ("err", "Fichier non reconnu — utilise une image JPEG, PNG ou WebP."),
 }
 
-AVATARS_DIR = "app/static/uploads/avatars"
+AVATARS_DIR = "/data/avatars"
 
 
 @router.get("/p/{token}/profil/edit", response_class=HTMLResponse)

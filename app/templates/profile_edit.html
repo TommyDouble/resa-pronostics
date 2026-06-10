@@ -38,7 +38,7 @@
         <div class="muted" style="font-size:11px;margin-bottom:5px;">Photo de profil</div>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           {% if participant.avatar_path %}
-          <img src="/static/uploads/avatars/{{ participant.avatar_path }}" class="av" style="width:52px;height:52px;flex-shrink:0;" alt="">
+          <img src="/avatars/{{ participant.avatar_path }}" class="av" style="width:52px;height:52px;flex-shrink:0;" alt="">
           {% else %}
           <div class="av {{ 'c' + ((participant.id - 1) % 8 + 1)|string }}" style="width:52px;height:52px;font-size:18px;flex-shrink:0;">{{ participant.name[:2].upper() }}</div>
           {% endif %}
