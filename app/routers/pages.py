@@ -6,7 +6,7 @@ import os
 import uuid
 
 from fastapi import APIRouter, File, HTTPException, Request, Form, UploadFile
-from PIL import Image
+from PIL import Image, ImageOps
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.auth import hash_password, require_participant, verify_password
@@ -816,6 +816,7 @@ async def save_profile(
         if content:
             try:
                 image = Image.open(io.BytesIO(content))
+                image = ImageOps.exif_transpose(image)
                 image.thumbnail((400, 400))
                 if image.mode in ("RGBA", "P", "LA"):
                     bg = Image.new("RGB", image.size, (255, 255, 255))
