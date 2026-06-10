@@ -117,6 +117,50 @@
   </div>
   {% endif %}
 
+  <!-- Forme récente -->
+  {% if profile.recent_form %}
+  <div class="card">
+    <div class="lbl" style="margin-bottom:10px;">
+      Forme récente
+      <span class="help-tip" tabindex="0" data-tip="Points gagnés sur les 10 derniers matchs joués, du plus ancien (gauche) au plus récent (droite). Barre pleine: gros coup (4 pts ou plus).">?</span>
+    </div>
+    <div class="bars">
+      {% for f in profile.recent_form %}
+      <i class="{{ f.cls }}" style="height:{{ f.height }}%;" title="{{ f.points }} pts"></i>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Badges -->
+  <div class="card">
+    <div class="lbl" style="margin-bottom:12px;">Badges</div>
+    <div class="badges">
+      {% for b in profile.badges %}
+      <div class="bdg {{ '' if b.unlocked else 'off' }} tip" tabindex="0" data-tip="{{ b.desc }}{{ ' — débloqué !' if b.unlocked else '' }}">
+        <div class="ic">{{ b.icon }}</div>
+        <div class="nm">{{ b.label }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Stats fun -->
+  {% if profile.fun_stats %}
+  <div class="card">
+    <div class="lbl" style="margin-bottom:6px;">Stats de vestiaire</div>
+    <div class="funlist">
+      {% for s in profile.fun_stats %}
+      <div class="it">
+        <span class="ico">{{ s.icon }}</span>
+        <span>{{ s.label }}</span>
+        <span class="v">{{ s.value }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Last 5 matches -->
   {% if profile.last5 %}
   <div class="card p0">

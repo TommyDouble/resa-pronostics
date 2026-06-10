@@ -13,6 +13,7 @@ from app.auth import hash_password, require_participant, verify_password
 from app.config import settings
 from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import get_db
+from app.flags import team_flag
 from app.mail import send_invitation
 from app.players import (
     OUTSIDERS,
@@ -1137,6 +1138,115 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
             m["result_chip"] = "ok"
         else:
             m["result_chip"] = "miss"
+    # Forme récente: 10 derniers matchs joués, du plus ancien au plus récent
+    form_rows = await db.execute(
+        """SELECT COALESCE(s.points, 0) AS points
+           FROM predictions pr
+           JOIN matches m ON m.id = pr.match_id
+           LEFT JOIN scores s ON s.match_id = pr.match_id AND s.participant_id = pr.participant_id
+           WHERE pr.participant_id=? AND m.result IS NOT NULL
+           ORDER BY m.match_date DESC, m.kickoff_time DESC
+           LIMIT 10""",
+        (participant_id,)
+    )
+    recent_form = [dict(r) for r in await form_rows.fetchall()][::-1]
+    for f in recent_form:
+        f["cls"] = "hi" if f["points"] >= 4 else ("mid" if f["points"] > 0 else "")
+        f["height"] = max(14, min(100, round(f["points"] / 6 * 100)))
+    # Total de matchs avec résultat (pour le badge d'assiduité)
+    tr_row = await db.execute("SELECT COUNT(*) AS cnt FROM matches WHERE result IS NOT NULL")
+    total_results = (await tr_row.fetchone())["cnt"]
+    # Soumissions de dernière minute (< 60 min avant le coup d'envoi)
+    lm_row = await db.execute(
+        """SELECT COUNT(*) AS cnt
+           FROM predictions pr
+           JOIN matches m ON m.id = pr.match_id
+           WHERE pr.participant_id=?
+             AND pr.submitted_at >= datetime(m.match_date || 'T' || m.kickoff_time, '-60 minutes')
+             AND pr.submitted_at <= datetime(m.match_date || 'T' || m.kickoff_time)""",
+        (participant_id,)
+    )
+    last_minute_count = (await lm_row.fetchone())["cnt"]
+    # Délai moyen de soumission avant le coup d'envoi (heures)
+    lead_row = await db.execute(
+        """SELECT AVG((julianday(datetime(m.match_date || 'T' || m.kickoff_time))
+                       - julianday(pr.submitted_at)) * 24) AS hours
+           FROM predictions pr
+           JOIN matches m ON m.id = pr.match_id
+           WHERE pr.participant_id=?
+             AND pr.submitted_at <= datetime(m.match_date || 'T' || m.kickoff_time)""",
+        (participant_id,)
+    )
+    lead_hours_raw = (await lead_row.fetchone())["hours"]
+    avg_lead_hours = round(lead_hours_raw, 1) if lead_hours_raw is not None else None
+    # Équipe la plus souvent donnée gagnante (équipes réelles uniquement)
+    fav_rows = await db.execute(
+        """SELECT CASE WHEN pr.prediction='team1' THEN m.team1_name
+                       ELSE m.team2_name END AS team, COUNT(*) AS cnt
+           FROM predictions pr
+           JOIN matches m ON m.id = pr.match_id
+           WHERE pr.participant_id=? AND pr.prediction != 'draw'
+           GROUP BY team ORDER BY cnt DESC LIMIT 8""",
+        (participant_id,)
+    )
+    favorite_pick = next(
+        ((r["team"], r["cnt"]) for r in await fav_rows.fetchall() if team_flag(r["team"])),
+        None,
+    )
+    # Nuls tentés / réussis
+    draw_row = await db.execute(
+        "SELECT COUNT(*) AS cnt FROM predictions WHERE participant_id=? AND prediction='draw'",
+        (participant_id,)
+    )
+    draw_attempts = (await draw_row.fetchone())["cnt"]
+    draw_correct = sum(
+        1 for r in played_predictions
+        if r["phase"] == "group" and r["prediction"] == "draw" and r["result"] == "draw"
+    )
+    # Roi des bonus: 1er du classement bonus avec des points
+    bonus_rankings = await get_rankings(db, scope="bonus")
+    bonus_king = bool(
+        bonus_rankings
+        and bonus_rankings[0]["total_points"] > 0
+        and bonus_rankings[0]["rank"] == 1
+        and bonus_rankings[0]["id"] == participant_id
+    )
+    badges = [
+        {"key": "sniper", "icon": "🎯", "label": "Sniper",
+         "desc": "5 scores exacts trouvés",
+         "unlocked": exact >= 5},
+        {"key": "streak", "icon": "🔥", "label": "En série",
+         "desc": "4 bons pronos d'affilée",
+         "unlocked": streak >= 4},
+        {"key": "loyal", "icon": "🛡️", "label": "Fidèle au poste",
+         "desc": "Tous les matchs joués pronostiqués (min. 5)",
+         "unlocked": total_results >= 5 and total_played >= total_results},
+        {"key": "draw_king", "icon": "🤝", "label": "Roi du nul",
+         "desc": "3 matchs nuls trouvés",
+         "unlocked": draw_correct >= 3},
+        {"key": "last_minute", "icon": "⏱️", "label": "Dernière minute",
+         "desc": "5 pronos dans l'heure avant le coup d'envoi",
+         "unlocked": last_minute_count >= 5},
+        {"key": "bonus_king", "icon": "⭐", "label": "Roi des bonus",
+         "desc": "1er au classement bonus",
+         "unlocked": bonus_king},
+    ]
+    fun_stats = []
+    if favorite_pick:
+        fun_stats.append({"icon": "❤️", "label": "Équipe la plus jouée gagnante",
+                          "value": f"{team_flag(favorite_pick[0])} {favorite_pick[0]} ({favorite_pick[1]}×)"})
+    if draw_attempts:
+        fun_stats.append({"icon": "🤝", "label": "Matchs nuls tentés / réussis",
+                          "value": f"{draw_attempts} / {draw_correct}"})
+    if avg_lead_hours is not None:
+        if avg_lead_hours >= 48:
+            lead_label = f"{round(avg_lead_hours / 24)} jours avant"
+        elif avg_lead_hours >= 1:
+            lead_label = f"{round(avg_lead_hours)} h avant"
+        else:
+            lead_label = f"{max(1, round(avg_lead_hours * 60))} min avant"
+        fun_stats.append({"icon": "⏱️", "label": "Délai moyen de soumission",
+                          "value": lead_label})
     # Comparison (if viewer is different)
     comparison = None
     if viewer_id and viewer_id != participant_id:
@@ -1172,6 +1282,9 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         "best_day": best_day,
         "best_day_pts": best_day_pts,
         "last5": [] if is_limited_view else last5,
+        "recent_form": [] if is_limited_view else recent_form,
+        "badges": badges,
+        "fun_stats": [] if is_limited_view else fun_stats,
         "comparison": comparison,
     }
 
