@@ -1,4 +1,5 @@
 {% extends "participant_base.html" %}
+{% from "_macros.html" import avatar %}
 {% block title %}Accueil — RESA Pronostics{% endblock %}
 {% block page_content %}
 
@@ -173,7 +174,7 @@
       {% for r in mini_rank %}
       <div class="rrow {% if r.id == participant.id %}me{% endif %}">
         <span class="rk">{{ r.rank }}</span>
-        {% if r.avatar_path %}<img src="/avatars/{{ r.avatar_path }}" class="av" alt="">{% else %}<div class="av {{ 'c' + ((r.id - 1) % 8 + 1)|string }}">{{ r.name[:2].upper() }}</div>{% endif %}
+        {{ avatar(r.avatar_path, r.name, r.id) }}
         <div class="nm">{{ r.name }}{% if r.full_name and r.full_name != r.name %}<small>{{ r.full_name }}</small>{% elif r.id == participant.id %}<small>c'est toi</small>{% endif %}</div>
         <span class="sc">{{ r.total_points }}<small> pts</small></span>
       </div>

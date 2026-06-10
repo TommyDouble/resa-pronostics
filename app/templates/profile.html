@@ -1,4 +1,5 @@
 {% extends "participant_base.html" %}
+{% from "_macros.html" import avatar %}
 {% block title %}{{ profile.name }} — Profil{% endblock %}
 {% block page_content %}
 
@@ -21,13 +22,7 @@
 
   <!-- Header -->
   <div class="phead">
-    {% if profile.avatar_path %}
-    <img src="/avatars/{{ profile.avatar_path }}" class="av" style="width:60px;height:60px;" alt="">
-    {% else %}
-    <div class="av {{ profile.color_class }}" style="width:60px;height:60px;font-size:22px;">
-      {{ profile.initials }}
-    </div>
-    {% endif %}
+    {{ avatar(profile.avatar_path, profile.name, profile.participant.id, size=60, font=22, initials=profile.initials) }}
     <div>
       <h1 style="font-family:var(--display);font-weight:800;font-size:22px;margin:0;">{{ profile.name }}</h1>
       {% if profile.nickname and profile.full_name != profile.name %}

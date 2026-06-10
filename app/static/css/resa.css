@@ -1026,7 +1026,7 @@ img.av { object-fit: cover; display: block; }
 .combar span { min-width: 0; overflow: hidden; white-space: nowrap; }
 .combar .a { background: var(--primary); display: flex; align-items: center; justify-content: center; }
 .combar .b { background: var(--n400); display: flex; align-items: center; justify-content: center; }
-.combar .c { background: #7A756C; display: flex; align-items: center; justify-content: center; }
+.combar .c { background: var(--n900); display: flex; align-items: center; justify-content: center; }
 .com-legend { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; color: var(--n600); margin-top: 5px; font-weight: 600; }
 .com-legend span { min-width: 0; overflow-wrap: anywhere; }
 
@@ -1475,6 +1475,23 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
   .top-nav .sp { margin-left: auto; }
   .kpis { grid-template-columns: repeat(2, 1fr); }
   .prediction-card { scroll-margin-top: 138px; }
+
+  /* Pronos en deux colonnes sur desktop, bandeaux et séparateurs pleine largeur */
+  .predictions-page {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+  }
+  .predictions-page > .banner,
+  .predictions-page > .prono-progress,
+  .predictions-page > .daybar { grid-column: 1 / -1; }
+}
+
+/* Table du détail match: masquer la colonne issue sur très petit écran
+   (déductible du score prédit) */
+@media (max-width: 440px) {
+  .tbl .col-outcome { display: none; }
 }
 
 @media (max-width: 520px) {

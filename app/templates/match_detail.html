@@ -96,7 +96,7 @@
       <thead>
         <tr>
           <th>Joueur</th>
-          <th>Résultat prédit</th>
+          <th class="col-outcome">Résultat prédit</th>
           <th>Score prédit</th>
           <th style="text-align:right;">Pts</th>
         </tr>
@@ -105,7 +105,7 @@
         {% for pr in all_preds %}
         <tr>
           <td><a class="table-link" href="/p/{{ token }}/profil/{{ pr.participant_id }}">{{ pr.name }}</a></td>
-          <td>
+          <td class="col-outcome">
             {% if match.phase != 'group' %}
               {% if pr.exact_score_team1 is not none and pr.exact_score_team1 > pr.exact_score_team2 %}{{ match.team1_name }}{% elif pr.exact_score_team2 is not none and pr.exact_score_team2 > pr.exact_score_team1 %}{{ match.team2_name }}{% elif pr.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% elif pr.qualifier_prediction == 'team2' %}{{ match.team2_name }}{% else %}<span class="muted">—</span>{% endif %}
             {% elif pr.prediction == 'team1' %}{{ match.team1_name }}{% elif pr.prediction == 'team2' %}{{ match.team2_name }}{% else %}<span class="muted">Nul</span>{% endif %}
