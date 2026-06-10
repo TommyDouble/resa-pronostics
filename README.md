@@ -39,6 +39,10 @@ points. La réponse correcte (select pour les questions à choix) déclenche le
 recalcul. Comparaison tolérante : casse/espaces ignorés pour le texte,
 `10`, `10.0` et `10,0` équivalents pour le numérique.
 
+### Classement
+Le rang dépend uniquement du total de points. À égalité, les participants restent
+ex æquo au même rang ; le rang suivant saute les places déjà occupées.
+
 ## Données joueurs
 
 `app/data/players.json` contient les 1246 joueurs des 48 sélections finales

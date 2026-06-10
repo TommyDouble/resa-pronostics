@@ -205,6 +205,36 @@ body {
   opacity: 1;
   transform: translateY(0);
 }
+body.tooltip-floating .help-tip::after,
+body.tooltip-floating .tip[data-tip]::after {
+  display: none;
+}
+.floating-tooltip {
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  max-width: min(300px, calc(100vw - 24px));
+  background: var(--n900);
+  color: #fff;
+  border-radius: var(--r-sm);
+  padding: 9px 11px;
+  font-family: var(--body);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: var(--sh2);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(3px);
+  transition: opacity 120ms, transform 120ms;
+  z-index: 200;
+}
+.floating-tooltip.show {
+  opacity: 1;
+  transform: translateY(0);
+}
 
 /* ---- Cards ---- */
 .card {
@@ -660,9 +690,16 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
   text-decoration: none;
 }
 .next-incomplete:hover { text-decoration: underline; text-underline-offset: 2px; }
-.prediction-card { gap: 11px; }
+.prediction-card {
+  gap: 11px;
+  scroll-margin-top: 150px;
+}
 .prediction-card.complete {
   border-color: rgba(46,125,50,.25);
+}
+.prediction-card.anchor-highlight {
+  border-color: rgba(211,69,13,.42);
+  box-shadow: 0 0 0 3px rgba(211,69,13,.12), var(--sh);
 }
 .score-entry {
   display: grid;
@@ -1315,6 +1352,32 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
   }
   .top-nav .sp { margin-left: auto; }
   .kpis { grid-template-columns: repeat(2, 1fr); }
+  .prediction-card { scroll-margin-top: 138px; }
+}
+
+@media (max-width: 520px) {
+  .help-tip::after,
+  .tip[data-tip]::after {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: 76px;
+    width: auto;
+    max-width: none;
+    transform: translateY(4px);
+  }
+  .help-tip:hover::after,
+  .help-tip:focus::after,
+  .tip[data-tip]:hover::after,
+  .tip[data-tip]:focus::after {
+    transform: translateY(0);
+  }
+  .floating-tooltip {
+    font-size: 12px;
+    line-height: 1.4;
+    max-width: calc(100vw - 24px);
+  }
 }
 @media (min-width: 1200px) {
   .kpis { grid-template-columns: repeat(4, 1fr); }

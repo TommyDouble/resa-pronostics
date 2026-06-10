@@ -193,6 +193,110 @@ function showSaveBadge(badge) {
   }, 2000);
 }
 
+/* ---- Tooltips that stay inside the viewport ---- */
+function initFloatingTooltips() {
+  var triggers = document.querySelectorAll('.help-tip[data-tip], .tip[data-tip]');
+  if (!triggers.length) return;
+
+  document.body.classList.add('tooltip-floating');
+
+  var bubble = document.createElement('div');
+  bubble.className = 'floating-tooltip';
+  bubble.setAttribute('role', 'tooltip');
+  document.body.appendChild(bubble);
+
+  var active = null;
+
+  function placeTooltip(trigger) {
+    var text = trigger.getAttribute('data-tip');
+    if (!text) return;
+    active = trigger;
+    bubble.textContent = text;
+    bubble.style.maxWidth = Math.min(300, window.innerWidth - 24) + 'px';
+    bubble.style.left = '12px';
+    bubble.style.top = '12px';
+    bubble.classList.add('show');
+
+    var triggerRect = trigger.getBoundingClientRect();
+    var bubbleRect = bubble.getBoundingClientRect();
+    var left = triggerRect.left + triggerRect.width / 2 - bubbleRect.width / 2;
+    left = Math.max(12, Math.min(left, window.innerWidth - bubbleRect.width - 12));
+
+    var top = triggerRect.top - bubbleRect.height - 10;
+    if (top < 12) top = triggerRect.bottom + 10;
+    if (top + bubbleRect.height > window.innerHeight - 12) {
+      top = Math.max(12, window.innerHeight - bubbleRect.height - 12);
+    }
+
+    bubble.style.left = left + 'px';
+    bubble.style.top = top + 'px';
+  }
+
+  function hideTooltip(trigger) {
+    if (trigger && active && trigger !== active) return;
+    active = null;
+    bubble.classList.remove('show');
+  }
+
+  triggers.forEach(function(trigger) {
+    trigger.addEventListener('mouseenter', function() { placeTooltip(trigger); });
+    trigger.addEventListener('focus', function() { placeTooltip(trigger); });
+    trigger.addEventListener('mouseleave', function() { hideTooltip(trigger); });
+    trigger.addEventListener('blur', function() { hideTooltip(trigger); });
+    trigger.addEventListener('click', function(e) {
+      e.stopPropagation();
+      placeTooltip(trigger);
+    });
+  });
+
+  document.addEventListener('click', function() { hideTooltip(); });
+  window.addEventListener('resize', function() {
+    if (active) placeTooltip(active);
+  });
+  window.addEventListener('scroll', function() {
+    if (active) placeTooltip(active);
+  }, { passive: true });
+}
+
+/* ---- Prediction anchor scroll offset ---- */
+function initPredictionAnchorScroll() {
+  function stickyOffset() {
+    var offset = 14;
+    var pageHead = document.querySelector('.page-head');
+    var topNav = document.getElementById('top-nav');
+    if (pageHead) offset += pageHead.getBoundingClientRect().height;
+    if (topNav && getComputedStyle(topNav).display !== 'none') {
+      offset += topNav.getBoundingClientRect().height;
+    }
+    return offset;
+  }
+
+  function scrollToMatch(matchId, smooth) {
+    var target = document.getElementById(matchId);
+    if (!target) return false;
+    var y = target.getBoundingClientRect().top + window.pageYOffset - stickyOffset();
+    window.scrollTo({ top: Math.max(0, y), behavior: smooth ? 'smooth' : 'auto' });
+    target.classList.add('anchor-highlight');
+    setTimeout(function() { target.classList.remove('anchor-highlight'); }, 1600);
+    return true;
+  }
+
+  document.querySelectorAll('.next-incomplete[href^="#match-"]').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      var id = link.getAttribute('href').slice(1);
+      if (!scrollToMatch(id, true)) return;
+      history.replaceState(null, '', '#' + id);
+      e.preventDefault();
+    });
+  });
+
+  if (window.location.hash && window.location.hash.indexOf('#match-') === 0) {
+    setTimeout(function() {
+      scrollToMatch(window.location.hash.slice(1), false);
+    }, 80);
+  }
+}
+
 /* ---- Score exact stepper inputs ---- */
 function initMiniInputs() {
   document.querySelectorAll('.mini-input').forEach(function(inp) {
@@ -652,6 +756,8 @@ function initPhaseFilter() {
 /* ---- Init all on DOM ready ---- */
 document.addEventListener('DOMContentLoaded', function() {
   initLocalTimes();
+  initFloatingTooltips();
+  initPredictionAnchorScroll();
   initPredictionScores();
   initMiniInputs();
   initCountdown();

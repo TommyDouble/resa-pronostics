@@ -61,25 +61,10 @@ _RANKINGS_SQL = """
           + COALESCE((SELECT SUM(ps.points) FROM pre_tournament_scores ps WHERE ps.participant_id = p.id), 0)
           as total_points,
         (SELECT COUNT(DISTINCT s.match_id) FROM scores s
-         WHERE s.participant_id = p.id AND s.match_id IS NOT NULL) as matches_scored,
-        (SELECT COUNT(*) FROM predictions pr
-         JOIN matches m ON m.id = pr.match_id
-         WHERE pr.participant_id = p.id
-           AND m.result IS NOT NULL
-           AND pr.prediction = m.result
-           AND pr.exact_score_team1 IS NOT NULL
-           AND pr.exact_score_team1 = m.score_team1
-           AND pr.exact_score_team2 = m.score_team2) as exact_count,
-        (SELECT COUNT(*) FROM predictions pr
-         JOIN matches m ON m.id = pr.match_id
-         WHERE pr.participant_id = p.id
-           AND m.result IS NOT NULL
-           AND pr.prediction = m.result) as correct_outcome_count
+         WHERE s.participant_id = p.id AND s.match_id IS NOT NULL) as matches_scored
     FROM participants p
     WHERE p.is_confirmed = 1 AND p.is_admin = 0
     ORDER BY total_points DESC,
-             exact_count DESC,
-             correct_outcome_count DESC,
              COALESCE(NULLIF(p.nickname, ''), p.name) ASC
 """
 
@@ -87,21 +72,24 @@ _RANKINGS_SQL = """
 async def _rankings_from_db(db) -> list:
     rows = await db.execute(_RANKINGS_SQL)
     participants = await rows.fetchall()
-    return [
-        {
+    rankings = []
+    previous_points = None
+    current_rank = 0
+    for index, p in enumerate(participants, start=1):
+        if previous_points is None or p["total_points"] != previous_points:
+            current_rank = index
+            previous_points = p["total_points"]
+        rankings.append({
             "full_name": p["name"],
-            "rank": i + 1,
+            "rank": current_rank,
             "id": p["id"],
             "name": p["nickname"] or p["name"],
             "nickname": p["nickname"],
             "email": p["email"],
             "total_points": p["total_points"],
             "matches_scored": p["matches_scored"],
-            "exact_count": p["exact_count"],
-            "correct_outcome_count": p["correct_outcome_count"],
-        }
-        for i, p in enumerate(participants)
-    ]
+        })
+    return rankings
 
 
 async def get_rankings(db=None) -> list:

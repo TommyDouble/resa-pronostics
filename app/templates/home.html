@@ -28,15 +28,15 @@
   </div>
   {% endif %}
 
-  {% set cta = namespace(href='/p/' ~ token ~ '/pronos', label='Faire mes pronos', kicker='Prochaine action', text='Encode les scores des matchs à venir. L’application déduit le 1/X/2 pour toi.') %}
+  {% set cta = namespace(href='/p/' ~ token ~ '/pronos', label='Compléter mes scores', kicker='Prochaine action', text='Indique simplement les scores que tu imagines pour les prochains matchs. Les points seront calculés automatiquement.') %}
   {% if urgency or unpredicted_today > 0 %}
     {% set cta.href = '/p/' ~ token ~ '/pronos' %}
-    {% set cta.label = 'Compléter mes pronos' %}
-    {% set cta.text = 'Il reste des matchs à pronostiquer avant le coup d’envoi.' %}
+    {% set cta.label = 'Compléter mes scores' %}
+    {% set cta.text = 'Il reste des scores à compléter avant le début des matchs.' %}
   {% elif pt_open and not pt_submitted %}
     {% set cta.href = '/p/' ~ token ~ '/pre-tournoi' %}
     {% set cta.label = 'Soumettre le pré-tournoi' %}
-    {% set cta.text = 'Champion, autre finaliste, meilleur buteur et bonus longs termes sont encore à valider.' %}
+    {% set cta.text = 'Champion, finalistes, meilleur buteur et questions d’avant-tournoi sont encore à valider.' %}
   {% elif pending_bonus > 0 %}
     {% set cta.href = '/p/' ~ token ~ '/bonus' %}
     {% set cta.label = 'Répondre aux bonus' %}
@@ -74,26 +74,26 @@
 
   {% if urgency %}
   <div class="urgency">
-    <div class="lbl">À pronostiquer · ça arrive</div>
+    <div class="lbl">À compléter bientôt</div>
     <h2>{{ urgency.team1_name }} – {{ urgency.team2_name }}</h2>
     <div class="sub">
       {% if urgency.is_top_match %}⏳ <span class="countdown" data-countdown="{{ urgency.kickoff_ts }}">...</span> · ★ Top Match ×2{% else %}⏳ <span class="countdown" data-countdown="{{ urgency.kickoff_ts }}">...</span>{% endif %}
     </div>
-    <a href="/p/{{ token }}/pronos" class="btn white full" style="margin-top:10px;">Pronostiquer maintenant</a>
+    <a href="/p/{{ token }}/pronos" class="btn white full" style="margin-top:10px;">Compléter maintenant</a>
   </div>
   {% endif %}
 
   {% if unpredicted_today > 0 %}
   <div class="banner red">
     <span>⚠</span>
-    {{ unpredicted_today }} match{{ 's' if unpredicted_today > 1 else '' }} d'aujourd'hui pas encore pronostiqué{{ 's' if unpredicted_today > 1 else '' }}
+    {{ unpredicted_today }} match{{ 's' if unpredicted_today > 1 else '' }} d'aujourd'hui à compléter
   </div>
   {% endif %}
 
   <div class="card rules-entry">
     <div>
       <div class="lbl">Règlement</div>
-      <p>Barème, deadlines, Top Match et bonus: tout est résumé au même endroit.</p>
+      <p>Barème, dates limites, matchs importants et bonus: tout est résumé au même endroit.</p>
     </div>
     <a href="/p/{{ token }}/reglement" class="btn ghost sm">Lire</a>
   </div>

@@ -17,7 +17,7 @@
     <span class="chip ok" id="global-save-badge" style="display:none;">Enregistré ✓</span>
   </div>
   <div class="sub1">
-    Encode le score prévu, le résultat est calculé automatiquement.
+    Indique le score que tu imagines. L’application calcule le résultat.
     <span class="help-tip" tabindex="0" data-tip="1 = victoire de l'équipe de gauche, X = match nul, 2 = victoire de l'équipe de droite.">?</span>
   </div>
   <div class="fchips prono-tabs">
@@ -63,7 +63,7 @@
       <span style="width:{{ (stats.done * 100 // stats.total) if stats.total else 0 }}%;"></span>
     </div>
     {% if next_open.id %}
-    <a href="#match-{{ next_open.id }}" class="next-incomplete">Aller au prochain match à compléter</a>
+    <a href="#match-{{ next_open.id }}" class="next-incomplete">Voir le prochain match à compléter</a>
     {% endif %}
   </div>
 

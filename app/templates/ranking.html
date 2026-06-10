@@ -13,23 +13,23 @@
   {% if rankings|length >= 3 %}
   <div class="podium">
     <a class="pod p2" href="/p/{{ token }}/profil{{ '' if rankings[1].is_me else '/' ~ rankings[1].id }}">
-      <span class="medal">🥈</span>
+      <span class="medal">{% if rankings[1].rank == 1 %}🥇{% elif rankings[1].rank == 2 %}🥈{% elif rankings[1].rank == 3 %}🥉{% else %}#{{ rankings[1].rank }}{% endif %}</span>
       <div class="av {{ rankings[1].color_class }}">{{ rankings[1].name[:2].upper() }}</div>
-      <div class="bar">2</div>
+      <div class="bar">{{ rankings[1].rank }}</div>
       <span class="pod-name">{{ rankings[1].name }}</span>
       <span class="pts">{{ rankings[1].total_points }} pts</span>
     </a>
     <a class="pod p1" href="/p/{{ token }}/profil{{ '' if rankings[0].is_me else '/' ~ rankings[0].id }}">
-      <span class="medal">🥇</span>
+      <span class="medal">{% if rankings[0].rank == 1 %}🥇{% elif rankings[0].rank == 2 %}🥈{% elif rankings[0].rank == 3 %}🥉{% else %}#{{ rankings[0].rank }}{% endif %}</span>
       <div class="av {{ rankings[0].color_class }}">{{ rankings[0].name[:2].upper() }}</div>
-      <div class="bar">1</div>
+      <div class="bar">{{ rankings[0].rank }}</div>
       <span class="pod-name">{{ rankings[0].name }}</span>
       <span class="pts">{{ rankings[0].total_points }} pts</span>
     </a>
     <a class="pod p3" href="/p/{{ token }}/profil{{ '' if rankings[2].is_me else '/' ~ rankings[2].id }}">
-      <span class="medal">🥉</span>
+      <span class="medal">{% if rankings[2].rank == 1 %}🥇{% elif rankings[2].rank == 2 %}🥈{% elif rankings[2].rank == 3 %}🥉{% else %}#{{ rankings[2].rank }}{% endif %}</span>
       <div class="av {{ rankings[2].color_class }}">{{ rankings[2].name[:2].upper() }}</div>
-      <div class="bar">3</div>
+      <div class="bar">{{ rankings[2].rank }}</div>
       <span class="pod-name">{{ rankings[2].name }}</span>
       <span class="pts">{{ rankings[2].total_points }} pts</span>
     </a>
@@ -39,7 +39,7 @@
   <div class="card p0">
     <div class="list-head">
       <span>Classement général</span>
-      <span class="help-tip" tabindex="0" data-tip="Les points viennent des matchs, du pré-tournoi et des bonus. À égalité: scores exacts, puis bonnes issues, puis ordre alphabétique.">?</span>
+      <span class="help-tip" tabindex="0" data-tip="Le rang dépend uniquement du total de points. À égalité, les participants gardent le même rang.">?</span>
     </div>
     {% for r in rankings %}
     <a class="rrow {{ 'me' if r.is_me else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}">
@@ -68,7 +68,7 @@
       <div class="lbl">Cagnotte</div>
       <div class="muted" style="font-size:12px;">
         Podium général + prix spéciaux · montants à préciser
-        <span class="help-tip" tabindex="0" data-tip="Les montants dépendront du nombre final de participants. La philosophie de répartition est détaillée dans le règlement.">?</span>
+        <span class="help-tip" tabindex="0" data-tip="Les montants dépendront du nombre final de participants. En cas d'ex æquo pour un gain, les cagnottes concernées sont partagées.">?</span>
       </div>
     </div>
   </div>
