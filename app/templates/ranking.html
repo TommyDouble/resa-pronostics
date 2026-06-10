@@ -12,30 +12,37 @@
 
   {% if rankings|length >= 3 %}
   <div class="podium">
-    <div class="pod p2">
+    <a class="pod p2" href="/p/{{ token }}/profil{{ '' if rankings[1].is_me else '/' ~ rankings[1].id }}">
       <span class="medal">🥈</span>
       <div class="av {{ rankings[1].color_class }}">{{ rankings[1].name[:2].upper() }}</div>
       <div class="bar">2</div>
-      <span class="pts">{{ rankings[1].total_points }}</span>
-    </div>
-    <div class="pod p1">
+      <span class="pod-name">{{ rankings[1].name }}</span>
+      <span class="pts">{{ rankings[1].total_points }} pts</span>
+    </a>
+    <a class="pod p1" href="/p/{{ token }}/profil{{ '' if rankings[0].is_me else '/' ~ rankings[0].id }}">
       <span class="medal">🥇</span>
       <div class="av {{ rankings[0].color_class }}">{{ rankings[0].name[:2].upper() }}</div>
       <div class="bar">1</div>
-      <span class="pts">{{ rankings[0].total_points }}</span>
-    </div>
-    <div class="pod p3">
+      <span class="pod-name">{{ rankings[0].name }}</span>
+      <span class="pts">{{ rankings[0].total_points }} pts</span>
+    </a>
+    <a class="pod p3" href="/p/{{ token }}/profil{{ '' if rankings[2].is_me else '/' ~ rankings[2].id }}">
       <span class="medal">🥉</span>
       <div class="av {{ rankings[2].color_class }}">{{ rankings[2].name[:2].upper() }}</div>
       <div class="bar">3</div>
-      <span class="pts">{{ rankings[2].total_points }}</span>
-    </div>
+      <span class="pod-name">{{ rankings[2].name }}</span>
+      <span class="pts">{{ rankings[2].total_points }} pts</span>
+    </a>
   </div>
   {% endif %}
 
   <div class="card p0">
+    <div class="list-head">
+      <span>Classement général</span>
+      <span class="help-tip" tabindex="0" data-tip="Les points viennent des matchs, du pré-tournoi et des questions bonus déjà scorées.">?</span>
+    </div>
     {% for r in rankings %}
-    <div class="rrow {{ 'me' if r.is_me else '' }}">
+    <a class="rrow {{ 'me' if r.is_me else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}">
       <span class="rk">{{ r.rank }}</span>
       <div class="av {{ r.color_class }}">{{ r.name[:2].upper() }}</div>
       <div class="nm">
@@ -46,8 +53,8 @@
           <small>c'est toi</small>
         {% endif %}
       </div>
-      <span class="sc">{{ r.total_points }}</span>
-    </div>
+      <span class="sc">{{ r.total_points }}<small> pts</small></span>
+    </a>
     {% else %}
     <div style="padding:24px;text-align:center;color:var(--n600);">
       <p style="font-family:var(--sketch);font-size:20px;">Aucun score encore.</p>
@@ -55,10 +62,14 @@
     {% endfor %}
   </div>
 
-  <div class="card flat" style="display:flex;align-items:center;gap:11px;padding:13px;">
+  <div class="card flat pot-card">
     <span style="font-size:22px;">🏆</span>
-    <div style="font-size:11px;" class="muted">
-      Cagnotte <b style="color:var(--primary);">500 €</b> — 1er 180 € · 2e 100 € · 3e 60 €
+    <div>
+      <div class="lbl">Cagnotte</div>
+      <div class="muted" style="font-size:12px;">
+        <b style="color:var(--primary);">500 €</b> · 1er 180 € · 2e 100 € · 3e 60 €
+        <span class="help-tip" tabindex="0" data-tip="Répartition indicative affichée aux participants.">?</span>
+      </div>
     </div>
   </div>
 

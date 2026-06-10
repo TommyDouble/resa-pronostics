@@ -64,7 +64,11 @@
   <div class="metrics">
     <div class="metric">
       <div class="big">{{ profile.success_rate }}%</div>
-      <div class="cap">Taux de réussite<br>(issues correctes)</div>
+      <div class="cap">
+        Bons résultats
+        <span class="help-tip" tabindex="0" data-tip="Un bon résultat signifie: bonne équipe gagnante ou bon match nul, même si le score exact est différent.">?</span>
+        <br>sur {{ profile.total_played }} match{{ 's' if profile.total_played != 1 else '' }} joué{{ 's' if profile.total_played != 1 else '' }}
+      </div>
     </div>
     <div class="metric">
       <div class="big">{{ profile.exact_count }}</div>
@@ -72,18 +76,19 @@
     </div>
     <div class="metric">
       <div class="big">{{ profile.streak }}{% if profile.streak >= 4 %}&nbsp;🔥{% endif %}</div>
-      <div class="cap">Série en cours<br>de bons pronos</div>
+      <div class="cap">
+        Série en cours
+        <span class="help-tip" tabindex="0" data-tip="Nombre de matchs joués consécutifs avec une bonne issue, en partant du plus récent.">?</span>
+        <br>de bons pronos
+      </div>
     </div>
     <div class="metric">
       <div class="big">{{ profile.best_day or '—' }}</div>
-      <div class="cap">Meilleure journée<br>{{ profile.best_day_pts }} pts</div>
-    </div>
-  </div>
-
-  <!-- Phase 2 stubs -->
-  <div class="card flat" style="background:var(--n50);border:1px dashed var(--n300);padding:13px;text-align:center;">
-    <div style="font-family:var(--sketch);font-size:18px;color:var(--n400);">
-      Radar tactique, archétype & stats fun — Phase 2 🚀
+      <div class="cap">
+        Meilleur groupe
+        <span class="help-tip" tabindex="0" data-tip="Groupe dans lequel ce participant a marqué le plus de points cumulés.">?</span>
+        <br>{{ profile.best_day_pts }} pts
+      </div>
     </div>
   </div>
 
@@ -123,7 +128,7 @@
       <tbody>
         {% for m in profile.last5 %}
         <tr>
-          <td>{{ m.team1_name[:3] }} – {{ m.team2_name[:3] }}</td>
+          <td title="{{ m.team1_name }} – {{ m.team2_name }}">{{ m.team1_name }} – {{ m.team2_name }}</td>
           <td>
             {% if m.result_chip == 'exact' %}
               <span class="chip acc">Score exact</span>
@@ -140,13 +145,6 @@
     </table>
   </div>
   {% endif %}
-
-  <!-- Phase 3 badges stub -->
-  <div class="card flat" style="background:var(--n50);border:1px dashed var(--n300);padding:13px;text-align:center;">
-    <div style="font-family:var(--sketch);font-size:18px;color:var(--n400);">
-      Badges — Phase 3 🏅
-    </div>
-  </div>
 
 </div>
 {% endblock %}

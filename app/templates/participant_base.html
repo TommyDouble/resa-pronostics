@@ -7,7 +7,7 @@
     <div class="brand">RESA <b>Pronos</b></div>
     <a href="/p/{{ token }}" class="{{ 'on' if active_nav == 'home' else '' }}">Accueil</a>
     <a href="/p/{{ token }}/pronos" class="{{ 'on' if active_nav == 'pronos' else '' }}">Pronos</a>
-    <a href="/p/{{ token }}/classement" class="{{ 'on' if active_nav == 'rank' else '' }}">Rank</a>
+    <a href="/p/{{ token }}/classement" class="{{ 'on' if active_nav == 'rank' else '' }}">Classement</a>
     <a href="/p/{{ token }}/profil" class="{{ 'on' if active_nav == 'profil' else '' }}">Profil</a>
     <a href="/p/{{ token }}/bonus"
        class="{{ 'on' if active_nav == 'bonus' else '' }}{% if pending_bonus > 0 %} bdg-link{% endif %}">Bonus</a>
@@ -28,7 +28,7 @@
     </a>
     <a href="/p/{{ token }}/classement" class="{{ 'on' if active_nav == 'rank' else '' }}">
       <span class="nicon-wrap"><i class="nicon ic-rank"></i></span>
-      <span>Rank</span>
+      <span>Classement</span>
     </a>
     <a href="/p/{{ token }}/profil" class="{{ 'on' if active_nav == 'profil' else '' }}">
       <span class="nicon-wrap"><i class="nicon ic-user"></i></span>

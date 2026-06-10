@@ -1,4 +1,5 @@
 """Shared Jinja template configuration."""
+import inspect
 import json
 from pathlib import Path
 
@@ -28,6 +29,23 @@ from app.timeutils import (
 
 def create_templates() -> Jinja2Templates:
     templates = Jinja2Templates(directory="app/templates")
+    original_template_response = templates.TemplateResponse
+    params = list(inspect.signature(original_template_response).parameters)
+    request_first = bool(params and params[0] == "request")
+
+    def template_response(*args, **kwargs):
+        if args and hasattr(args[0], "scope"):
+            request = args[0]
+            name = args[1]
+            context = dict(args[2]) if len(args) > 2 else dict(kwargs.pop("context", {}))
+            context.setdefault("request", request)
+            remaining = args[3:]
+            if request_first:
+                return original_template_response(request, name, context, *remaining, **kwargs)
+            return original_template_response(name, context, *remaining, **kwargs)
+        return original_template_response(*args, **kwargs)
+
+    templates.TemplateResponse = template_response
     templates.env.filters["fromjson"] = json.loads
     templates.env.filters["local_datetime"] = format_local_datetime
     templates.env.filters["local_input"] = format_local_input

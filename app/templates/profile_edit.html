@@ -58,9 +58,13 @@
           <option value="limited" {{ 'selected' if participant.profile_visibility == 'limited' else '' }}>Profil limité aux stats</option>
         </select>
       </div>
+      <p class="muted helper-text">
+        Profil complet: pseudo, bio, équipe favorite et stats. Profil limité: seules les stats principales restent visibles.
+      </p>
       <label style="display:flex;align-items:center;gap:9px;margin-top:12px;font-size:13px;color:var(--n600);font-weight:600;">
         <input type="checkbox" name="email_opt_in" value="1" {{ 'checked' if participant.email_opt_in else '' }}>
         Recevoir les rappels par email
+        <span class="help-tip" tabindex="0" data-tip="Rappels utiles quand un match ou une question bonus approche de sa deadline.">?</span>
       </label>
     </div>
 

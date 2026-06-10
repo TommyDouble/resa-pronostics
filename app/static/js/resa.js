@@ -29,9 +29,23 @@ function initPredictionScores() {
     }
 
     function derivedPrediction(s1, s2) {
-      if (s1 > s2) return { value: 'team1', short: '1', label: card.dataset.team1 };
-      if (s2 > s1) return { value: 'team2', short: '2', label: card.dataset.team2 };
-      return { value: 'draw', short: 'X', label: 'Nul' };
+      if (s1 > s2) {
+        return {
+          value: 'team1',
+          short: '1',
+          label: card.dataset.team1,
+          outcome: 'Victoire ' + card.dataset.team1
+        };
+      }
+      if (s2 > s1) {
+        return {
+          value: 'team2',
+          short: '2',
+          label: card.dataset.team2,
+          outcome: 'Victoire ' + card.dataset.team2
+        };
+      }
+      return { value: 'draw', short: 'X', label: 'Match nul', outcome: 'Match nul' };
     }
 
     function selectedQualifier() {
@@ -62,7 +76,7 @@ function initPredictionScores() {
       }
       var prediction = derivedPrediction(s1, s2);
       if (outcome) {
-        outcome.textContent = 'Issue ' + prediction.short;
+        outcome.textContent = prediction.outcome;
         outcome.classList.remove('empty');
       }
       if (qualifierRow) {
@@ -497,6 +511,42 @@ function initScorerCombos() {
   });
 }
 
+/* ---- Bonus answer validation ---- */
+function initBonusForms() {
+  document.querySelectorAll('.bonus-answer-form').forEach(function(form) {
+    var errorBox = form.querySelector('.form-error');
+    function setError(message) {
+      if (!errorBox) return;
+      errorBox.textContent = message || '';
+      errorBox.classList.toggle('show', !!message);
+    }
+    form.addEventListener('submit', function(e) {
+      var radios = form.querySelectorAll('input[type="radio"][name="answer"]');
+      if (radios.length) {
+        var checked = Array.prototype.some.call(radios, function(radio) {
+          return radio.checked;
+        });
+        if (!checked) {
+          e.preventDefault();
+          setError('Choisis une réponse avant de valider.');
+          return;
+        }
+      }
+      var text = form.querySelector('input[type="text"][name="answer"]');
+      if (text && !text.value.trim()) {
+        e.preventDefault();
+        setError('Indique ta réponse avant de valider.');
+        return;
+      }
+      setError('');
+    });
+    form.querySelectorAll('input[name="answer"]').forEach(function(input) {
+      input.addEventListener('input', function() { setError(''); });
+      input.addEventListener('change', function() { setError(''); });
+    });
+  });
+}
+
 /* ---- Flash message auto-dismiss ---- */
 function initFlash() {
   document.querySelectorAll('.flash-msg').forEach(function(msg) {
@@ -616,4 +666,5 @@ document.addEventListener('DOMContentLoaded', function() {
   initStepper('goals-stepper', 50, 300);
   initWinnerFinalistGuard();
   initScorerCombos();
+  initBonusForms();
 });

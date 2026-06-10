@@ -30,7 +30,7 @@
         Vainqueur · Finaliste · Buteur · Révélation · Buts
       </div>
     </div>
-    <a href="/p/{{ token }}/pre-tournoi" class="btn ghost" style="font-size:12px;white-space:nowrap;">Voir / Modifier</a>
+    <a href="/p/{{ token }}/pre-tournoi" class="btn ghost" style="font-size:12px;white-space:nowrap;">Ouvrir</a>
   </div>
 
   {% if not bonus_questions %}
@@ -42,7 +42,7 @@
   {% for q in bonus_questions %}
   <div class="card" style="padding:14px;">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span class="chip acc">{{ phase_labels.get(q.phase, q.phase) }} · {{ q.points_value }} pts</span>
+      <span class="chip acc tip" tabindex="0" data-tip="Points attribués si ta réponse est correcte.">{{ phase_labels.get(q.phase, q.phase) }} · {{ q.points_value }} pts</span>
       {% if q.has_score %}
         <span class="chip {{ 'ok' if q.points > 0 else 'lock' }}">{{ q.points }} pt{{ 's' if q.points != 1 else '' }}</span>
       {% elif q.can_edit and q.has_answer %}
@@ -54,7 +54,7 @@
       {% else %}
         <span class="chip lock">Non répondue</span>
       {% endif %}
-      <span class="muted" style="font-size:11px;margin-left:auto;">
+      <span class="muted tip" tabindex="0" data-tip="Après cette deadline, la réponse n'est plus modifiable." style="font-size:11px;margin-left:auto;">
         Deadline · <span data-local-utc="{{ q.deadline|utc_iso }}">{{ q.deadline|local_datetime }}</span>
       </span>
     </div>
@@ -71,6 +71,9 @@
       <span class="muted" style="margin-left:auto;font-size:11px;" data-local-utc="{{ q.answered_at|utc_iso }}">{{ q.answered_at|local_datetime }}</span>
       {% endif %}
     </div>
+    {% if q.can_edit and not q.has_score %}
+    <div class="muted helper-text" style="margin-top:-6px;margin-bottom:12px;">Tu peux encore modifier cette réponse jusqu'à la deadline.</div>
+    {% endif %}
     {% elif not q.can_edit %}
     <div class="banner" style="background:var(--n100);color:var(--n600);margin-bottom:12px;">
       <span>🔒</span> Deadline dépassée — aucune réponse enregistrée.
@@ -84,7 +87,7 @@
     {% endif %}
 
     {% if q.can_edit %}
-    <form method="post" action="/p/{{ token }}/bonus/{{ q.id }}">
+    <form method="post" action="/p/{{ token }}/bonus/{{ q.id }}" class="bonus-answer-form" novalidate>
       {% if q.answer_type == 'number' %}
       <div class="stepper" style="margin-bottom:14px;">
         <div class="b" data-action="minus">–</div>
@@ -96,16 +99,17 @@
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
         {% for opt in q.options | fromjson %}
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input type="radio" name="answer" value="{{ opt }}" {{ 'checked' if q.answer == opt else '' }} required>
+          <input type="radio" name="answer" value="{{ opt }}" {{ 'checked' if q.answer == opt else '' }}>
           <span>{{ opt }}</span>
         </label>
         {% endfor %}
       </div>
       {% else %}
       <div class="field" style="margin-bottom:14px;">
-        <input type="text" name="answer" value="{{ q.answer or '' }}" placeholder="Votre réponse…" required>
+        <input type="text" name="answer" value="{{ q.answer or '' }}" placeholder="Ta réponse…">
       </div>
       {% endif %}
+      <div class="form-error" role="alert"></div>
       <button class="btn full" type="submit">
         {% if q.has_answer %}Modifier ma réponse{% else %}Valider ma réponse{% endif %}
       </button>

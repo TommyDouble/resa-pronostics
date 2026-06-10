@@ -105,6 +105,12 @@ def _initials(name: str) -> str:
     return "".join(p[0].upper() for p in parts[:2])
 
 
+def _ordinal_fr(rank) -> str:
+    if not isinstance(rank, int):
+        return str(rank)
+    return "1er" if rank == 1 else f"{rank}e"
+
+
 def _is_locked(match: dict) -> bool:
     return is_match_locked(match)
 
@@ -196,6 +202,17 @@ def _default_prediction_section(sections: list[dict]) -> str:
     return PREDICTION_SECTION_ORDER[0]
 
 
+def _section_help(section_key: str) -> str:
+    return {
+        "group_match_1": "Match 1 regroupe le premier match de chaque équipe dans son groupe.",
+        "group_match_2": "Match 2 regroupe le deuxième match de chaque équipe dans son groupe.",
+        "group_match_3": "Match 3 regroupe le troisième match de chaque équipe dans son groupe.",
+    }.get(
+        section_key,
+        "Les phases finales valent ×2. En cas de nul, choisis aussi l'équipe qualifiée pour le suivi.",
+    )
+
+
 async def _get_participant_context(token: str, db, active_nav: str = "home") -> dict:
     """Build common context for participant templates."""
     p = await require_participant(token)
@@ -220,8 +237,10 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
         "greeting_name": _greeting_name(dict(p)),
         "total_points": total_points,
         "user_rank": user_rank,
+        "user_rank_label": _ordinal_fr(user_rank),
         "pending_bonus": pending_bonus,
         "active_nav": active_nav,
+        "page_wide": True,
         "token": token,
     }
 
@@ -383,6 +402,7 @@ async def predictions_page(request: Request, token: str, section: str = "", phas
             "current_matches": current_matches,
             "current_section": requested_section,
             "current_section_label": PREDICTION_SECTION_LABELS.get(requested_section, requested_section),
+            "current_section_help": _section_help(requested_section),
             "prediction_sections": sections,
             "phase_labels": PHASE_LABELS,
             "pt_submitted": pt_submitted,
@@ -535,7 +555,7 @@ async def ranking_page(request: Request, token: str):
 @router.get("/p/{token}/match/{match_id}", response_class=HTMLResponse)
 async def match_detail_page(request: Request, token: str, match_id: int):
     async with get_db() as db:
-        ctx = await _get_participant_context(token, db)
+        ctx = await _get_participant_context(token, db, "pronos")
         p = ctx["participant"]
         row = await db.execute("SELECT * FROM matches WHERE id = ?", (match_id,))
         match = await row.fetchone()
@@ -560,11 +580,13 @@ async def match_detail_page(request: Request, token: str, match_id: int):
             (match_id,)
         )
         dist_raw = {r["prediction"]: r["cnt"] for r in await dist_row.fetchall()}
-        total_preds = sum(dist_raw.values()) or 1
+        dist_total = sum(dist_raw.values())
+        total_preds = dist_total or 1
         dist = {k: {"cnt": v, "pct": round(v / total_preds * 100)} for k, v in dist_raw.items()}
         # All predictions (only after kickoff)
         all_preds_rows = await db.execute(
-            """SELECT par.name, pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
+            """SELECT par.id as participant_id, par.name, pr.prediction,
+                      pr.exact_score_team1, pr.exact_score_team2,
                       pr.qualifier_prediction, s.points
                FROM predictions pr
                JOIN participants par ON par.id = pr.participant_id
@@ -580,6 +602,7 @@ async def match_detail_page(request: Request, token: str, match_id: int):
             "my_pred": dict(my_pred) if my_pred else None,
             "my_score": dict(my_score) if my_score else None,
             "dist": dist,
+            "dist_total": dist_total,
             "all_preds": all_preds,
         })
     return templates.TemplateResponse(request, "match_detail.html", {"request": request, **ctx})
@@ -768,6 +791,7 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         "rank": user_rank,
         "total_points": total_points,
         "match_count": match_count,
+        "total_played": total_played,
         "success_rate": success_rate,
         "exact_count": exact,
         "streak": streak,

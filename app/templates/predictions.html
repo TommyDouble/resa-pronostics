@@ -16,10 +16,15 @@
     <span class="sp"></span>
     <span class="chip ok" id="global-save-badge" style="display:none;">Enregistré ✓</span>
   </div>
+  <div class="sub1">
+    Encode le score prévu, le résultat est calculé automatiquement.
+    <span class="help-tip" tabindex="0" data-tip="1 = victoire de l'équipe de gauche, X = match nul, 2 = victoire de l'équipe de droite.">?</span>
+  </div>
   <div class="fchips prono-tabs">
     {% for sec in prediction_sections %}
     <a href="/p/{{ token }}/pronos?section={{ sec.key }}"
-       class="{{ 'on' if current_section == sec.key else '' }}">
+       class="{{ 'on' if current_section == sec.key else '' }}"
+       title="{{ sec.label }} · {{ sec.done }}/{{ sec.total }} complétés">
       {{ sec.short_label }}
       <span>{{ sec.done }}/{{ sec.total }}</span>
     </a>
@@ -37,6 +42,18 @@
   </div>
   {% endif %}
 
+  <div class="banner soft">
+    <span>i</span>
+    <span>{{ current_section_help }}</span>
+  </div>
+
+  {% set next_open = namespace(id=None) %}
+  {% for m in current_matches %}
+    {% if next_open.id is none and not m.is_locked and not m.has_score_prediction %}
+      {% set next_open.id = m.id %}
+    {% endif %}
+  {% endfor %}
+
   <div class="prono-progress">
     <div>
       <span class="lbl">{{ current_section_label }}</span>
@@ -45,6 +62,9 @@
     <div class="progress-line">
       <span style="width:{{ (stats.done * 100 // stats.total) if stats.total else 0 }}%;"></span>
     </div>
+    {% if next_open.id %}
+    <a href="#match-{{ next_open.id }}" class="next-incomplete">Aller au prochain match à compléter</a>
+    {% endif %}
   </div>
 
   {% set ns = namespace(current_date=None) %}
@@ -56,6 +76,7 @@
     {% endif %}
 
     <div class="match prediction-card {% if m.is_top_match and not m.is_locked %}top{% endif %} {% if m.is_locked %}past{% endif %} {{ 'complete' if m.has_score_prediction else '' }}"
+         id="match-{{ m.id }}"
          data-match-id="{{ m.id }}"
          data-knockout="{{ '1' if m.phase != 'group' else '0' }}"
          data-team1="{{ m.team1_name }}"
@@ -75,14 +96,14 @@
         {% if m.is_locked and m.result is not none and m.score_team1 is not none %}
           <span class="chip lock">Réel {{ m.score_team1 }}-{{ m.score_team2 }}</span>
         {% elif m.is_top_match %}
-          <span class="chip warn">★ Top Match ×2</span>
+          <span class="chip warn tip" tabindex="0" data-tip="Top Match: bonne issue à +4 points au lieu de +2. Le bonus score exact reste +2.">★ Top Match ×2</span>
         {% else %}
-          <span class="chip gr">×{{ m.weight }}</span>
+          <span class="chip gr tip" tabindex="0" data-tip="Poids du match: les points de bonne issue sont multipliés par {{ m.weight }}.">×{{ m.weight }}</span>
         {% endif %}
       </div>
 
       <div class="score-entry">
-        <div class="score-team">{{ m.team1_name }}</div>
+        <div class="score-team" title="{{ m.team1_name }}">{{ m.team1_name }}</div>
         <input class="score-pick" type="number" min="0" max="30" inputmode="numeric"
                data-side="1" aria-label="Score {{ m.team1_name }}"
                value="{{ m.exact_score_team1 if m.exact_score_team1 is not none else '' }}"
@@ -92,15 +113,17 @@
                data-side="2" aria-label="Score {{ m.team2_name }}"
                value="{{ m.exact_score_team2 if m.exact_score_team2 is not none else '' }}"
                placeholder="-" {% if m.is_locked %}disabled{% endif %}>
-        <div class="score-team r">{{ m.team2_name }}</div>
+        <div class="score-team r" title="{{ m.team2_name }}">{{ m.team2_name }}</div>
       </div>
 
       <div class="prediction-meta">
         <span class="outcome-chip {{ '' if m.has_score_prediction else 'empty' }}" data-outcome>
-          {% if m.has_score_prediction %}Issue {{ m.prediction_short }}{% else %}Score requis{% endif %}
+          {% if m.has_score_prediction %}
+            {% if m.prediction == 'team1' %}Victoire {{ m.team1_name }}{% elif m.prediction == 'team2' %}Victoire {{ m.team2_name }}{% else %}Match nul{% endif %}
+          {% else %}Score requis{% endif %}
         </span>
         {% if m.points is not none %}
-          <span class="chip ok">+{{ m.points }} pts</span>
+          <span class="chip ok tip" tabindex="0" data-tip="Points obtenus sur ce match après résultat officiel.">+{{ m.points }} pts</span>
         {% endif %}
         <span class="muted prono-text {{ 'empty' if not m.has_score_prediction else '' }}">
           {% if m.has_score_prediction %}Prono {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }} · {{ m.prediction_label }}{% endif %}
@@ -112,9 +135,18 @@
         {% endif %}
       </div>
 
+      {% if m.phase != 'group' and ('Groupe' in m.team1_name or 'Groupe' in m.team2_name) %}
+      <div class="placeholder-note">
+        Les équipes de cette affiche seront confirmées plus tard. Ton score restera modifiable jusqu'au coup d'envoi.
+      </div>
+      {% endif %}
+
       {% if m.phase != 'group' %}
       <div class="qualifier-row {% if m.has_score_prediction and m.exact_score_team1 == m.exact_score_team2 %}open{% endif %}">
-        <span class="lbl">Qualifié</span>
+        <span class="lbl">
+          Qualifié si nul
+          <span class="help-tip" tabindex="0" data-tip="En phase finale, un nul au temps réglementaire peut quand même qualifier une équipe après prolongations ou tirs au but. Ce choix ne change pas le barème actuel.">?</span>
+        </span>
         <button type="button"
                 class="qualifier-btn {{ 'on' if m.qualifier_prediction == 'team1' else '' }}"
                 data-value="team1" {% if m.is_locked %}disabled{% endif %}>{{ m.team1_name }}</button>

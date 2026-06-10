@@ -8,7 +8,7 @@ DEFAULT_PRE_TOURNAMENT_QUESTIONS = [
         "points_value": 8,
         "label": "Vainqueur",
         "points_label": "+8 pts",
-        "help_text": "Choisir parmi les 48 equipes.",
+        "help_text": "Choisir parmi les 48 équipes.",
         "sort_order": 1,
         "is_enabled": 1,
     },
@@ -17,7 +17,7 @@ DEFAULT_PRE_TOURNAMENT_QUESTIONS = [
         "points_value": 5,
         "label": "Finaliste",
         "points_label": "+5 pts",
-        "help_text": "Selectionner une equipe differente du vainqueur.",
+        "help_text": "Sélectionner une équipe différente du vainqueur.",
         "sort_order": 2,
         "is_enabled": 1,
     },
@@ -33,18 +33,18 @@ DEFAULT_PRE_TOURNAMENT_QUESTIONS = [
     {
         "key": "revelation",
         "points_value": 5,
-        "label": "Revelation du tournoi",
+        "label": "Révélation du tournoi",
         "points_label": "+5 pts",
-        "help_text": "Choisir une equipe outsider.",
+        "help_text": "Choisir une équipe outsider.",
         "sort_order": 4,
         "is_enabled": 1,
     },
     {
         "key": "total_goals",
         "points_value": 8,
-        "label": "Total buts en groupes",
-        "points_label": "+8 pts exact / +4 pts a +/-3",
-        "help_text": "Estimer le nombre total de buts pendant la phase de groupes.",
+        "label": "Total buts du tournoi",
+        "points_label": "+8 pts exact / +4 pts à +/-3",
+        "help_text": "Estimer le nombre total de buts pendant tout le tournoi.",
         "sort_order": 5,
         "is_enabled": 1,
     },
@@ -75,6 +75,20 @@ async def ensure_pre_tournament_defaults(db):
         await db.execute(
             "UPDATE pre_tournament_questions SET points_value=? WHERE key=? AND points_value IS NULL",
             (q["points_value"], q["key"]),
+        )
+    legacy_text_updates = [
+        ("winner", "help_text", "Choisir parmi les 48 equipes.", "Choisir parmi les 48 équipes."),
+        ("finalist", "help_text", "Selectionner une equipe differente du vainqueur.", "Sélectionner une équipe différente du vainqueur."),
+        ("revelation", "label", "Revelation du tournoi", "Révélation du tournoi"),
+        ("revelation", "help_text", "Choisir une equipe outsider.", "Choisir une équipe outsider."),
+        ("total_goals", "label", "Total buts en groupes", "Total buts du tournoi"),
+        ("total_goals", "points_label", "+8 pts exact / +4 pts a +/-3", "+8 pts exact / +4 pts à +/-3"),
+        ("total_goals", "help_text", "Estimer le nombre total de buts pendant la phase de groupes.", "Estimer le nombre total de buts pendant tout le tournoi."),
+    ]
+    for key, column, old_value, new_value in legacy_text_updates:
+        await db.execute(
+            f"UPDATE pre_tournament_questions SET {column}=? WHERE key=? AND {column}=?",
+            (new_value, key, old_value),
         )
 
 

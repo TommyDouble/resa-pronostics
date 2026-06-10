@@ -8,7 +8,10 @@
       <h1 style="font-family:var(--sketch);font-size:26px;font-weight:700;">
         Salut {{ greeting_name }} 👋
       </h1>
-      <div class="sub1">Tu es {{ user_rank }}ème · {{ total_points }} pts</div>
+      <div class="sub1">
+        {% if user_rank == '—' %}Pas encore classé{% else %}Tu es {{ user_rank_label }}{% endif %} · {{ total_points }} pts
+        <span class="help-tip" tabindex="0" data-tip="Le classement est recalculé quand les résultats officiels sont encodés.">?</span>
+      </div>
     </div>
   </div>
 </div>
@@ -22,6 +25,37 @@
   {% else %}
   <div class="banner" style="background:#F0FDF4;border-left:3px solid #22C55E;color:#166534;font-size:12px;padding:10px 14px;border-radius:8px;display:flex;gap:8px;align-items:center;">
     <span>✅</span> Paiement reçu — bonne chance !
+  </div>
+  {% endif %}
+
+  {% set cta = namespace(href='/p/' ~ token ~ '/pronos', label='Faire mes pronos', kicker='Prochaine action', text='Encode les scores des matchs à venir. L’application déduit le 1/X/2 pour toi.') %}
+  {% if urgency or unpredicted_today > 0 %}
+    {% set cta.href = '/p/' ~ token ~ '/pronos' %}
+    {% set cta.label = 'Compléter mes pronos' %}
+    {% set cta.text = 'Il reste des matchs à pronostiquer avant le coup d’envoi.' %}
+  {% elif pt_open and not pt_submitted %}
+    {% set cta.href = '/p/' ~ token ~ '/pre-tournoi' %}
+    {% set cta.label = 'Soumettre le pré-tournoi' %}
+    {% set cta.text = 'Vainqueur, finaliste, buteur et bonus longs termes sont encore à valider.' %}
+  {% elif pending_bonus > 0 %}
+    {% set cta.href = '/p/' ~ token ~ '/bonus' %}
+    {% set cta.label = 'Répondre aux bonus' %}
+    {% set cta.text = pending_bonus ~ ' question' ~ ('s' if pending_bonus > 1 else '') ~ ' bonus attendent ta réponse.' %}
+  {% endif %}
+
+  <div class="card home-cta">
+    <div>
+      <div class="lbl">{{ cta.kicker }}</div>
+      <p>{{ cta.text }}</p>
+    </div>
+    <a href="{{ cta.href }}" class="btn sm">{{ cta.label }}</a>
+  </div>
+
+  {% if pending_bonus > 0 %}
+  <div class="banner acc">
+    <span>★</span>
+    {{ pending_bonus }} question{{ 's' if pending_bonus > 1 else '' }} bonus à répondre.
+    <a href="/p/{{ token }}/bonus" class="inline-link">Voir</a>
   </div>
   {% endif %}
 
@@ -117,7 +151,7 @@
           {{ r.name[:2].upper() }}
         </div>
         <div class="nm">{{ r.name }}{% if r.full_name and r.full_name != r.name %}<small>{{ r.full_name }}</small>{% elif r.id == participant.id %}<small>c'est toi</small>{% endif %}</div>
-        <span class="sc">{{ r.total_points }}</span>
+        <span class="sc">{{ r.total_points }}<small> pts</small></span>
       </div>
       {% endfor %}
       <a href="/p/{{ token }}/classement" class="mini-rank-link">Voir tout le classement →</a>
@@ -125,7 +159,7 @@
   </div>
 
   <div style="text-align:center;font-size:11px;color:var(--n600);padding-bottom:8px;">
-    {{ encoded_count }} match{{ 's' if encoded_count != 1 else '' }} encodé{{ 's' if encoded_count != 1 else '' }}
+    {{ encoded_count }} résultat{{ 's' if encoded_count != 1 else '' }} officiel{{ 's' if encoded_count != 1 else '' }} encodé{{ 's' if encoded_count != 1 else '' }}
   </div>
 
 </div>

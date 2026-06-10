@@ -11,7 +11,7 @@
     {% elif pt.submitted %}
       <span class="chip ok">Soumis ✓</span>
     {% else %}
-      <span class="chip warn">Brouillon</span>
+      <span class="chip warn">À soumettre</span>
     {% endif %}
   </div>
   <div class="sub1">
@@ -53,7 +53,7 @@
     <span>✓</span> Soumis ! Tu peux encore modifier depuis cet écran jusqu'à la deadline.
   </div>
   {% else %}
-  <div class="banner acc"><span>✎</span> Brouillon non soumis — pense à valider avant la deadline !</div>
+  <div class="banner acc"><span>✎</span> Pas encore soumis — enregistre un brouillon ou valide ta soumission avant la deadline.</div>
   {% endif %}
 
   <form method="post" action="/p/{{ token }}/pre-tournoi" id="pt-form">
@@ -61,7 +61,7 @@
     {% set q = pt_questions.get('winner') %}
     {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">① {{ q.label }} · {{ q.points_label }}</div>
+      <div class="lbl">① {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Cette question rapporte des points quand le résultat final du tournoi est connu.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="field" style="margin-top:8px;">
         <select name="winner" {% if not pt_editable %}disabled{% endif %}>
@@ -77,7 +77,7 @@
     {% set q = pt_questions.get('finalist') %}
     {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">② {{ q.label }} · {{ q.points_label }}</div>
+      <div class="lbl">② {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Choisis une équipe différente du vainqueur. L'application empêche de sélectionner deux fois la même équipe.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="field" style="margin-top:8px;">
         <select name="finalist" {% if not pt_editable %}disabled{% endif %}>
@@ -93,8 +93,9 @@
     {% set q = pt_questions.get('top_scorer') %}
     {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">③ {{ q.label }} · {{ q.points_label }}</div>
+      <div class="lbl">③ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Tape quelques lettres du joueur ou de son équipe, puis sélectionne une proposition.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
+      <div class="muted helper-text">Pas besoin de connaître toute la liste: cherche un nom, un pays ou parcours les joueurs par équipe.</div>
       <div class="autocomplete-wrap" data-scorer-combo style="margin-top:8px;">
         <div class="field">
           <input type="text" data-combo-input placeholder="🔍 Rechercher un joueur ou une équipe…"
@@ -110,8 +111,9 @@
     {% set q = pt_questions.get('revelation') %}
     {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">④ {{ q.label }} · {{ q.points_label }}</div>
+      <div class="lbl">④ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Choisis l'équipe surprise parmi les propositions. C'est un pari fun, pas besoin d'être spécialiste.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
+      <div class="muted helper-text">Ici, l'idée est de choisir une équipe qui pourrait aller plus loin que prévu.</div>
       <div class="outsider-chips">
         {% for o in outsiders %}
         <div class="outsider-chip {{ 'on' if pt.revelation == o else '' }}"
@@ -128,8 +130,9 @@
     {% set q = pt_questions.get('total_goals') %}
     {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:16px;">
-      <div class="lbl">⑤ {{ q.label }} · {{ q.points_label }}</div>
+      <div class="lbl">⑤ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Score exact: tous les buts du tournoi. À ±3 buts, tu marques une partie des points.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
+      <div class="muted helper-text">Repère simple: 140 buts correspond à environ 1,35 but par match sur 104 matchs.</div>
       <div id="goals-stepper" class="stepper" style="margin-top:10px;">
         <div class="b" data-action="minus" {% if not pt_editable %}style="pointer-events:none;opacity:.4"{% endif %}>–</div>
         <input type="number" name="total_goals" min="50" max="300"
@@ -143,10 +146,10 @@
 
     {% if pt_editable %}
     <div class="row2">
-      <button type="submit" name="action" value="draft" class="btn ghost">Brouillon</button>
+      <button type="submit" name="action" value="draft" class="btn ghost">Enregistrer en brouillon</button>
       <button type="submit" name="action" value="submit" class="btn"
               onclick="return confirm('Confirmer tes pronostics pré-tournoi ?')">
-        {% if pt.submitted %}Mettre à jour{% else %}Soumettre{% endif %}
+        {% if pt.submitted %}Mettre à jour ma soumission{% else %}Soumettre mes pronos{% endif %}
       </button>
     </div>
     {% endif %}

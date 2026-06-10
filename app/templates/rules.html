@@ -14,11 +14,16 @@
     <div class="eyebrow">Coupe du Monde 2026</div>
     <h2>Simple: tu pronostiques, le score fait le reste.</h2>
     <p>Les pronos sont verrouillés au coup d'envoi officiel du match. Après ce moment, ils ne peuvent plus être modifiés.</p>
+    <div class="rules-actions">
+      <a href="/p/{{ token }}/pronos" class="btn white sm">Faire mes pronos</a>
+      <a href="/p/{{ token }}/bonus" class="btn ghost sm">Voir les bonus</a>
+    </div>
   </div>
 
   <section class="card rules-section">
     <h2>Pronostics de matchs</h2>
     <p>Pour chaque match, tu encodes le score prévu. L'application déduit automatiquement l'issue: 1, X ou 2.</p>
+    <p><b>1</b> = victoire de l'équipe de gauche, <b>X</b> = match nul, <b>2</b> = victoire de l'équipe de droite.</p>
     <div class="rules-grid">
       <div><b>Bonne issue</b><span>+2 × poids du match</span></div>
       <div><b>Score exact</b><span>+2 points fixes en plus</span></div>
@@ -39,7 +44,8 @@
 
   <section class="card rules-section">
     <h2>Phase finale</h2>
-    <p>Le score reste celui du temps réglementaire. Si tu pronostiques une égalité en match à élimination directe, tu choisis aussi l'équipe qualifiée.</p>
+    <p>Le score reste celui du temps réglementaire: le résultat après 90 minutes, hors prolongations et tirs au but.</p>
+    <p>Si tu pronostiques une égalité en match à élimination directe, tu choisis aussi l'équipe qualifiée.</p>
     <p>Ce choix de qualifié est enregistré pour le suivi du prono, mais ne change pas le barème de cette version.</p>
   </section>
 
