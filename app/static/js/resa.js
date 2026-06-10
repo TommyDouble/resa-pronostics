@@ -389,19 +389,52 @@ function initScorerCombos() {
       items[activeIndex].scrollIntoView({ block: 'nearest' });
     }
 
-    function render() {
-      var q = fold(input.value.trim());
-      list.innerHTML = '';
-      activeIndex = -1;
-      if (q.length < 2) {
-        if (q.length === 1) {
-          list.innerHTML = '<li class="hint">Tape au moins 2 lettres…</li>';
-          list.style.display = 'block';
-        } else {
-          close();
+    function playerItem(p, withTeam) {
+      var li = document.createElement('li');
+      li.dataset.value = p.value;
+      li.innerHTML = '<b></b><span class="meta"></span>';
+      li.querySelector('b').textContent = p.name;
+      li.querySelector('.meta').textContent =
+        withTeam && p.position ? p.position + ' · ' + p.team
+        : (p.position || p.team);
+      // mousedown fires before the input's blur, so the click isn't lost
+      li.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        commit(p.value);
+      });
+      return li;
+    }
+
+    function renderBrowse() {
+      // Full list, grouped by nation (players come pre-sorted: team, position, name).
+      var fragment = document.createDocumentFragment();
+      var currentTeam = null;
+      var selectedItem = null;
+      players.forEach(function(p) {
+        if (p.team !== currentTeam) {
+          currentTeam = p.team;
+          var header = document.createElement('li');
+          header.className = 'group-header';
+          header.textContent = p.team;
+          header.addEventListener('mousedown', function(e) { e.preventDefault(); });
+          fragment.appendChild(header);
         }
-        return;
-      }
+        var li = playerItem(p, false);
+        if (p.value === hidden.value) {
+          li.classList.add('on');
+          selectedItem = li;
+        }
+        fragment.appendChild(li);
+      });
+      list.innerHTML = '';
+      list.appendChild(fragment);
+      list.style.display = 'block';
+      if (selectedItem) selectedItem.scrollIntoView({ block: 'center' });
+      else list.scrollTop = 0;
+    }
+
+    function renderSearch(q) {
+      list.innerHTML = '';
       var matches = players.filter(function(p) { return p.search.indexOf(q) !== -1; });
       if (!matches.length) {
         list.innerHTML = '<li class="hint">Aucun joueur trouvé.</li>';
@@ -409,18 +442,7 @@ function initScorerCombos() {
         return;
       }
       matches.slice(0, 30).forEach(function(p) {
-        var li = document.createElement('li');
-        li.dataset.value = p.value;
-        li.innerHTML = '<b></b><span class="meta"></span>';
-        li.querySelector('b').textContent = p.name;
-        li.querySelector('.meta').textContent =
-          (p.position ? p.position + ' · ' : '') + p.team;
-        // mousedown fires before the input's blur, so the click isn't lost
-        li.addEventListener('mousedown', function(e) {
-          e.preventDefault();
-          commit(p.value);
-        });
-        list.appendChild(li);
+        list.appendChild(playerItem(p, true));
       });
       if (matches.length > 30) {
         var more = document.createElement('li');
@@ -431,17 +453,33 @@ function initScorerCombos() {
       list.style.display = 'block';
     }
 
+    function render() {
+      activeIndex = -1;
+      var raw = input.value.trim();
+      // A confirmed selection in the input isn't a search: browse instead.
+      if (!raw || raw === hidden.value) renderBrowse();
+      else renderSearch(fold(raw));
+    }
+
     input.addEventListener('input', render);
     input.addEventListener('focus', function() {
-      // Start a fresh search instead of editing the long canonical value.
-      if (input.value === hidden.value) input.select();
+      // Select the canonical text so typing starts a fresh search,
+      // and open the browsable list right away.
+      if (input.value === hidden.value && input.value) input.select();
+      render();
+    });
+    input.addEventListener('mousedown', function() {
+      // Reopen on click even when already focused (select-like behavior).
+      if (list.style.display === 'none') render();
     });
     input.addEventListener('keydown', function(e) {
       if (e.key === 'ArrowDown') { setActive(activeIndex + 1); e.preventDefault(); }
       else if (e.key === 'ArrowUp') { setActive(activeIndex - 1); e.preventDefault(); }
       else if (e.key === 'Enter') {
         var items = list.querySelectorAll('li[data-value]');
-        if (list.style.display !== 'none' && items.length) {
+        var searching = input.value.trim() && input.value !== hidden.value;
+        if (list.style.display !== 'none' && items.length
+            && (activeIndex !== -1 || searching)) {
           commit(items[activeIndex === -1 ? 0 : activeIndex].dataset.value);
           e.preventDefault();
         }

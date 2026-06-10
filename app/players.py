@@ -77,21 +77,33 @@ def get_scorer_choices() -> tuple:
     ))
 
 
+_POSITION_ORDER = {"GK": 0, "DF": 1, "MF": 2, "FW": 3}
+
+
 @lru_cache(maxsize=1)
 def get_scorer_options() -> tuple:
-    """Structured options for the top-scorer combobox, sorted by player name."""
-    return tuple(sorted(
-        (
-            {
-                "value": scorer_choice(p),
-                "name": p["name"],
-                "team": p.get("team") or "",
-                "position": POSITION_LABELS_FR.get(p.get("position", ""), ""),
-            }
-            for p in get_players()
+    """Structured options for the top-scorer combobox.
+
+    Sorted for browsing: nation, then position (GK→FW), then player name —
+    the combobox renders one group header per team in that order.
+    """
+    players = sorted(
+        get_players(),
+        key=lambda p: (
+            (p.get("team") or "").casefold(),
+            _POSITION_ORDER.get(p.get("position", ""), 4),
+            p["name"].casefold(),
         ),
-        key=lambda o: o["name"].casefold(),
-    ))
+    )
+    return tuple(
+        {
+            "value": scorer_choice(p),
+            "name": p["name"],
+            "team": p.get("team") or "",
+            "position": POSITION_LABELS_FR.get(p.get("position", ""), ""),
+        }
+        for p in players
+    )
 
 
 def is_valid_scorer(value: str) -> bool:

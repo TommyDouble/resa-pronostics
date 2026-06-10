@@ -833,8 +833,9 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
   position: absolute; z-index: 100;
   background: #fff; border: 1px solid var(--line);
   border-radius: var(--r-sm); box-shadow: var(--sh2);
-  max-height: 200px; overflow-y: auto;
+  max-height: 280px; overflow-y: auto;
   width: 100%;
+  padding: 0; margin: 4px 0 0;
 }
 .autocomplete-list li {
   padding: 9px 12px; list-style: none;
@@ -847,6 +848,13 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
 .autocomplete-list li .meta { display: block; font-size: 11px; color: var(--n600); margin-top: 1px; }
 .autocomplete-list li.hint { color: var(--n600); font-size: 12px; cursor: default; }
 .autocomplete-list li.hint:hover { background: none; color: var(--n600); }
+.autocomplete-list li.group-header {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--n100); color: var(--n600);
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  padding: 6px 12px; cursor: default;
+}
+.autocomplete-list li.group-header:hover { background: var(--n100); color: var(--n600); }
 .autocomplete-wrap { position: relative; }
 
 /* ---- Flash messages ---- */
