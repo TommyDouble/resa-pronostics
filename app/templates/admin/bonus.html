@@ -52,8 +52,11 @@
           <select name="phase" style="flex:1;">
             <option value="pre_tournament">Pré-tournoi</option>
             <option value="round_of_32">Seizièmes</option>
+            <option value="round_of_16">Huitièmes</option>
             <option value="quarter">Quarts</option>
             <option value="semi">Demies</option>
+            <option value="third_place">3e place</option>
+            <option value="final">Finale</option>
           </select>
         </div>
       </div>
@@ -125,8 +128,11 @@
           <select name="phase">
             <option value="pre_tournament" {{ 'selected' if q.phase == 'pre_tournament' else '' }}>Pré-tournoi</option>
             <option value="round_of_32" {{ 'selected' if q.phase == 'round_of_32' else '' }}>Seizièmes</option>
+            <option value="round_of_16" {{ 'selected' if q.phase == 'round_of_16' else '' }}>Huitièmes</option>
             <option value="quarter" {{ 'selected' if q.phase == 'quarter' else '' }}>Quarts</option>
             <option value="semi" {{ 'selected' if q.phase == 'semi' else '' }}>Demies</option>
+            <option value="third_place" {{ 'selected' if q.phase == 'third_place' else '' }}>3e place</option>
+            <option value="final" {{ 'selected' if q.phase == 'final' else '' }}>Finale</option>
           </select>
         </div>
       </div>

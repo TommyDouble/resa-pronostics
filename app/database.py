@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS pre_tournament_predictions (
 CREATE TABLE IF NOT EXISTS bonus_questions (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   question_text  TEXT    NOT NULL,
-  phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','round_of_32','quarter','semi')),
+  phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','round_of_32','round_of_16','quarter','semi','third_place','final')),
   answer_type    TEXT    NOT NULL CHECK(answer_type IN ('choice','number','text')),
   options        TEXT,
   points_value   INTEGER NOT NULL DEFAULT 5,
@@ -208,6 +208,35 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
                 await db.execute(f"ALTER TABLE pre_tournament_questions ADD COLUMN {column}")
             except Exception:
                 pass
+
+        # Migration: étendre les phases autorisées des questions bonus
+        # (huitièmes, 3e place, finale). SQLite ne modifie pas un CHECK:
+        # on reconstruit la table si l'ancien schéma est détecté.
+        schema_row = await db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='bonus_questions'"
+        )
+        schema = await schema_row.fetchone()
+        if schema and "round_of_16" not in schema["sql"]:
+            await db.execute("PRAGMA foreign_keys = OFF")
+            await db.executescript("""
+CREATE TABLE bonus_questions_new (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  question_text  TEXT    NOT NULL,
+  phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','round_of_32','round_of_16','quarter','semi','third_place','final')),
+  answer_type    TEXT    NOT NULL CHECK(answer_type IN ('choice','number','text')),
+  options        TEXT,
+  points_value   INTEGER NOT NULL DEFAULT 5,
+  correct_answer TEXT,
+  deadline       TEXT    NOT NULL,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+INSERT INTO bonus_questions_new
+  SELECT id, question_text, phase, answer_type, options, points_value, correct_answer, deadline, created_at
+  FROM bonus_questions;
+DROP TABLE bonus_questions;
+ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
+            """)
+            await db.execute("PRAGMA foreign_keys = ON")
 
         # Les anciens brouillons comptent désormais comme des réponses valides.
         await db.execute(

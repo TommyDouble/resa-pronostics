@@ -52,7 +52,10 @@ PHASE_LABELS = {
     "final": "Finale",
 }
 
-BONUS_PHASES = {"pre_tournament", "round_of_32", "quarter", "semi"}
+BONUS_PHASES = {
+    "pre_tournament", "round_of_32", "round_of_16",
+    "quarter", "semi", "third_place", "final",
+}
 
 STATUSES = {
     "confirmed": ("ok", "confirmé"),
