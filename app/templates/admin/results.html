@@ -18,12 +18,19 @@
     </div>
     <form class="result-form" method="post" action="/admin/resultats/{{ m.id }}"
           data-phase="{{ m.phase }}"
-          style="display:flex;align-items:center;gap:8px;">
+          style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <input class="score-input" type="number" name="score_team1" min="0" max="30"
              placeholder="0" required>
       <span style="font-family:var(--sketch);font-size:20px;color:var(--n600);">–</span>
       <input class="score-input" type="number" name="score_team2" min="0" max="30"
              placeholder="0" required>
+      {% if m.phase != 'group' %}
+      <select name="qualifier_winner" style="min-width:160px;">
+        <option value="">Qualifié si nul...</option>
+        <option value="team1">{{ m.team1_name }}</option>
+        <option value="team2">{{ m.team2_name }}</option>
+      </select>
+      {% endif %}
       <button type="submit" class="btn sm">Valider</button>
     </form>
   </div>
@@ -48,17 +55,29 @@
     <span style="color:var(--primary);font-weight:800;font-family:var(--display);margin-left:10px;">
       {{ m.score_team1 }}–{{ m.score_team2 }}
     </span>
+    {% if m.phase != 'group' and m.qualifier_winner %}
+    <span class="muted" style="font-size:10px;margin-left:6px;">
+      vainqueur: {% if m.qualifier_winner == 'team1' %}{{ m.team1_name }}{% else %}{{ m.team2_name }}{% endif %}
+    </span>
+    {% endif %}
     <span style="font-size:10px;color:var(--n400);margin-left:6px;">recalcul ✓</span>
   </div>
   <button class="btn ghost sm" style="font-size:11px;"
           onclick="document.getElementById('correct-{{ m.id }}').style.display='flex'">Corriger</button>
   <form id="correct-{{ m.id }}" method="post" action="/admin/resultats/{{ m.id }}/correct"
-        style="display:none;align-items:center;gap:6px;">
+        style="display:none;align-items:center;gap:6px;flex-wrap:wrap;">
     <input class="score-input" type="number" name="score_team1" min="0" max="30"
            value="{{ m.score_team1 }}" style="width:40px;">
     <span style="font-family:var(--sketch);">–</span>
     <input class="score-input" type="number" name="score_team2" min="0" max="30"
            value="{{ m.score_team2 }}" style="width:40px;">
+    {% if m.phase != 'group' %}
+    <select name="qualifier_winner" style="min-width:150px;font-size:12px;">
+      <option value="">Qualifié si nul...</option>
+      <option value="team1" {{ 'selected' if m.qualifier_winner == 'team1' else '' }}>{{ m.team1_name }}</option>
+      <option value="team2" {{ 'selected' if m.qualifier_winner == 'team2' else '' }}>{{ m.team2_name }}</option>
+    </select>
+    {% endif %}
     <button type="submit" class="btn sm" style="font-size:11px;">OK</button>
   </form>
 </div>

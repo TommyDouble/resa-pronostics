@@ -43,6 +43,11 @@
         <td>
           {% if m.result is not none %}
             <span class="chip lock">🔒 joué {{ m.score_team1 }}–{{ m.score_team2 }}</span>
+            {% if m.phase != 'group' and m.qualifier_winner %}
+              <span class="muted" style="font-size:10px;">
+                vainqueur: {% if m.qualifier_winner == 'team1' %}{{ m.team1_name }}{% else %}{{ m.team2_name }}{% endif %}
+              </span>
+            {% endif %}
           {% elif m.team1_name.startswith('Équipe') or m.team2_name.startswith('Équipe') %}
             <span class="chip gr">équipes TBD</span>
           {% else %}

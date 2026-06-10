@@ -21,8 +21,12 @@ uvicorn app.main:app --reload
 ## Fonctionnement
 
 ### Pronostics de matchs
-Score exact par match ; l'issue (1/X/2) est déduite. Bonne issue = +2 × poids
+Score exact par match ; l'issue (1/X/2) est déduite. Bon résultat = +2 × poids
 (top match et phase finale ×2), score exact = +2. Verrouillage au coup d'envoi.
+En phase finale, les points portent sur le vainqueur/qualifié du match. Si le
+score pronostiqué est nul, le participant doit choisir l'équipe qualifiée. Le
+bonus score exact n'est accordé que si le vainqueur/qualifié pronostiqué est
+correct.
 
 ### Pré-tournoi (5 questions fixes)
 Champion du Monde (+8), finalistes (+7 par finaliste correct, le champion

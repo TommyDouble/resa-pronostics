@@ -35,9 +35,9 @@ Chaque participant pronostique les matchs du tournoi et répond à des questions
 
 | Situation | Points | Note |
 |---|---|---|
-| Bonne issue | `+2 × poids` | Jamais de malus |
-| Mauvaise issue | `0` | |
-| Score exact correct (en sus) | `+2 fixes` | Indépendant du poids |
+| Bon résultat | `+2 × poids` | Groupes: bonne issue à 90 minutes. Phase finale: bon vainqueur/qualifié |
+| Mauvais résultat | `0` | |
+| Score exact correct (en sus) | `+2 fixes` | Accordé uniquement si le bon résultat est aussi correct |
 | Score exact incorrect | `0` | |
 
 #### Poids des matchs
@@ -56,11 +56,24 @@ Chaque participant pronostique les matchs du tournoi et répond à des questions
 def calculate_match_score(prediction, match) -> int:
     if match.result is None:
         return 0
-    base = 2 if prediction.prediction == match.result else 0
-    exact = 0
-    if (prediction.exact_score_team1 == match.score_team1 and
-        prediction.exact_score_team2 == match.score_team2):
-        exact = 2
+    if match.phase == "group":
+        correct = prediction.prediction == match.result
+    else:
+        actual_winner = (
+            match.result if match.result in ("team1", "team2")
+            else match.qualifier_winner
+        )
+        predicted_winner = (
+            "team1" if prediction.exact_score_team1 > prediction.exact_score_team2
+            else "team2" if prediction.exact_score_team2 > prediction.exact_score_team1
+            else prediction.qualifier_prediction
+        )
+        correct = predicted_winner == actual_winner
+    base = 2 if correct else 0
+    exact = 2 if correct and (
+        prediction.exact_score_team1 == match.score_team1 and
+        prediction.exact_score_team2 == match.score_team2
+    ) else 0
     return base * match.weight + exact
 ```
 
@@ -68,7 +81,12 @@ def calculate_match_score(prediction, match) -> int:
 
 #### Règle phase finale & prolongations
 
-En phase éliminatoire, l'issue et le score retenus sont ceux **à 90 minutes** (hors prolongations et tirs au but).
+En phase éliminatoire, le score retenu reste celui **à 90 minutes** (hors prolongations et tirs au but), mais les points de résultat portent sur le **vainqueur/qualifié** du match.
+
+- Si le score pronostiqué n'est pas nul, le vainqueur pronostiqué est déduit du score.
+- Si le score pronostiqué est nul, le participant doit choisir l'équipe qualifiée.
+- Le bonus de score exact n'est accordé que si le vainqueur/qualifié pronostiqué est correct.
+- Un score exact à 90 minutes avec le mauvais qualifié rapporte donc `0`.
 
 #### Exemples
 
@@ -77,6 +95,9 @@ En phase éliminatoire, l'issue et le score retenus sont ceux **à 90 minutes** 
 | Match groupe J1 (×1) | Argentine gagne, 2-1 | Argentine gagne 2-1 | `2×1 + 2 = 4 pts` |
 | Top Match J3 (×2) | France gagne, 1-0 | France gagne 2-0 | `2×2 + 0 = 4 pts` |
 | Quart de finale (×2) | Brésil gagne | Angleterre gagne | `0 pt` |
+| Quart de finale (×2) | 2-2, Brésil qualifié | Brésil gagne 3-2 | `2×2 + 0 = 4 pts` |
+| Quart de finale (×2) | 2-2, Brésil qualifié | 2-2, Brésil qualifié | `2×2 + 2 = 6 pts` |
+| Quart de finale (×2) | 2-2, Brésil qualifié | 2-2, Angleterre qualifiée | `0 pt` |
 
 ---
 
@@ -180,6 +201,7 @@ CREATE TABLE matches (
   score_team1  INTEGER,
   score_team2  INTEGER,
   result       TEXT    CHECK(result IN ('team1','draw','team2') OR result IS NULL),
+  qualifier_winner TEXT CHECK(qualifier_winner IN ('team1','team2') OR qualifier_winner IS NULL),
   created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -190,6 +212,7 @@ CREATE TABLE predictions (
   prediction          TEXT    NOT NULL CHECK(prediction IN ('team1','draw','team2')),
   exact_score_team1   INTEGER,
   exact_score_team2   INTEGER,
+  qualifier_prediction TEXT CHECK(qualifier_prediction IN ('team1','team2') OR qualifier_prediction IS NULL),
   submitted_at        TEXT    NOT NULL DEFAULT (datetime('now')),
   is_locked           INTEGER NOT NULL DEFAULT 0,
   UNIQUE(participant_id, match_id)
@@ -473,7 +496,7 @@ Visualisation en barres verticales :
 
 | Couleur barre | Condition |
 |---|---|
-| Orange plein `#D3450D` | Points ≥ 4 (bonne issue + score ou match valorisé) |
+| Orange plein `#D3450D` | Points ≥ 4 (bon résultat + score ou match valorisé) |
 | Orange pâle `rgba(211,69,13,.3)` | Points > 0 et < 4 |
 | Gris | 0 point |
 
@@ -527,7 +550,7 @@ Tableau : Match | Statut (pill colorée) | Résultat réel | Points.
 | Pill | Condition |
 |---|---|
 | "Score exact" (orange) | Issue correcte ET score exact |
-| "Bonne issue" (vert) | Issue correcte, score exact raté ou non saisi |
+| "Bon résultat" (vert) | Résultat correct, score exact raté ou non saisi |
 | "Raté" (gris) | Issue incorrecte |
 
 ---

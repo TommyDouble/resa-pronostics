@@ -2,19 +2,73 @@
 from app.database import get_db
 
 
+def _winner_from_scores(score_team1, score_team2) -> str:
+    if score_team1 is None or score_team2 is None:
+        return ""
+    if score_team1 > score_team2:
+        return "team1"
+    if score_team2 > score_team1:
+        return "team2"
+    return "draw"
+
+
+def _is_knockout(match: dict) -> bool:
+    return match.get("phase") != "group"
+
+
+def actual_match_winner(match: dict) -> str:
+    """Return the actual winner for scoring.
+
+    Group-stage matches keep the 90-minute result. Knockout matches use the
+    qualified team; if the 90-minute score is not tied, the score itself gives it.
+    """
+    if not _is_knockout(match):
+        return match.get("result") or ""
+    winner = _winner_from_scores(match.get("score_team1"), match.get("score_team2"))
+    if winner in ("team1", "team2"):
+        return winner
+    return match.get("qualifier_winner") or ""
+
+
+def predicted_match_winner(prediction: dict, match: dict) -> str:
+    """Return the participant's predicted winner for scoring."""
+    if not _is_knockout(match):
+        return prediction.get("prediction") or ""
+    winner = _winner_from_scores(
+        prediction.get("exact_score_team1"),
+        prediction.get("exact_score_team2"),
+    )
+    if winner in ("team1", "team2"):
+        return winner
+    return prediction.get("qualifier_prediction") or ""
+
+
+def is_match_prediction_correct(prediction: dict, match: dict) -> bool:
+    """Whether a prediction gets the base outcome/winner points."""
+    if match["result"] is None:
+        return False
+    actual = actual_match_winner(match)
+    predicted = predicted_match_winner(prediction, match)
+    return bool(actual) and bool(predicted) and predicted == actual
+
+
+def is_match_score_exact(prediction: dict, match: dict) -> bool:
+    """Whether a prediction gets the exact-score bonus."""
+    return (
+        is_match_prediction_correct(prediction, match)
+        and prediction["exact_score_team1"] == match["score_team1"]
+        and prediction["exact_score_team2"] == match["score_team2"]
+        and prediction["exact_score_team1"] is not None
+    )
+
+
 def calculate_match_score(prediction: dict, match: dict) -> int:
     """Calculate points for a single prediction against a match result."""
     if match["result"] is None:
         return 0
-    has_correct_outcome = prediction["prediction"] == match["result"]
+    has_correct_outcome = is_match_prediction_correct(prediction, match)
     base = 2 if has_correct_outcome else 0
-    exact = 0
-    if has_correct_outcome and (
-        prediction["exact_score_team1"] == match["score_team1"]
-        and prediction["exact_score_team2"] == match["score_team2"]
-        and prediction["exact_score_team1"] is not None
-    ):
-        exact = 2
+    exact = 2 if is_match_score_exact(prediction, match) else 0
     return base * match["weight"] + exact
 
 

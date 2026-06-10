@@ -94,11 +94,16 @@
         {% endif %}
         <span class="sp"></span>
         {% if m.is_locked and m.result is not none and m.score_team1 is not none %}
-          <span class="chip lock">Réel {{ m.score_team1 }}-{{ m.score_team2 }}</span>
+          <span class="chip lock">
+            Réel {{ m.score_team1 }}-{{ m.score_team2 }}
+            {% if m.phase != 'group' and m.qualifier_winner %}
+              · {% if m.qualifier_winner == 'team1' %}{{ m.team1_name }}{% else %}{{ m.team2_name }}{% endif %}
+            {% endif %}
+          </span>
         {% elif m.is_top_match %}
-          <span class="chip warn tip" tabindex="0" data-tip="Top Match: bonne issue à +4 points au lieu de +2. Le bonus score exact reste +2.">★ Top Match ×2</span>
+          <span class="chip warn tip" tabindex="0" data-tip="Top Match: bon résultat à +4 points au lieu de +2. Le bonus score exact reste +2.">★ Top Match ×2</span>
         {% else %}
-          <span class="chip gr tip" tabindex="0" data-tip="Poids du match: les points de bonne issue sont multipliés par {{ m.weight }}.">×{{ m.weight }}</span>
+          <span class="chip gr tip" tabindex="0" data-tip="Poids du match: les points de bon résultat sont multipliés par {{ m.weight }}.">×{{ m.weight }}</span>
         {% endif %}
       </div>
 
@@ -145,7 +150,7 @@
       <div class="qualifier-row {% if m.has_score_prediction and m.exact_score_team1 == m.exact_score_team2 %}open{% endif %}">
         <span class="lbl">
           Qualifié si nul
-          <span class="help-tip" tabindex="0" data-tip="En phase finale, un nul au temps réglementaire peut quand même qualifier une équipe après prolongations ou tirs au but. Ce choix ne change pas le barème actuel.">?</span>
+          <span class="help-tip" tabindex="0" data-tip="En phase finale, les points portent sur l'équipe qualifiée. Si tu prévois un nul après 90 minutes, choisis qui passera après prolongations ou tirs au but.">?</span>
         </span>
         <button type="button"
                 class="qualifier-btn {{ 'on' if m.qualifier_prediction == 'team1' else '' }}"

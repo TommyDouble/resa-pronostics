@@ -21,6 +21,12 @@
       <div class="sc">
         {{ match.score_team1 }} – {{ match.score_team2 }}
         <small>RÉSULTAT OFFICIEL</small>
+        {% if match.phase != 'group' and match.qualifier_winner %}
+        <small>
+          Vainqueur:
+          {% if match.qualifier_winner == 'team1' %}{{ match.team1_name }}{% else %}{{ match.team2_name }}{% endif %}
+        </small>
+        {% endif %}
       </div>
       <div class="t">
         <span class="scoreboard-team">{{ match.team2_name }}</span>
@@ -33,13 +39,15 @@
     <div class="lbl">Mon pronostic</div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
       <div style="font-weight:700;font-size:14px;">
-        {% if my_pred.prediction == 'team1' %}{{ match.team1_name }}{% elif my_pred.prediction == 'team2' %}{{ match.team2_name }}{% else %}Nul{% endif %}
+        {% if match.phase != 'group' %}
+          {% if my_pred.exact_score_team1 is not none and my_pred.exact_score_team1 > my_pred.exact_score_team2 %}{{ match.team1_name }}{% elif my_pred.exact_score_team2 is not none and my_pred.exact_score_team2 > my_pred.exact_score_team1 %}{{ match.team2_name }}{% elif my_pred.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% elif my_pred.qualifier_prediction == 'team2' %}{{ match.team2_name }}{% else %}—{% endif %}
+        {% elif my_pred.prediction == 'team1' %}{{ match.team1_name }}{% elif my_pred.prediction == 'team2' %}{{ match.team2_name }}{% else %}Nul{% endif %}
         {% if my_pred.exact_score_team1 is not none %}
         · <span class="muted" style="font-weight:500;">{{ my_pred.exact_score_team1 }}–{{ my_pred.exact_score_team2 }}</span>
         {% endif %}
         {% if my_pred.qualifier_prediction %}
         <div class="muted" style="font-size:11px;margin-top:3px;font-weight:500;">
-          Qualifié : {% if my_pred.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% else %}{{ match.team2_name }}{% endif %}
+          Qualifié si nul : {% if my_pred.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% else %}{{ match.team2_name }}{% endif %}
         </div>
         {% endif %}
       </div>
@@ -60,7 +68,7 @@
   <div>
     <div class="lbl" style="margin-bottom:8px;">
       Répartition de la communauté
-      <span class="help-tip" tabindex="0" data-tip="Visible après le coup d'envoi: elle montre comment les participants avaient réparti leurs pronostics.">?</span>
+      <span class="help-tip" tabindex="0" data-tip="En groupes, elle montre les issues pronostiquées. En phase finale, elle montre les vainqueurs/qualifiés pronostiqués.">?</span>
     </div>
     {% set t1 = dist.get('team1', {}).get('pct', 0) %}
     {% set dr = dist.get('draw', {}).get('pct', 0) %}
@@ -72,7 +80,9 @@
     </div>
     <div class="com-legend">
       <span>{{ match.team1_name }} · {{ dist.get('team1', {}).get('cnt', 0) }}</span>
+      {% if match.phase == 'group' %}
       <span>Nul · {{ dist.get('draw', {}).get('cnt', 0) }}</span>
+      {% endif %}
       <span>{{ match.team2_name }} · {{ dist.get('team2', {}).get('cnt', 0) }}</span>
     </div>
     <div class="muted" style="font-size:11px;margin-top:5px;">{{ dist_total }} pronostic{{ 's' if dist_total != 1 else '' }} enregistré{{ 's' if dist_total != 1 else '' }}</div>
@@ -93,12 +103,16 @@
         {% for pr in all_preds %}
         <tr>
           <td><a class="table-link" href="/p/{{ token }}/profil/{{ pr.participant_id }}">{{ pr.name }}</a></td>
-          <td>{% if pr.prediction == 'team1' %}{{ match.team1_name }}{% elif pr.prediction == 'team2' %}{{ match.team2_name }}{% else %}<span class="muted">Nul</span>{% endif %}</td>
+          <td>
+            {% if match.phase != 'group' %}
+              {% if pr.exact_score_team1 is not none and pr.exact_score_team1 > pr.exact_score_team2 %}{{ match.team1_name }}{% elif pr.exact_score_team2 is not none and pr.exact_score_team2 > pr.exact_score_team1 %}{{ match.team2_name }}{% elif pr.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% elif pr.qualifier_prediction == 'team2' %}{{ match.team2_name }}{% else %}<span class="muted">—</span>{% endif %}
+            {% elif pr.prediction == 'team1' %}{{ match.team1_name }}{% elif pr.prediction == 'team2' %}{{ match.team2_name }}{% else %}<span class="muted">Nul</span>{% endif %}
+          </td>
           <td>
             {% if pr.exact_score_team1 is not none %}
               <span style="color:var(--primary);font-weight:700;">{{ pr.exact_score_team1 }}–{{ pr.exact_score_team2 }}</span>
               {% if pr.qualifier_prediction %}
-              <div class="muted" style="font-size:10px;">Qualifié : {% if pr.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% else %}{{ match.team2_name }}{% endif %}</div>
+              <div class="muted" style="font-size:10px;">Qualifié si nul : {% if pr.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% else %}{{ match.team2_name }}{% endif %}</div>
               {% endif %}
             {% else %}
               <span class="muted">—</span>

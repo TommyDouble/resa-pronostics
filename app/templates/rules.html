@@ -25,14 +25,14 @@
     <p>Pour chaque match, tu encodes uniquement le score prévu. L'application déduit automatiquement l'issue: 1, X ou 2.</p>
     <p><b>1</b> = victoire de l'équipe de gauche, <b>X</b> = match nul, <b>2</b> = victoire de l'équipe de droite.</p>
     <div class="rules-grid">
-      <div><b>Bonne issue</b><span>+2 × poids du match</span></div>
+      <div><b>Bon résultat</b><span>+2 × poids du match</span></div>
       <div><b>Score exact</b><span>+2 points fixes en plus</span></div>
       <div><b>Mauvaise issue</b><span>0 point</span></div>
       <div><b>Score faux</b><span>0 bonus exact</span></div>
     </div>
     <div class="rules-example">
       <b>Exemple normal</b>
-      <span>Résultat réel: Belgique 2-1 Canada. Si tu as mis 2-0, tu as la bonne issue: +2 pts. Si tu as mis 2-1, tu as bonne issue + score exact: +4 pts. Si tu as mis 1-1, tu marques 0.</span>
+      <span>Résultat réel: Belgique 2-1 Canada. Si tu as mis 2-0, tu as le bon résultat: +2 pts. Si tu as mis 2-1, tu as bon résultat + score exact: +4 pts. Si tu as mis 1-1, tu marques 0.</span>
     </div>
   </section>
 
@@ -43,21 +43,33 @@
       <li>Top Match: ×2, maximum 6 points.</li>
       <li>Phase finale: ×2, maximum 6 points.</li>
     </ul>
-    <p>Le Top Match est signalé par une étoile et double uniquement les points de bonne issue.</p>
+    <p>Le Top Match est signalé par une étoile et double uniquement les points de bon résultat.</p>
     <div class="rules-example">
       <b>Exemple Top Match</b>
-      <span>Résultat réel: Brésil 3-1 Japon. Prono 2-1: bonne issue sur un match ×2, donc +4 pts. Prono 3-1: +4 pts de bonne issue +2 pts de score exact, donc +6 pts.</span>
+      <span>Résultat réel: Brésil 3-1 Japon. Prono 2-1: bon résultat sur un match ×2, donc +4 pts. Prono 3-1: +4 pts de bon résultat +2 pts de score exact, donc +6 pts.</span>
     </div>
   </section>
 
   <section class="card rules-section">
     <h2>Phase finale</h2>
     <p>Le score reste celui du temps réglementaire: le résultat après 90 minutes, hors prolongations et tirs au but.</p>
-    <p>Si tu pronostiques une égalité en match à élimination directe, tu choisis aussi l'équipe qualifiée.</p>
-    <p>Ce choix de qualifié est enregistré pour le suivi du prono, mais ne change pas le barème de cette version.</p>
+    <p>En phase finale, les points de résultat portent sur l'équipe qui se qualifie. Si tu pronostiques une égalité après 90 minutes, tu dois aussi choisir l'équipe qui passera après prolongations ou tirs au but.</p>
+    <p>Le score exact ne rapporte jamais de bonus si le vainqueur/qualifié pronostiqué n'est pas le bon.</p>
     <div class="rules-example">
-      <b>Exemple phase finale</b>
-      <span>Résultat après 90 minutes: Espagne 1-1 Allemagne, Espagne qualifiée aux tirs au but. Si tu avais mis 1-1, tu marques +6 pts car la phase finale vaut ×2 et le score exact ajoute +2. Le choix du qualifié sert au suivi, pas à des points supplémentaires.</span>
+      <b>Victoire dans le temps réglementaire</b>
+      <span>Tu pronostiques Espagne 2-2 Allemagne, qualifiée Espagne. Résultat réel: Espagne 3-2 Allemagne. Tu as le bon vainqueur: +4 pts. Le score n'est pas exact, donc pas de bonus +2.</span>
+    </div>
+    <div class="rules-example">
+      <b>Mauvais vainqueur</b>
+      <span>Tu pronostiques Espagne 2-2 Allemagne, qualifiée Espagne. Résultat réel: Espagne 2-3 Allemagne. Le vainqueur est mauvais: 0 point.</span>
+    </div>
+    <div class="rules-example">
+      <b>Nul exact et bon qualifié</b>
+      <span>Tu pronostiques Espagne 2-2 Allemagne, qualifiée Espagne. Résultat réel après 90 minutes: 2-2, Espagne passe ensuite. Tu marques +4 pts de bon vainqueur +2 pts de score exact = +6 pts.</span>
+    </div>
+    <div class="rules-example">
+      <b>Nul exact mais mauvais qualifié</b>
+      <span>Tu pronostiques Espagne 2-2 Allemagne, qualifiée Espagne. Résultat réel après 90 minutes: 2-2, Allemagne passe ensuite. Le vainqueur est mauvais: 0 point, même si le score à 90 minutes était exact.</span>
     </div>
   </section>
 

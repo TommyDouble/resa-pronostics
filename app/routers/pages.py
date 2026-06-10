@@ -19,7 +19,12 @@ from app.pre_tournament import (
     get_pre_tournament_question_map,
     get_pre_tournament_questions,
 )
-from app.scoring import get_rankings
+from app.scoring import (
+    get_rankings,
+    is_match_prediction_correct,
+    is_match_score_exact,
+    predicted_match_winner,
+)
 from app.templating import create_templates
 from app.timeutils import (
     is_match_locked,
@@ -209,7 +214,7 @@ def _section_help(section_key: str) -> str:
         "group_match_3": "Match 3 regroupe le troisième match de chaque équipe dans son groupe.",
     }.get(
         section_key,
-        "Les phases finales valent ×2. En cas de nul, choisis aussi l'équipe qualifiée pour le suivi.",
+        "Les phases finales valent ×2. Les points portent sur l'équipe qui se qualifie.",
     )
 
 
@@ -574,12 +579,25 @@ async def match_detail_page(request: Request, token: str, match_id: int):
             (match_id, p["id"])
         )
         my_score = await score_row.fetchone()
+        match_dict = dict(match)
         # Community distribution
-        dist_row = await db.execute(
-            "SELECT prediction, COUNT(*) as cnt FROM predictions WHERE match_id=? GROUP BY prediction",
-            (match_id,)
-        )
-        dist_raw = {r["prediction"]: r["cnt"] for r in await dist_row.fetchall()}
+        if match_dict["phase"] == "group":
+            dist_row = await db.execute(
+                "SELECT prediction, COUNT(*) as cnt FROM predictions WHERE match_id=? GROUP BY prediction",
+                (match_id,)
+            )
+            dist_raw = {r["prediction"]: r["cnt"] for r in await dist_row.fetchall()}
+        else:
+            dist_pred_rows = await db.execute(
+                """SELECT prediction, exact_score_team1, exact_score_team2, qualifier_prediction
+                   FROM predictions WHERE match_id=?""",
+                (match_id,)
+            )
+            dist_raw = defaultdict(int)
+            for pred_row in await dist_pred_rows.fetchall():
+                winner = predicted_match_winner(dict(pred_row), match_dict)
+                if winner:
+                    dist_raw[winner] += 1
         dist_total = sum(dist_raw.values())
         total_preds = dist_total or 1
         dist = {k: {"cnt": v, "pct": round(v / total_preds * 100)} for k, v in dist_raw.items()}
@@ -597,7 +615,7 @@ async def match_detail_page(request: Request, token: str, match_id: int):
         )
         all_preds = [dict(r) for r in await all_preds_rows.fetchall()]
         ctx.update({
-            "match": dict(match),
+            "match": match_dict,
             "match_phase_label": PHASE_LABELS.get(match["phase"], match["phase"]),
             "my_pred": dict(my_pred) if my_pred else None,
             "my_score": dict(my_score) if my_score else None,
@@ -699,26 +717,24 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     match_count = (await mc_row.fetchone())["cnt"]
     # Success rate
     played_row = await db.execute(
-        """SELECT
-             COUNT(*) as total,
-             SUM(CASE WHEN pr.prediction = m.result THEN 1 ELSE 0 END) as correct,
-             SUM(CASE WHEN pr.exact_score_team1 = m.score_team1
-                         AND pr.exact_score_team2 = m.score_team2
-                         AND pr.exact_score_team1 IS NOT NULL
-                      THEN 1 ELSE 0 END) as exact
+        """SELECT m.phase, m.score_team1, m.score_team2, m.result, m.qualifier_winner,
+                  pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
+                  pr.qualifier_prediction
            FROM predictions pr
            JOIN matches m ON m.id = pr.match_id
            WHERE pr.participant_id=? AND m.result IS NOT NULL""",
         (participant_id,)
     )
-    stats = await played_row.fetchone()
-    total_played = stats["total"] or 0
-    correct = stats["correct"] or 0
-    exact = stats["exact"] or 0
+    played_predictions = [dict(r) for r in await played_row.fetchall()]
+    total_played = len(played_predictions)
+    correct = sum(1 for row in played_predictions if is_match_prediction_correct(row, row))
+    exact = sum(1 for row in played_predictions if is_match_score_exact(row, row))
     success_rate = round(correct / total_played * 100) if total_played else 0
     # Streak: consecutive correct predictions (latest first)
     streak_row = await db.execute(
-        """SELECT pr.prediction, m.result
+        """SELECT m.phase, m.score_team1, m.score_team2, m.result, m.qualifier_winner,
+                  pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
+                  pr.qualifier_prediction
            FROM predictions pr
            JOIN matches m ON m.id = pr.match_id
            WHERE pr.participant_id=? AND m.result IS NOT NULL
@@ -728,7 +744,8 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     streak_preds = await streak_row.fetchall()
     streak = 0
     for sp in streak_preds:
-        if sp["prediction"] == sp["result"]:
+        sp_dict = dict(sp)
+        if is_match_prediction_correct(sp_dict, sp_dict):
             streak += 1
         else:
             break
@@ -747,9 +764,10 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     best_day_pts = best_day_data["day_points"] if best_day_data else 0
     # Last 5 matches (for Phase 1 profile)
     last5_row = await db.execute(
-        """SELECT m.team1_name, m.team2_name, m.score_team1, m.score_team2, m.result,
+        """SELECT m.team1_name, m.team2_name, m.phase,
+                  m.score_team1, m.score_team2, m.result, m.qualifier_winner,
                   pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
-                  COALESCE(s.points, 0) as points
+                  pr.qualifier_prediction, COALESCE(s.points, 0) as points
            FROM predictions pr
            JOIN matches m ON m.id = pr.match_id
            LEFT JOIN scores s ON s.match_id = pr.match_id AND s.participant_id=pr.participant_id
@@ -760,9 +778,9 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     )
     last5 = [dict(r) for r in await last5_row.fetchall()]
     for m in last5:
-        if m["prediction"] == m["result"] and m.get("exact_score_team1") == m.get("score_team1") and m.get("exact_score_team1") is not None:
+        if is_match_score_exact(m, m):
             m["result_chip"] = "exact"
-        elif m["prediction"] == m["result"]:
+        elif is_match_prediction_correct(m, m):
             m["result_chip"] = "ok"
         else:
             m["result_chip"] = "miss"

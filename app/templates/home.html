@@ -126,6 +126,11 @@
         <div class="right">
           {% if m.is_locked and m.result is not none and m.score_team1 is not none %}
             <div class="score">{{ m.score_team1 }}–{{ m.score_team2 }}</div>
+            {% if m.phase != 'group' and m.qualifier_winner %}
+            <div class="pts">
+              {% if m.qualifier_winner == 'team1' %}{{ m.team1_name }}{% else %}{{ m.team2_name }}{% endif %}
+            </div>
+            {% endif %}
             {% if m.get('points') is not none %}
             <div class="pts">+{{ m.get('points', 0) }} pts</div>
             {% endif %}

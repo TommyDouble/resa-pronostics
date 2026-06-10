@@ -63,6 +63,31 @@ def _is_played(match: dict) -> bool:
     return is_match_locked(match)
 
 
+def _result_from_scores(score_team1: int, score_team2: int) -> str:
+    if score_team1 > score_team2:
+        return "team1"
+    if score_team2 > score_team1:
+        return "team2"
+    return "draw"
+
+
+def _qualifier_winner_for_result(
+    match: dict,
+    score_team1: int,
+    score_team2: int,
+    qualifier_winner: str,
+) -> tuple[str | None, str | None]:
+    """Return qualifier winner or an error message for knockout draws."""
+    if match["phase"] == "group":
+        return None, None
+    result = _result_from_scores(score_team1, score_team2)
+    if result in ("team1", "team2"):
+        return result, None
+    if qualifier_winner not in ("team1", "team2"):
+        return None, "Choisis l'équipe qualifiée pour ce match de phase finale."
+    return qualifier_winner, None
+
+
 def _flash(request: Request, msg: str, kind: str = "ok"):
     request.session.setdefault("flashes", []).append({"msg": msg, "kind": kind})
 
@@ -680,17 +705,25 @@ async def results_page(request: Request):
 
 @router.post("/resultats/{match_id}")
 async def encode_result(request: Request, match_id: int,
-                        score_team1: int = Form(...), score_team2: int = Form(...)):
+                        score_team1: int = Form(...), score_team2: int = Form(...),
+                        qualifier_winner: str = Form(default="")):
     await require_admin(request)
     async with get_db() as db:
         row = await db.execute("SELECT * FROM matches WHERE id=?", (match_id,))
         match = await row.fetchone()
         if not match:
             raise HTTPException(404)
-        result = "team1" if score_team1 > score_team2 else ("team2" if score_team2 > score_team1 else "draw")
+        match_dict = dict(match)
+        result = _result_from_scores(score_team1, score_team2)
+        qualifier, error = _qualifier_winner_for_result(
+            match_dict, score_team1, score_team2, qualifier_winner
+        )
+        if error:
+            _flash(request, error, "err")
+            return RedirectResponse("/admin/resultats", status_code=303)
         await db.execute(
-            "UPDATE matches SET score_team1=?, score_team2=?, result=? WHERE id=?",
-            (score_team1, score_team2, result, match_id)
+            "UPDATE matches SET score_team1=?, score_team2=?, result=?, qualifier_winner=? WHERE id=?",
+            (score_team1, score_team2, result, qualifier, match_id)
         )
         await db.commit()
     await recalculate_match_scores(match_id)
@@ -700,13 +733,25 @@ async def encode_result(request: Request, match_id: int,
 
 @router.post("/resultats/{match_id}/correct")
 async def correct_result(request: Request, match_id: int,
-                         score_team1: int = Form(...), score_team2: int = Form(...)):
+                         score_team1: int = Form(...), score_team2: int = Form(...),
+                         qualifier_winner: str = Form(default="")):
     await require_admin(request)
     async with get_db() as db:
-        result = "team1" if score_team1 > score_team2 else ("team2" if score_team2 > score_team1 else "draw")
+        row = await db.execute("SELECT * FROM matches WHERE id=?", (match_id,))
+        match = await row.fetchone()
+        if not match:
+            raise HTTPException(404)
+        match_dict = dict(match)
+        result = _result_from_scores(score_team1, score_team2)
+        qualifier, error = _qualifier_winner_for_result(
+            match_dict, score_team1, score_team2, qualifier_winner
+        )
+        if error:
+            _flash(request, error, "err")
+            return RedirectResponse("/admin/resultats", status_code=303)
         await db.execute(
-            "UPDATE matches SET score_team1=?, score_team2=?, result=? WHERE id=?",
-            (score_team1, score_team2, result, match_id)
+            "UPDATE matches SET score_team1=?, score_team2=?, result=?, qualifier_winner=? WHERE id=?",
+            (score_team1, score_team2, result, qualifier, match_id)
         )
         await db.commit()
     await recalculate_match_scores(match_id)

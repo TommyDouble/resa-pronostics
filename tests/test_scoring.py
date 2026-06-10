@@ -7,13 +7,25 @@ from app.scoring import (
 
 
 def make_match(**overrides):
-    match = {"result": "team1", "score_team1": 2, "score_team2": 1, "weight": 1}
+    match = {
+        "phase": "group",
+        "result": "team1",
+        "score_team1": 2,
+        "score_team2": 1,
+        "weight": 1,
+        "qualifier_winner": None,
+    }
     match.update(overrides)
     return match
 
 
 def make_prediction(**overrides):
-    pred = {"prediction": "team1", "exact_score_team1": 2, "exact_score_team2": 1}
+    pred = {
+        "prediction": "team1",
+        "exact_score_team1": 2,
+        "exact_score_team2": 1,
+        "qualifier_prediction": None,
+    }
     pred.update(overrides)
     return pred
 
@@ -35,6 +47,74 @@ class TestMatchScore:
 
     def test_no_result(self):
         assert calculate_match_score(make_prediction(), make_match(result=None)) == 0
+
+    def test_knockout_draw_prediction_gets_winner_points_if_actual_winner_matches(self):
+        pred = make_prediction(
+            prediction="draw",
+            exact_score_team1=2,
+            exact_score_team2=2,
+            qualifier_prediction="team1",
+        )
+        match = make_match(
+            phase="round_of_16",
+            result="team1",
+            score_team1=3,
+            score_team2=2,
+            weight=2,
+            qualifier_winner="team1",
+        )
+        assert calculate_match_score(pred, match) == 4
+
+    def test_knockout_draw_prediction_scores_zero_if_actual_winner_differs(self):
+        pred = make_prediction(
+            prediction="draw",
+            exact_score_team1=2,
+            exact_score_team2=2,
+            qualifier_prediction="team1",
+        )
+        match = make_match(
+            phase="round_of_16",
+            result="team2",
+            score_team1=2,
+            score_team2=3,
+            weight=2,
+            qualifier_winner="team2",
+        )
+        assert calculate_match_score(pred, match) == 0
+
+    def test_knockout_exact_draw_scores_only_with_correct_qualifier(self):
+        pred = make_prediction(
+            prediction="draw",
+            exact_score_team1=2,
+            exact_score_team2=2,
+            qualifier_prediction="team1",
+        )
+        match = make_match(
+            phase="round_of_16",
+            result="draw",
+            score_team1=2,
+            score_team2=2,
+            weight=2,
+            qualifier_winner="team1",
+        )
+        assert calculate_match_score(pred, match) == 6
+
+    def test_knockout_exact_draw_with_wrong_qualifier_scores_zero(self):
+        pred = make_prediction(
+            prediction="draw",
+            exact_score_team1=2,
+            exact_score_team2=2,
+            qualifier_prediction="team1",
+        )
+        match = make_match(
+            phase="round_of_16",
+            result="draw",
+            score_team1=2,
+            score_team2=2,
+            weight=2,
+            qualifier_winner="team2",
+        )
+        assert calculate_match_score(pred, match) == 0
 
 
 class TestPreTournamentPoints:

@@ -688,12 +688,18 @@ function initResultForms() {
     form.addEventListener('submit', function(e) {
       var s1 = parseInt(form.querySelector('[name="score_team1"]').value);
       var s2 = parseInt(form.querySelector('[name="score_team2"]').value);
-      var phase = form.dataset.phase;
-      var isKnockout = phase && phase !== 'group';
-      if (s1 === 0 && s2 === 0 && isKnockout) {
-        if (!confirm('Score 0-0 sur un match éliminatoire. Confirmer ?')) {
-          e.preventDefault();
-        }
+    var phase = form.dataset.phase;
+    var isKnockout = phase && phase !== 'group';
+    var qualifier = form.querySelector('select[name="qualifier_winner"]');
+    if (isKnockout && s1 === s2 && qualifier && !qualifier.value) {
+      alert("Choisis l'équipe qualifiée pour ce match de phase finale.");
+      e.preventDefault();
+      return;
+    }
+    if (s1 === 0 && s2 === 0 && isKnockout) {
+      if (!confirm('Score 0-0 sur un match éliminatoire. Confirmer ?')) {
+        e.preventDefault();
+      }
       }
     });
   });

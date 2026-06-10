@@ -66,7 +66,7 @@
       <div class="big">{{ profile.success_rate }}%</div>
       <div class="cap">
         Bons résultats
-        <span class="help-tip" tabindex="0" data-tip="Un bon résultat signifie: bonne équipe gagnante ou bon match nul, même si le score exact est différent.">?</span>
+        <span class="help-tip" tabindex="0" data-tip="En groupes: bonne équipe gagnante ou bon nul. En phase finale: bonne équipe qualifiée.">?</span>
         <br>sur {{ profile.total_played }} match{{ 's' if profile.total_played != 1 else '' }} joué{{ 's' if profile.total_played != 1 else '' }}
       </div>
     </div>
@@ -78,7 +78,7 @@
       <div class="big">{{ profile.streak }}{% if profile.streak >= 4 %}&nbsp;🔥{% endif %}</div>
       <div class="cap">
         Série en cours
-        <span class="help-tip" tabindex="0" data-tip="Nombre de matchs joués consécutifs avec une bonne issue, en partant du plus récent.">?</span>
+        <span class="help-tip" tabindex="0" data-tip="Nombre de matchs joués consécutifs avec un bon résultat, en partant du plus récent.">?</span>
         <br>de bons pronos
       </div>
     </div>
@@ -133,7 +133,7 @@
             {% if m.result_chip == 'exact' %}
               <span class="chip acc">Score exact</span>
             {% elif m.result_chip == 'ok' %}
-              <span class="chip ok">Bonne issue</span>
+              <span class="chip ok">Bon résultat</span>
             {% else %}
               <span class="chip gr">Raté</span>
             {% endif %}
