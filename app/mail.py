@@ -122,6 +122,43 @@ async def send_pre_tournament_reminder(participant: dict):
     return await send_email(participant["email"], subject, html, text)
 
 
+async def send_daily_recap(participant: dict, recap: dict):
+    """Récap de la veille: points gagnés, rang, top 3.
+
+    recap = {date_label, points, match_count, rank, evolution, top3: [(name, pts)]}
+    """
+    link = f"{settings.BASE_URL}/p/{participant['token']}"
+    evolution = recap.get("evolution")
+    if evolution is None or evolution == 0:
+        evo_txt = ""
+    elif evolution > 0:
+        evo_txt = f" — tu gagnes {evolution} place{'s' if evolution > 1 else ''} 📈"
+    else:
+        evo_txt = f" — tu perds {-evolution} place{'s' if evolution < -1 else ''}"
+    subject = f"RESA Pronostics — Hier: +{recap['points']} pts{evo_txt}"
+    top3_html = "".join(
+        f"<li>{name} — {pts} pts</li>" for name, pts in recap.get("top3", [])
+    )
+    html = f"""
+    <h2>Ton récap du {recap['date_label']}</h2>
+    <p>Bonjour {participant['name']},</p>
+    <p>Hier tu as gagné <strong>+{recap['points']} points</strong>
+       sur {recap['match_count']} match{'s' if recap['match_count'] > 1 else ''}.
+       Tu es maintenant <strong>{recap['rank']}e</strong> au classement général{evo_txt}.</p>
+    <p>Le podium du moment :</p>
+    <ol>{top3_html}</ol>
+    <p><a href="{link}" style="background:#D3450D;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;">
+       Voir le classement complet
+    </a></p>
+    """
+    text = (
+        f"Bonjour {participant['name']},\n\n"
+        f"Hier: +{recap['points']} pts sur {recap['match_count']} matchs. "
+        f"Tu es {recap['rank']}e{evo_txt}.\n{link}\n"
+    )
+    return await send_email(participant["email"], subject, html, text)
+
+
 async def send_match_reminder(participant: dict, match: dict):
     """Remind participant to predict an upcoming match."""
     link = f"{settings.BASE_URL}/p/{participant['token']}/pronos"

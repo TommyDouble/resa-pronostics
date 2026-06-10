@@ -1179,6 +1179,22 @@ img.av { object-fit: cover; display: block; }
 }
 .all-good .countdown { font-size: 16px; color: var(--primary); }
 
+/* ---- Carte récap d'hier ---- */
+.yesterday-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.yesterday-card .y-pts {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 26px;
+  color: var(--primary);
+  line-height: 1;
+  margin-top: 2px;
+}
+
 /* ---- Ligne rival (mini classement) ---- */
 .rival-line {
   padding: 8px 12px;

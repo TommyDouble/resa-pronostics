@@ -41,6 +41,7 @@ from app.scoring import (
 from app.templating import create_templates
 from app.timeutils import (
     is_match_locked,
+    local_today,
     match_kickoff_utc,
     minutes_until_match,
     now_utc_iso,
@@ -519,6 +520,19 @@ async def participant_home(request: Request, token: str):
         # Encoded count
         encoded_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE result IS NOT NULL")
         encoded_count = (await encoded_row.fetchone())["cnt"]
+        # Récap d'hier: points gagnés sur les matchs de la veille déjà encodés
+        y_start, y_end = utc_day_bounds_for_local_date(local_today(-1))
+        y_row = await db.execute(
+            """SELECT COALESCE(SUM(s.points), 0) AS pts, COUNT(m.id) AS cnt
+               FROM matches m
+               LEFT JOIN scores s ON s.match_id = m.id AND s.participant_id = ?
+               WHERE m.result IS NOT NULL
+                 AND datetime(m.match_date || 'T' || m.kickoff_time) >= datetime(?)
+                 AND datetime(m.match_date || 'T' || m.kickoff_time) <= datetime(?)""",
+            (p["id"], y_start, y_end)
+        )
+        yesterday = dict(await y_row.fetchone())
+        my_evolution = (await get_rank_evolution(db)).get(p["id"])
         # Pre-tournament status
         pt_status = await _pt_status(db, p["id"])
         all_caught_up = (
@@ -533,6 +547,8 @@ async def participant_home(request: Request, token: str):
             "unpredicted_today": unpredicted_today,
             "next_match": next_match,
             "all_caught_up": all_caught_up,
+            "yesterday": yesterday,
+            "my_evolution": my_evolution,
             "mini_rank": mini_rank,
             "rival_ahead": rival_ahead,
             "rival_behind": rival_behind,

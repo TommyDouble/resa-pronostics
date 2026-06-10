@@ -90,6 +90,27 @@
   </div>
   {% endif %}
 
+  {% if yesterday and yesterday.cnt > 0 %}
+  <div class="card yesterday-card">
+    <div>
+      <div class="lbl">Hier</div>
+      <div class="y-pts">+{{ yesterday.pts }} pts</div>
+      <div class="muted" style="font-size:12.5px;">sur {{ yesterday.cnt }} match{{ 's' if yesterday.cnt > 1 else '' }}</div>
+    </div>
+    {% if my_evolution is not none %}
+    <div class="y-evo">
+      {% if my_evolution > 0 %}
+        <span class="chip up">▲ {{ my_evolution }} place{{ 's' if my_evolution > 1 else '' }}</span>
+      {% elif my_evolution < 0 %}
+        <span class="chip dn">▼ {{ -my_evolution }} place{{ 's' if my_evolution < -1 else '' }}</span>
+      {% else %}
+        <span class="chip fl">= stable</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if today_matches %}
   <div>
     <div class="lbl" style="margin-bottom:8px;">Matchs du jour</div>
