@@ -473,7 +473,7 @@ function initWinnerFinalistGuard() {
     form.addEventListener('submit', function(e) {
       if (conflict()) {
         showError(true);
-        alert("Le champion et l'autre finaliste ne peuvent pas être identiques.");
+        if (errorBox) errorBox.scrollIntoView({ block: 'center', behavior: 'smooth' });
         e.preventDefault();
       }
     });
