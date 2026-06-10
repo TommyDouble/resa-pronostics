@@ -4,6 +4,7 @@ import tempfile
 # Must be set before any app module imports settings.
 _db_file = tempfile.NamedTemporaryFile(prefix="resa_test_", suffix=".db", delete=False)
 os.environ["DATABASE_URL"] = _db_file.name
+os.environ["SCHEDULER_ENABLED"] = "0"
 _db_file.close()
 
 import asyncio

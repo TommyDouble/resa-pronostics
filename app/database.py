@@ -146,6 +146,15 @@ CREATE TABLE IF NOT EXISTS pre_tournament_questions (
   correct_answer TEXT
 );
 
+CREATE TABLE IF NOT EXISTS notification_log (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  kind           TEXT    NOT NULL,
+  ref            TEXT    NOT NULL,
+  sent_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(participant_id, kind, ref)
+);
+
 CREATE TABLE IF NOT EXISTS ranking_snapshots (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   snapshot_date  TEXT    NOT NULL,

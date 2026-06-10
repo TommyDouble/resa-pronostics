@@ -31,6 +31,10 @@ class Settings:
     ADMIN_PASSWORD_HASH: str = os.getenv("ADMIN_PASSWORD_HASH", "")
     AVATARS_DIR: str = _resolve_avatars_dir()
 
+    # Rappels automatiques (emails / notifications)
+    SCHEDULER_ENABLED: bool = os.getenv("SCHEDULER_ENABLED", "1") == "1"
+    SCHEDULER_INTERVAL: int = int(os.getenv("SCHEDULER_INTERVAL", "600"))
+
     # Timezone
     TZ_DISPLAY: str = "Europe/Brussels"
 

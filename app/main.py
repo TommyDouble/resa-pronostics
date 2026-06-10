@@ -1,7 +1,8 @@
 """RESA Pronostics 2026 — FastAPI application entry point."""
+import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -19,10 +20,18 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize database on startup."""
+    """Initialize database and background reminders on startup."""
     await init_db()
     logger.info("Database initialized.")
+    reminder_task = None
+    if settings.SCHEDULER_ENABLED:
+        from app.scheduler import scheduler_loop
+        reminder_task = asyncio.create_task(scheduler_loop())
     yield
+    if reminder_task:
+        reminder_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await reminder_task
 
 
 app = FastAPI(

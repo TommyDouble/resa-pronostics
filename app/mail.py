@@ -122,6 +122,56 @@ async def send_pre_tournament_reminder(participant: dict):
     return await send_email(participant["email"], subject, html, text)
 
 
+async def send_match_day_reminder(participant: dict, matches: list, date_label: str):
+    """Rappel J-1: liste des matchs du lendemain non encore pronostiqués."""
+    link = f"{settings.BASE_URL}/p/{participant['token']}/pronos"
+    count = len(matches)
+    subject = f"RESA Pronostics — {count} match{'s' if count > 1 else ''} demain, à toi de jouer"
+    rows = "".join(
+        f"<li><strong>{m['team1_name']} – {m['team2_name']}</strong>"
+        f" ({(m['kickoff_local'] or '')})</li>"
+        for m in matches
+    )
+    html = f"""
+    <h2>Tes pronos pour demain ({date_label})</h2>
+    <p>Bonjour {participant['name']},</p>
+    <p>Il te reste <strong>{count} match{'s' if count > 1 else ''}</strong> à pronostiquer pour demain :</p>
+    <ul>{rows}</ul>
+    <p><a href="{link}" style="background:#D3450D;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;">
+       Compléter mes scores
+    </a></p>
+    <p style="color:#6B7280;font-size:12px;">Tu peux couper ces rappels depuis ton profil.</p>
+    """
+    text = (
+        f"Bonjour {participant['name']},\n\n"
+        f"{count} match(s) demain sans prono. Complète-les ici : {link}\n"
+    )
+    return await send_email(participant["email"], subject, html, text)
+
+
+async def send_bonus_reminder(participant: dict, question: dict, deadline_label: str):
+    """Rappel: question bonus sans réponse, deadline sous 24h."""
+    link = f"{settings.BASE_URL}/p/{participant['token']}/bonus"
+    subject = f"RESA Pronostics — Question bonus à {question['points_value']} pts, deadline demain"
+    html = f"""
+    <h2>Question bonus — dernière ligne droite</h2>
+    <p>Bonjour {participant['name']},</p>
+    <p>Tu n'as pas encore répondu à la question bonus
+       (<strong>{question['points_value']} points</strong>) :</p>
+    <blockquote>{question['question_text']}</blockquote>
+    <p>Deadline : <strong>{deadline_label}</strong>.</p>
+    <p><a href="{link}" style="background:#D3450D;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;">
+       Répondre maintenant
+    </a></p>
+    <p style="color:#6B7280;font-size:12px;">Tu peux couper ces rappels depuis ton profil.</p>
+    """
+    text = (
+        f"Bonjour {participant['name']},\n\n"
+        f"Question bonus sans réponse ({question['points_value']} pts), deadline {deadline_label}.\n{link}\n"
+    )
+    return await send_email(participant["email"], subject, html, text)
+
+
 async def send_daily_recap(participant: dict, recap: dict):
     """Récap de la veille: points gagnés, rang, top 3.
 
