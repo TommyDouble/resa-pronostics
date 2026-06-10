@@ -28,16 +28,19 @@
   </div>
   {% endif %}
 
-  {% set cta = namespace(href='/p/' ~ token ~ '/pronos', label='Compléter mes scores', kicker='Prochaine action', text='Indique simplement les scores que tu imagines pour les prochains matchs. Les points seront calculés automatiquement.') %}
+  {% set cta = namespace(kind='pronos', href='/p/' ~ token ~ '/pronos', label='Compléter mes scores', kicker='Prochaine action', text='Indique simplement les scores que tu imagines pour les prochains matchs. Les points seront calculés automatiquement.') %}
   {% if urgency or unpredicted_today > 0 %}
+    {% set cta.kind = 'pronos' %}
     {% set cta.href = '/p/' ~ token ~ '/pronos' %}
     {% set cta.label = 'Compléter mes scores' %}
     {% set cta.text = 'Il reste des scores à compléter avant le début des matchs.' %}
   {% elif pt_open and not pt_submitted %}
+    {% set cta.kind = 'pretournoi' %}
     {% set cta.href = '/p/' ~ token ~ '/pre-tournoi' %}
     {% set cta.label = 'Soumettre le pré-tournoi' %}
     {% set cta.text = 'Champion, finalistes, meilleur buteur et questions d’avant-tournoi sont encore à valider.' %}
   {% elif pending_bonus > 0 %}
+    {% set cta.kind = 'bonus' %}
     {% set cta.href = '/p/' ~ token ~ '/bonus' %}
     {% set cta.label = 'Répondre aux bonus' %}
     {% set cta.text = pending_bonus ~ ' question' ~ ('s' if pending_bonus > 1 else '') ~ ' bonus attendent ta réponse.' %}
@@ -59,7 +62,7 @@
   </div>
   {% endif %}
 
-  {% if pt_open and not pt_submitted %}
+  {% if pt_open and not pt_submitted and cta.kind != 'pretournoi' %}
   <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
     <div>
       <div style="font-weight:700;font-size:13px;color:#1D4ED8;">🏆 Pronostics pré-tournoi</div>

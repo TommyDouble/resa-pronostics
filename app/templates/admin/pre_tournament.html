@@ -75,15 +75,20 @@
       </div>
       <div>
         <div class="lbl" style="margin-bottom:5px;">④ Révélation du tournoi</div>
-        <div class="field">
-          <select name="revelation">
-            <option value="">— Pas encore connue —</option>
-            {% for team in teams %}
-            <option value="{{ team }}" {{ 'selected' if answers.revelation == team else '' }}>{{ team }}</option>
-            {% endfor %}
-          </select>
+        <div class="muted" style="font-size:11px;margin-bottom:6px;">
+          Coche le ou les outsiders allés le plus loin. En cas d'égalité (même stade atteint),
+          coches-en plusieurs : chacun rapporte des points aux participants qui l'avaient choisi.
         </div>
-        {% if hits.revelation %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.revelation.winners }}/{{ hits.revelation.scored }} participants l'avaient.</div>{% endif %}
+        <div class="outsider-check-grid">
+          {% for team in outsiders %}
+          <label class="outsider-check">
+            <input type="checkbox" name="revelation" value="{{ team }}"
+                   {{ 'checked' if team in revelation_winners else '' }}>
+            <span>{{ team }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        {% if hits.revelation %}<div class="muted" style="font-size:11px;margin-top:6px;">{{ hits.revelation.winners }}/{{ hits.revelation.scored }} participants ont marqué des points.</div>{% endif %}
       </div>
     </div>
     <div>

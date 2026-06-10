@@ -16,7 +16,7 @@ from app.mail import (
     send_match_reminder as send_match_reminder_email,
     send_pre_tournament_reminder,
 )
-from app.players import TEAMS_48, get_scorer_options, is_valid_scorer
+from app.players import OUTSIDERS, TEAMS_48, get_scorer_options, is_valid_scorer
 from app.pre_tournament import (
     DEFAULT_PRE_TOURNAMENT_QUESTIONS,
     get_pre_tournament_deadline,
@@ -26,6 +26,7 @@ from app.pre_tournament import (
 from app.scoring import (
     calculate_bonus_scores,
     get_rankings,
+    parse_revelation_winners,
     recalculate_match_scores,
     recalculate_pre_tournament_scores,
 )
@@ -503,6 +504,8 @@ async def pre_tournament_admin(request: Request):
         )
         hits = {r["question_key"]: dict(r) for r in await hits_rows.fetchall()}
     answers = {q["key"]: q.get("correct_answer") or "" for q in questions}
+    # The révélation answer is a JSON list of winning outsiders (ties allowed).
+    revelation_winners = sorted(parse_revelation_winners(answers.get("revelation")))
     return templates.TemplateResponse(request, "admin/pre_tournament.html", {
         "request": request,
         "active": "pre_tournoi",
@@ -512,6 +515,8 @@ async def pre_tournament_admin(request: Request):
         "submitted_count": submitted_count,
         "total_count": total_count,
         "teams": TEAMS_48,
+        "outsiders": OUTSIDERS,
+        "revelation_winners": revelation_winners,
         "scorer_options": get_scorer_options(),
         "answers": answers,
         "hits": hits,
@@ -524,22 +529,27 @@ async def update_pre_tournament_answers(
     winner: str = Form(default=""),
     finalist: str = Form(default=""),
     top_scorer: str = Form(default=""),
-    revelation: str = Form(default=""),
+    revelation: list[str] = Form(default=[]),
     total_goals: str = Form(default=""),
 ):
     await require_admin(request)
     winner = winner.strip()
     finalist = finalist.strip()
     top_scorer = top_scorer.strip()
-    revelation = revelation.strip()
+    # Several outsiders may win on a tie (same furthest stage reached).
+    revelation_winners = [r.strip() for r in revelation if r.strip()]
     total_goals = total_goals.strip()
 
     if winner and finalist and winner == finalist:
         _flash(request, "Le champion et l'autre finaliste ne peuvent pas être identiques.", "err")
         return RedirectResponse("/admin/pre-tournoi", status_code=303)
-    for team_value, label in ((winner, "champion"), (finalist, "autre finaliste"), (revelation, "révélation")):
+    for team_value, label in ((winner, "champion"), (finalist, "autre finaliste")):
         if team_value and team_value not in TEAMS_48:
             _flash(request, f"Équipe inconnue pour {label} : {team_value}.", "err")
+            return RedirectResponse("/admin/pre-tournoi", status_code=303)
+    for team_value in revelation_winners:
+        if team_value not in OUTSIDERS:
+            _flash(request, f"Outsider inconnu pour la révélation : {team_value}.", "err")
             return RedirectResponse("/admin/pre-tournoi", status_code=303)
     if top_scorer and not is_valid_scorer(top_scorer):
         _flash(request, "Joueur inconnu pour le meilleur buteur.", "err")
@@ -551,18 +561,19 @@ async def update_pre_tournament_answers(
             _flash(request, "Le total de buts doit être un nombre entier.", "err")
             return RedirectResponse("/admin/pre-tournoi", status_code=303)
 
+    revelation_value = json.dumps(revelation_winners, ensure_ascii=False) if revelation_winners else None
     incoming = {
-        "winner": winner,
-        "finalist": finalist,
-        "top_scorer": top_scorer,
-        "revelation": revelation,
-        "total_goals": total_goals,
+        "winner": winner or None,
+        "finalist": finalist or None,
+        "top_scorer": top_scorer or None,
+        "revelation": revelation_value,
+        "total_goals": total_goals or None,
     }
     async with get_db() as db:
         for key, value in incoming.items():
             await db.execute(
                 "UPDATE pre_tournament_questions SET correct_answer=? WHERE key=?",
-                (value or None, key),
+                (value, key),
             )
         await db.commit()
     await recalculate_pre_tournament_scores()

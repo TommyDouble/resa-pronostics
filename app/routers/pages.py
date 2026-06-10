@@ -10,6 +10,7 @@ from app.auth import hash_password, require_participant, verify_password
 from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import get_db
 from app.players import (
+    OUTSIDERS,
     TEAMS_48,
     get_scorer_options,
     is_valid_scorer,
@@ -531,7 +532,7 @@ async def pre_tournament_page(request: Request, token: str, error: str = ""):
             "SELECT * FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
         )
         pt = await row.fetchone()
-        outsiders = ["Maroc", "Japon", "États-Unis", "Sénégal", "Australie", "Iran", "Côte d'Ivoire", "Équateur"]
+        outsiders = OUTSIDERS
         pt_deadline = await get_pre_tournament_deadline(db)
         pt_questions = await get_pre_tournament_question_map(db)
         pt_editable = _now_utc() < pt_deadline
@@ -577,11 +578,15 @@ async def save_pre_tournament(
         return RedirectResponse(
             url=f"/p/{token}/pre-tournoi?error=winner_finalist", status_code=303
         )
-    for team_value in (winner, finalist, revelation):
+    for team_value in (winner, finalist):
         if team_value and team_value not in TEAMS_48:
             return RedirectResponse(
                 url=f"/p/{token}/pre-tournoi?error=invalid_team", status_code=303
             )
+    if revelation and revelation not in OUTSIDERS:
+        return RedirectResponse(
+            url=f"/p/{token}/pre-tournoi?error=invalid_team", status_code=303
+        )
     if top_scorer and not is_valid_scorer(top_scorer):
         return RedirectResponse(
             url=f"/p/{token}/pre-tournoi?error=invalid_scorer", status_code=303

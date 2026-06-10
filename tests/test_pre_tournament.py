@@ -191,3 +191,89 @@ class TestAdminAnswers:
         me = next(r for r in rankings if r["id"] == participant["id"])
         # The two finalists are right (+14), but champion is wrong (+0).
         assert me["total_points"] == 14
+
+
+def _make_participant():
+    """Create a confirmed participant directly and return {id, token}."""
+    token = str(uuid.uuid4())
+
+    async def _create():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO participants (name, first_name, last_name, email, token, is_confirmed)
+                   VALUES (?,?,?,?,?,1)""",
+                ("Outsider Fan", "Outsider", "Fan", f"{token}@test.local", token),
+            )
+            await db.commit()
+            return cursor.lastrowid
+
+    return {"id": run(_create()), "token": token}
+
+
+class TestHomeCta:
+    def test_single_pretournoi_cta_during_onboarding(self, client, participant):
+        # Fresh participant, pré-tournoi open and not submitted: the home page must
+        # show exactly one call-to-action toward the pré-tournoi (no duplicate box).
+        set_deadline_future()
+        response = client.get(f"/p/{participant['token']}")
+        assert response.status_code == 200
+        href = f"/p/{participant['token']}/pre-tournoi"
+        assert response.text.count(href) == 1
+
+
+class TestRevelationMultipleWinners:
+    def test_two_winning_outsiders_both_score(self, admin_client, participant):
+        set_deadline_future()
+        second = _make_participant()
+        # Participant 1 picks Maroc, participant 2 picks Japon.
+        for token, outsider in ((participant["token"], "Maroc"), (second["token"], "Japon")):
+            admin_client.post(
+                f"/p/{token}/pre-tournoi",
+                data={
+                    "winner": "",
+                    "finalist": "",
+                    "top_scorer": "",
+                    "revelation": outsider,
+                    "total_goals": "0",
+                    "action": "submit",
+                },
+                follow_redirects=False,
+            )
+        # Admin declares BOTH Maroc and Japon winning outsiders (tie).
+        response = admin_client.post(
+            "/admin/pre-tournoi/reponses",
+            data={
+                "winner": "",
+                "finalist": "",
+                "top_scorer": "",
+                "revelation": ["Maroc", "Japon"],
+                "total_goals": "",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+
+        rankings = run(get_rankings())
+        p1 = next(r for r in rankings if r["id"] == participant["id"])
+        p2 = next(r for r in rankings if r["id"] == second["id"])
+        assert p1["total_points"] == 5
+        assert p2["total_points"] == 5
+
+    def test_non_outsider_winner_rejected(self, admin_client):
+        response = admin_client.post(
+            "/admin/pre-tournoi/reponses",
+            data={"revelation": ["France"]},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+
+        async def _answer():
+            async with get_db() as db:
+                row = await db.execute(
+                    "SELECT correct_answer FROM pre_tournament_questions WHERE key='revelation'"
+                )
+                r = await row.fetchone()
+                return r["correct_answer"]
+
+        # France is not an outsider → rejected, answer not stored as France.
+        assert "France" not in (run(_answer()) or "")

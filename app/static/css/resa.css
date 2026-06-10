@@ -1168,6 +1168,39 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
   font-weight: 700;
 }
 
+/* Pré-tournoi : les deux finalistes côte à côte */
+.finalists-pair { display: flex; gap: 10px; margin-top: 8px; }
+.finalists-pair .finalist-slot { flex: 1; min-width: 0; }
+.finalist-cap {
+  font-size: 11px; font-weight: 700; color: var(--n600);
+  text-transform: uppercase; letter-spacing: .03em; margin-bottom: 5px;
+}
+.field.readonly { background: var(--n100); border-style: dashed; }
+.field.readonly input { background: transparent; cursor: default; color: var(--n700, #334155); font-weight: 600; }
+.field.readonly input.is-empty { color: var(--n400); font-weight: 400; }
+@media (max-width: 380px) {
+  .finalists-pair { flex-direction: column; gap: 8px; }
+}
+
+/* Admin: multi-select des outsiders gagnants */
+.outsider-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 7px;
+}
+.outsider-check {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600; color: var(--n700, #334155);
+  padding: 8px 11px;
+  border: 1.5px solid var(--n300); border-radius: var(--r-sm, 8px);
+  background: #fff; cursor: pointer;
+  transition: all 120ms;
+}
+.outsider-check:has(input:checked) {
+  background: var(--primary-l); border-color: var(--primary); color: var(--primary);
+}
+.outsider-check input { accent-color: var(--primary); }
+
 /* ---- Admin layout ---- */
 .admin-wrap {
   display: flex;

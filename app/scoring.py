@@ -1,5 +1,30 @@
 """Score calculation logic per spec."""
+import json
+
 from app.database import get_db
+
+
+def parse_revelation_winners(correct_answer) -> set:
+    """Winning outsiders for the révélation question.
+
+    Stored as a JSON list (new format, supports ties → several winning teams).
+    Falls back to a single team string for legacy answers. Returns a set of
+    non-empty team names.
+    """
+    if not correct_answer:
+        return set()
+    raw = str(correct_answer).strip()
+    if not raw:
+        return set()
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return {raw}
+    if isinstance(parsed, list):
+        return {str(t).strip() for t in parsed if str(t).strip()}
+    if isinstance(parsed, str) and parsed.strip():
+        return {parsed.strip()}
+    return set()
 
 
 def _winner_from_scores(score_team1, score_team2) -> str:
@@ -243,6 +268,11 @@ def calculate_pre_tournament_points(
     if prediction_value is None or str(prediction_value).strip() == "":
         return 0
     points_value = question.get("points_value") or 0
+    if question["key"] == "revelation":
+        # Several outsiders can win on a tie (same furthest stage reached):
+        # the pick scores if it is among the winning set.
+        winners = parse_revelation_winners(correct)
+        return points_value if str(prediction_value).strip() in winners else 0
     if question["key"] == "total_goals":
         try:
             predicted = int(str(prediction_value).strip())

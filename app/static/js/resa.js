@@ -421,6 +421,14 @@ function initWinnerFinalistGuard() {
     var finalist = form.querySelector('select[name="finalist"]');
     if (!winner || !finalist) return;
     var errorBox = form.querySelector('#winner-finalist-error');
+    var championMirror = form.querySelector('[data-champion-mirror]');
+
+    function syncChampionMirror() {
+      // Slot "Finaliste 1" shows the champion so it's obvious he's also a finalist.
+      if (!championMirror) return;
+      championMirror.value = winner.value || '';
+      championMirror.classList.toggle('is-empty', !winner.value);
+    }
 
     function syncDisabled() {
       // The selected champion can't be picked as the other finalist, and vice versa.
@@ -449,6 +457,7 @@ function initWinnerFinalistGuard() {
         }
         showError(false);
         syncDisabled();
+        syncChampionMirror();
       });
     });
 
@@ -461,6 +470,7 @@ function initWinnerFinalistGuard() {
     });
 
     syncDisabled();
+    syncChampionMirror();
   });
 }
 

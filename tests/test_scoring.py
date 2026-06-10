@@ -1,8 +1,11 @@
+import json
+
 from app.scoring import (
     answers_match,
     calculate_finalists_points,
     calculate_match_score,
     calculate_pre_tournament_points,
+    parse_revelation_winners,
 )
 
 
@@ -180,6 +183,33 @@ class TestPreTournamentPoints:
             )
             == 14
         )
+
+    def test_revelation_pick_in_winning_set_scores(self):
+        question = self.question("revelation", 5, answer=json.dumps(["Maroc", "Japon"]))
+        assert calculate_pre_tournament_points(question, "Maroc") == 5
+        assert calculate_pre_tournament_points(question, "Japon") == 5
+
+    def test_revelation_pick_outside_winning_set_scores_zero(self):
+        question = self.question("revelation", 5, answer=json.dumps(["Maroc", "Japon"]))
+        assert calculate_pre_tournament_points(question, "Sénégal") == 0
+
+    def test_revelation_legacy_single_answer_still_scores(self):
+        question = self.question("revelation", 5, answer="Maroc")
+        assert calculate_pre_tournament_points(question, "Maroc") == 5
+        assert calculate_pre_tournament_points(question, "Japon") == 0
+
+
+class TestRevelationWinners:
+    def test_parse_json_list(self):
+        assert parse_revelation_winners(json.dumps(["Maroc", "Japon"])) == {"Maroc", "Japon"}
+
+    def test_parse_legacy_single(self):
+        assert parse_revelation_winners("Maroc") == {"Maroc"}
+
+    def test_parse_empty(self):
+        assert parse_revelation_winners("") == set()
+        assert parse_revelation_winners(None) == set()
+        assert parse_revelation_winners("[]") == set()
 
 
 class TestAnswersMatch:

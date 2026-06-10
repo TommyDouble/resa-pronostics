@@ -77,15 +77,32 @@
     {% set q = pt_questions.get('finalist') %}
     {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">② {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Tes deux finalistes sont ton champion et cette équipe. Chaque équipe réellement finaliste rapporte 7 points, même si tu inverses champion et finaliste.">?</span></div>
-      {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
-      <div class="field" style="margin-top:8px;">
-        <select name="finalist" {% if not pt_editable %}disabled{% endif %}>
-          <option value="">Sélectionner l'autre finaliste (≠ champion)…</option>
-          {% for team in teams %}
-          <option value="{{ team }}" {{ 'selected' if pt.finalist == team else '' }}>{{ team }}</option>
-          {% endfor %}
-        </select>
+      <div class="lbl">② {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Tes deux finalistes sont ton champion (recopié ici) et l'équipe que tu choisis. Chaque équipe réellement présente en finale rapporte 7 points, même si tu inverses champion et finaliste.">?</span></div>
+      <div class="muted helper-text">Une finale oppose deux équipes. Ton champion ① est automatiquement ton premier finaliste — il te reste à désigner l'autre.</div>
+      <div class="finalists-pair">
+        <div class="finalist-slot">
+          <div class="finalist-cap">Finaliste 1 · ton champion</div>
+          <div class="field readonly">
+            <input type="text" value="{{ pt.winner or '' }}"
+                   placeholder="Choisis d'abord ton champion ①"
+                   data-champion-mirror readonly tabindex="-1"
+                   class="{{ 'is-empty' if not pt.winner else '' }}">
+          </div>
+        </div>
+        <div class="finalist-slot">
+          <div class="finalist-cap">Finaliste 2 · ton choix</div>
+          <div class="field">
+            <select name="finalist" {% if not pt_editable %}disabled{% endif %}>
+              <option value="">Sélectionner l'autre finaliste (≠ champion)…</option>
+              {% for team in teams %}
+              <option value="{{ team }}" {{ 'selected' if pt.finalist == team else '' }}>{{ team }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="muted err-hint" id="winner-finalist-error" style="display:none;font-size:11px;margin-top:6px;color:var(--error);">
+        Le finaliste doit être différent du champion.
       </div>
     </div>
     {% endif %}
@@ -111,9 +128,14 @@
     {% set q = pt_questions.get('revelation') %}
     {% if q %}
     <div class="card flat" style="padding:13px;margin-bottom:12px;">
-      <div class="lbl">④ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Pari sur l'outsider qui fera le meilleur parcours surprise parmi la liste figée. Le stade atteint est le critère principal.">?</span></div>
+      <div class="lbl">④ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Pari sur l'outsider qui ira le plus loin dans la compétition. En cas d'égalité (même tour atteint), plusieurs outsiders peuvent rapporter des points.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
-      <div class="muted helper-text">Ce que tu paries: quelle équipe de cette liste ira le plus loin ou créera la plus belle surprise. La liste est volontairement limitée aux outsiders.</div>
+      <div class="muted helper-text">
+        <b>Ce que tu paries :</b> quelle équipe de cette liste ira le plus loin dans la compétition (le tour atteint compte).
+        La liste est volontairement limitée à des <b>outsiders</b> : ni grands favoris, ni petits poucets sans chance — des
+        équipes capables de créer la surprise et reconnaissables de tous, choisies pour représenter plusieurs continents.
+        En cas d'égalité (deux équipes éliminées au même tour), <b>plusieurs outsiders peuvent marquer</b>.
+      </div>
       <div class="outsider-chips">
         {% for o in outsiders %}
         <div class="outsider-chip {{ 'on' if pt.revelation == o else '' }}"

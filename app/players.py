@@ -27,6 +27,15 @@ TEAMS_48 = sorted([
     "Angleterre","Croatie","Ghana","Panama",
 ])
 
+# Outsiders proposés pour la question « révélation » du pré-tournoi.
+# Critères : ni favori ni figurant, du potentiel de parcours, équipes reconnaissables,
+# éventail des confédérations. Sert à la fois au formulaire participant, à la saisie
+# admin des gagnants et à la validation. Toutes présentes dans TEAMS_48.
+OUTSIDERS = [
+    "Maroc", "Japon", "États-Unis", "Sénégal", "Australie",
+    "Iran", "Côte d'Ivoire", "Équateur", "Mexique", "Uruguay",
+]
+
 # Legacy fallback used only if players.json is absent.
 LEGACY_SCORERS = [
     "Kylian Mbappé", "Harry Kane", "Erling Haaland",
