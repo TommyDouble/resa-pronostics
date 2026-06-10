@@ -21,7 +21,11 @@ uvicorn app.main:app --reload
 - Lien direct participant : `http://localhost:8000/p/<token>` (fonctionne toujours,
   avec ou sans mot de passe ; les invités peuvent créer leur mot de passe depuis
   leur profil)
+- Lien perdu : `http://localhost:8000/lien-perdu` (renvoie le lien personnel par email)
 - Admin : `http://localhost:8000/admin`
+
+L'app est installable sur l'écran d'accueil (PWA : manifest, icônes,
+service worker pour les notifications).
 
 Le département RESA apparaît sur le profil et servira au futur classement
 inter-départements.
@@ -36,24 +40,44 @@ score pronostiqué est nul, le participant doit choisir l'équipe qualifiée. Le
 bonus score exact n'est accordé que si le vainqueur/qualifié pronostiqué est
 correct.
 
+Les pronostics de **phase finale sont verrouillés** tant que l'organisateur ne
+les ouvre pas (toggle dans `/admin/matches`, à activer quand les affiches se
+précisent).
+
 ### Pré-tournoi (5 questions fixes)
 Champion du Monde (+8), finalistes (+7 par finaliste correct, le champion
 pronostiqué compte comme un des deux finalistes), meilleur buteur (+8),
 révélation (+5), total de buts en phase de groupes (+8 exact, +4 à ±3).
 Champion et autre finaliste doivent être différents (validation client +
-serveur). L'admin encode les réponses correctes dans `/admin/pre-tournoi` au fil
-du tournoi ; chaque enregistrement recalcule les points de tous les
-participants.
+serveur). **Toute réponse enregistrée compte** (plus de notion de brouillon),
+modifiable jusqu'à la deadline. L'admin encode les réponses correctes dans
+`/admin/pre-tournoi` au fil du tournoi ; chaque enregistrement recalcule les
+points de tous les participants.
 
 ### Questions bonus
-Questions libres créées par l'admin (choix / nombre / texte) avec deadline et
-points. La réponse correcte (select pour les questions à choix) déclenche le
-recalcul. Comparaison tolérante : casse/espaces ignorés pour le texte,
-`10`, `10.0` et `10,0` équivalents pour le numérique.
+Questions **à choix unique** créées par l'admin (≥ 2 options) avec deadline et
+points, pour toutes les phases (seizièmes → finale). La réponse correcte
+déclenche le recalcul.
 
-### Classement
-Le rang dépend uniquement du total de points. À égalité, les participants restent
-ex æquo au même rang ; le rang suivant saute les places déjà occupées.
+### Classements
+Six vues : général, phase de groupes, phase finale, bonus, remontada
+(progression depuis la fin des groupes) et départements (moyenne par inscrit).
+Le rang dépend uniquement du total de points ; à égalité, les participants
+restent ex æquo. Des snapshots quotidiens alimentent les flèches d'évolution.
+
+### Cagnotte
+10 € × inscrits confirmés, répartie en pourcentages par prix
+(`app/prizes.py`), montants arrondis à la dizaine avec total exact garanti,
+affichés sur le classement et le règlement.
+
+### Rappels automatiques (plan hybride)
+Une boucle de fond (`app/scheduler.py`, `SCHEDULER_ENABLED`) envoie : rappel
+J-1 des matchs non pronostiqués, rappels deadline pré-tournoi/bonus, récap
+quotidien (+points, rang, top 3). Canal : **notification push** si le
+participant a activé les notifications (PWA installée), **email sinon**
+(`app/notify.py`). Le push nécessite des clés VAPID
+(`python scripts/generate_vapid_keys.py` → variables Railway) ; sans clés,
+tout part par email. Opt-out par participant dans son profil.
 
 ## Données joueurs
 
