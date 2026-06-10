@@ -175,3 +175,17 @@ class TestProfilePassword:
             follow_redirects=False,
         )
         assert "msg=password_mismatch" in response.headers["location"]
+
+
+class TestLostLink:
+    def test_lost_link_neutral_response(self, client, participant):
+        # Email inscrit et email inconnu donnent la même réponse neutre.
+        for email in (f"{participant['token']}@test.local", "inconnu@test.local"):
+            response = client.post("/lien-perdu", data={"email": email})
+            assert response.status_code == 200
+            assert "vient de t'être renvoyé" in response.text
+
+    def test_lost_link_page_renders(self, client):
+        response = client.get("/lien-perdu")
+        assert response.status_code == 200
+        assert "Recevoir mon lien" in response.text

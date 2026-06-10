@@ -13,6 +13,7 @@ from app.auth import hash_password, require_participant, verify_password
 from app.config import settings
 from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import get_db
+from app.mail import send_invitation
 from app.players import (
     OUTSIDERS,
     TEAMS_48,
@@ -337,6 +338,32 @@ async def login_post(
     if not verify_password(password, participant["password_hash"]):
         return login_error("Email ou mot de passe incorrect.")
     return RedirectResponse(url=f"/p/{participant['token']}", status_code=303)
+
+
+@router.get("/lien-perdu", response_class=HTMLResponse)
+async def lost_link_page(request: Request):
+    return templates.TemplateResponse(request, "lost_link.html", {
+        "request": request, "sent": False, "email": ""
+    })
+
+
+@router.post("/lien-perdu", response_class=HTMLResponse)
+async def lost_link_post(request: Request, email: str = Form(default="")):
+    email = email.strip().lower()
+    if email and "@" in email:
+        async with get_db() as db:
+            row = await db.execute(
+                "SELECT * FROM participants WHERE email=? AND is_admin=0", (email,)
+            )
+            participant = await row.fetchone()
+        if participant:
+            await send_invitation(dict(participant))
+        else:
+            logger.info("Lien perdu demandé pour un email inconnu: %s", email)
+    # Réponse neutre: ne révèle pas si l'email est inscrit.
+    return templates.TemplateResponse(request, "lost_link.html", {
+        "request": request, "sent": True, "email": email
+    })
 
 
 def _register_context(error=None, **form):
