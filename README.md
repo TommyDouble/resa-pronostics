@@ -1,8 +1,9 @@
 # RESA Pronostics 2026
 
 Application de pronostics pour la Coupe du Monde 2026 (FastAPI + SQLite + Jinja).
-Les participants accèdent à l'app via un lien personnel à token (pas de mot de passe) ;
-l'organisateur gère tout depuis un backoffice `/admin`.
+Les participants se connectent par email + mot de passe depuis la page d'accueil,
+ou via leur lien personnel à token (les deux fonctionnent) ; l'organisateur gère
+tout depuis un backoffice `/admin`.
 
 ## Démarrage rapide
 
@@ -14,9 +15,16 @@ python scripts/create_admin.py      # compte admin du backoffice
 uvicorn app.main:app --reload
 ```
 
-- Participant : `http://localhost:8000/p/<token>` (token généré à l'ajout d'un participant)
+- Connexion participant : `http://localhost:8000/` (email + mot de passe)
+- Inscription publique : `http://localhost:8000/rejoindre` (prénom, nom, email,
+  département RESA, mot de passe)
+- Lien direct participant : `http://localhost:8000/p/<token>` (fonctionne toujours,
+  avec ou sans mot de passe ; les invités peuvent créer leur mot de passe depuis
+  leur profil)
 - Admin : `http://localhost:8000/admin`
-- Inscription publique : `http://localhost:8000/rejoindre`
+
+Le département RESA apparaît sur le profil et servira au futur classement
+inter-départements.
 
 ## Fonctionnement
 

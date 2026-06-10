@@ -35,20 +35,25 @@
         · {{ profile.match_count }} matchs
         {% if profile.favorite_team %}· {{ profile.favorite_team }}{% endif %}
       </div>
+      {% if profile.department %}
+      <div class="muted" style="font-size:12px;margin-top:4px;">🏢 {{ profile.department }}</div>
+      {% endif %}
     </div>
   </div>
 
-  {% if profile.bio or profile.favorite_team or is_own %}
+  {% if profile.bio or profile.favorite_team or profile.department or is_own %}
   <div class="card">
     <div class="lbl" style="margin-bottom:8px;">Infos joueur</div>
     {% if profile.bio %}
     <p style="font-size:13px;line-height:1.45;margin:0 0 10px;">{{ profile.bio }}</p>
     {% endif %}
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      {% if profile.department %}<span class="chip">🏢 {{ profile.department }}</span>{% endif %}
       {% if profile.favorite_team %}<span class="chip acc">{{ profile.favorite_team }}</span>{% endif %}
       {% if is_own %}
         <span class="chip {{ 'ok' if profile.email_opt_in else 'gr' }}">{{ 'Emails activés' if profile.email_opt_in else 'Emails coupés' }}</span>
         <span class="chip {{ 'gr' if profile.profile_visibility == 'limited' else 'ok' }}">{{ 'Profil limité' if profile.profile_visibility == 'limited' else 'Profil complet' }}</span>
+        <span class="chip {{ 'ok' if profile.has_password else 'warn' }}">{{ 'Mot de passe défini' if profile.has_password else 'Pas de mot de passe' }}</span>
       {% endif %}
     </div>
   </div>

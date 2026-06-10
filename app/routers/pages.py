@@ -6,7 +6,8 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.auth import require_participant
+from app.auth import hash_password, require_participant, verify_password
+from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import get_db
 from app.players import (
     TEAMS_48,
@@ -250,40 +251,124 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
     }
 
 
+# ---- Login / registration ----
+
+@router.get("/", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse(request, "login.html", {
+        "request": request, "error": None, "email": ""
+    })
+
+
+@router.post("/connexion", response_class=HTMLResponse)
+async def login_post(
+    request: Request,
+    email: str = Form(default=""),
+    password: str = Form(default=""),
+):
+    email = email.strip().lower()
+
+    def login_error(message: str):
+        return templates.TemplateResponse(request, "login.html", {
+            "request": request, "error": message, "email": email
+        })
+
+    if not email or not password:
+        return login_error("Email et mot de passe requis.")
+    async with get_db() as db:
+        row = await db.execute(
+            "SELECT token, password_hash FROM participants WHERE email=? AND is_admin=0",
+            (email,),
+        )
+        participant = await row.fetchone()
+    if not participant:
+        return login_error("Email ou mot de passe incorrect.")
+    if not participant["password_hash"]:
+        return login_error(
+            "Ce compte n'a pas encore de mot de passe. Utilise ton lien personnel "
+            "(reçu par email) — tu pourras en créer un depuis ton profil."
+        )
+    if not verify_password(password, participant["password_hash"]):
+        return login_error("Email ou mot de passe incorrect.")
+    return RedirectResponse(url=f"/p/{participant['token']}", status_code=303)
+
+
+def _register_context(error=None, **form):
+    return {
+        "error": error,
+        "departments": DEPARTMENTS,
+        "form": {
+            "first_name": form.get("first_name", ""),
+            "last_name": form.get("last_name", ""),
+            "email": form.get("email", ""),
+            "department": form.get("department", ""),
+        },
+    }
+
+
 @router.get("/rejoindre", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse(request, "register.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "register.html", {
+        "request": request, **_register_context()
+    })
 
 
 @router.post("/rejoindre", response_class=HTMLResponse)
-async def register_post(request: Request, name: str = Form(...), email: str = Form(...)):
-    name = name.strip()
+async def register_post(
+    request: Request,
+    first_name: str = Form(default=""),
+    last_name: str = Form(default=""),
+    email: str = Form(default=""),
+    department: str = Form(default=""),
+    password: str = Form(default=""),
+    password_confirm: str = Form(default=""),
+):
+    first_name = first_name.strip()[:80]
+    last_name = last_name.strip()[:80]
     email = email.strip().lower()
-    if not name or not email or "@" not in email:
+    department = department.strip()
+
+    def register_error(message: str):
         return templates.TemplateResponse(request, "register.html", {
-            "request": request, "error": "Nom et email valides requis."
+            "request": request,
+            **_register_context(message, first_name=first_name, last_name=last_name,
+                                email=email, department=department),
         })
+
+    if not first_name or not last_name:
+        return register_error("Prénom et nom requis.")
+    if not email or "@" not in email:
+        return register_error("Email valide requis.")
+    if department not in DEPARTMENTS:
+        return register_error("Choisis ton département RESA.")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return register_error(f"Le mot de passe doit faire au moins {MIN_PASSWORD_LENGTH} caractères.")
+    if password != password_confirm:
+        return register_error("Les deux mots de passe ne correspondent pas.")
+
+    name = f"{first_name} {last_name}"
     token = str(uuid.uuid4())
-    first_name, last_name = _split_name(name)
     async with get_db() as db:
-        # Check if email already registered
         existing = await (await db.execute(
-            "SELECT token FROM participants WHERE email=?", (email,)
+            "SELECT id FROM participants WHERE email=?", (email,)
         )).fetchone()
         if existing:
-            return RedirectResponse(url=f"/p/{existing['token']}", status_code=303)
+            return register_error(
+                "Cet email est déjà inscrit. Connecte-toi avec ton mot de passe, "
+                "ou utilise ton lien personnel reçu par email."
+            )
         try:
             await db.execute(
                 """INSERT INTO participants
-                   (name, first_name, last_name, email, token, is_confirmed)
-                   VALUES (?,?,?,?,?,1)""",
-                (name, first_name, last_name, email, token)
+                   (name, first_name, last_name, email, token, is_confirmed,
+                    password_hash, department)
+                   VALUES (?,?,?,?,?,1,?,?)""",
+                (name, first_name, last_name, email, token,
+                 hash_password(password), department)
             )
             await db.commit()
         except Exception:
-            return templates.TemplateResponse(request, "register.html", {
-                "request": request, "error": "Une erreur est survenue, réessaie."
-            })
+            return register_error("Une erreur est survenue, réessaie.")
     return RedirectResponse(url=f"/p/{token}", status_code=303)
 
 
@@ -292,7 +377,8 @@ async def participant_home(request: Request, token: str):
     p = await require_participant(token)
     if not p["is_confirmed"]:
         return templates.TemplateResponse(request, "onboarding.html", {
-            "request": request, "participant": dict(p), "token": token
+            "request": request, "participant": dict(p), "token": token,
+            "departments": DEPARTMENTS,
         })
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "home")
@@ -356,15 +442,20 @@ async def participant_home(request: Request, token: str):
 
 @router.post("/p/{token}/confirm", response_class=HTMLResponse)
 async def confirm_onboarding(request: Request, token: str,
-                              first_name: str = Form(...), last_name: str = Form(...)):
+                              first_name: str = Form(...), last_name: str = Form(...),
+                              department: str = Form(default="")):
     p = await require_participant(token)
     name = f"{first_name.strip()} {last_name.strip()}"
+    department = department.strip()
+    if department not in DEPARTMENTS:
+        department = ""
     async with get_db() as db:
         await db.execute(
             """UPDATE participants
-               SET name = ?, first_name = ?, last_name = ?, is_confirmed = 1
+               SET name = ?, first_name = ?, last_name = ?, is_confirmed = 1,
+                   department = COALESCE(NULLIF(?, ''), department)
                WHERE token = ?""",
-            (name, first_name.strip(), last_name.strip(), token)
+            (name, first_name.strip(), last_name.strip(), department, token)
         )
         await db.commit()
     return RedirectResponse(url=f"/p/{token}", status_code=303)
@@ -636,11 +727,22 @@ async def own_profile(request: Request, token: str):
     return templates.TemplateResponse(request, "profile.html", {"request": request, **ctx})
 
 
+PROFILE_EDIT_MESSAGES = {
+    "password_set": ("ok", "Mot de passe enregistré — tu peux maintenant te connecter avec ton email."),
+    "password_mismatch": ("err", "Les deux mots de passe ne correspondent pas."),
+    "password_short": ("err", f"Le mot de passe doit faire au moins {MIN_PASSWORD_LENGTH} caractères."),
+}
+
+
 @router.get("/p/{token}/profil/edit", response_class=HTMLResponse)
-async def edit_profile_page(request: Request, token: str):
+async def edit_profile_page(request: Request, token: str, msg: str = ""):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "profil")
-        ctx.update({"teams": TEAMS_48})
+        ctx.update({
+            "teams": TEAMS_48,
+            "departments": DEPARTMENTS,
+            "edit_message": PROFILE_EDIT_MESSAGES.get(msg),
+        })
     return templates.TemplateResponse(request, "profile_edit.html", {"request": request, **ctx})
 
 
@@ -652,24 +754,42 @@ async def save_profile(
     last_name: str = Form(default=""),
     nickname: str = Form(default=""),
     favorite_team: str = Form(default=""),
+    department: str = Form(default=""),
     bio: str = Form(default=""),
     profile_visibility: str = Form(default="public"),
     email_opt_in: str = Form(default="0"),
+    new_password: str = Form(default=""),
+    new_password_confirm: str = Form(default=""),
 ):
     p = await require_participant(token)
     first_name = first_name.strip()[:80]
     last_name = last_name.strip()[:80]
     nickname = nickname.strip()[:40]
     favorite_team = favorite_team.strip()[:80]
+    department = department.strip()
+    if department not in DEPARTMENTS:
+        department = ""
     bio = bio.strip()[:240]
     if profile_visibility not in ("public", "limited"):
         profile_visibility = "public"
     full_name = f"{first_name} {last_name}".strip() or p["name"]
+
+    password_msg = ""
+    password_hash = None
+    if new_password or new_password_confirm:
+        if len(new_password) < MIN_PASSWORD_LENGTH:
+            password_msg = "password_short"
+        elif new_password != new_password_confirm:
+            password_msg = "password_mismatch"
+        else:
+            password_hash = hash_password(new_password)
+            password_msg = "password_set"
+
     async with get_db() as db:
         await db.execute(
             """UPDATE participants
                SET name=?, first_name=?, last_name=?, nickname=?, favorite_team=?,
-                   bio=?, profile_visibility=?, email_opt_in=?
+                   department=?, bio=?, profile_visibility=?, email_opt_in=?
                WHERE token=?""",
             (
                 full_name,
@@ -677,13 +797,23 @@ async def save_profile(
                 last_name,
                 nickname,
                 favorite_team,
+                department,
                 bio,
                 profile_visibility,
                 1 if email_opt_in == "1" else 0,
                 token,
             ),
         )
+        if password_hash:
+            await db.execute(
+                "UPDATE participants SET password_hash=? WHERE token=?",
+                (password_hash, token),
+            )
         await db.commit()
+    if password_msg and password_msg != "password_set":
+        return RedirectResponse(url=f"/p/{token}/profil/edit?msg={password_msg}", status_code=303)
+    if password_msg == "password_set":
+        return RedirectResponse(url=f"/p/{token}/profil/edit?msg=password_set", status_code=303)
     return RedirectResponse(url=f"/p/{token}/profil", status_code=303)
 
 
@@ -800,6 +930,8 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         "full_name": p["name"],
         "nickname": p.get("nickname"),
         "favorite_team": "" if is_limited_view else p.get("favorite_team"),
+        "department": p.get("department") or "",
+        "has_password": bool(p.get("password_hash")),
         "bio": "" if is_limited_view else p.get("bio"),
         "profile_visibility": p.get("profile_visibility") or "public",
         "email_opt_in": p.get("email_opt_in"),

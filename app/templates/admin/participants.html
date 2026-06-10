@@ -16,6 +16,7 @@
       <tr>
         <th>Nom</th>
         <th>Email</th>
+        <th>Département</th>
         <th>Statut</th>
         <th>Payé</th>
         <th>Pré-t.</th>
@@ -28,6 +29,7 @@
       <tr class="participant-row">
         <td style="font-weight:600;">{{ p.name }}</td>
         <td class="muted">{{ p.email }}</td>
+        <td class="muted" style="font-size:11px;">{{ p.department or '—' }}</td>
         <td>
           {% if p.is_confirmed %}
             <span class="chip ok">confirmé</span>

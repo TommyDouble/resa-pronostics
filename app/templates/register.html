@@ -8,7 +8,7 @@
       RESA Pronostics 2026
     </h1>
     <p class="muted" style="font-size:13px;margin:0 0 20px;">
-      Inscris-toi pour participer au jeu de pronostics Coupe du Monde 2026 🏆
+      Crée ton profil pour participer au jeu de pronostics Coupe du Monde 2026 🏆
     </p>
 
     {% if error %}
@@ -16,19 +16,45 @@
     {% endif %}
 
     <form method="post" action="/rejoindre" style="display:flex;flex-direction:column;gap:12px;text-align:left;">
-      <div>
-        <div class="lbl" style="margin-bottom:6px;">Ton prénom et nom</div>
-        <div class="field"><input type="text" name="name" placeholder="Prénom Nom" required autofocus></div>
+      <div class="grid2">
+        <div>
+          <div class="lbl" style="margin-bottom:6px;">Prénom</div>
+          <div class="field"><input type="text" name="first_name" placeholder="Prénom" value="{{ form.first_name }}" maxlength="80" required autofocus></div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:6px;">Nom</div>
+          <div class="field"><input type="text" name="last_name" placeholder="Nom" value="{{ form.last_name }}" maxlength="80" required></div>
+        </div>
       </div>
       <div>
-        <div class="lbl" style="margin-bottom:6px;">Ton email</div>
-        <div class="field"><input type="email" name="email" placeholder="prenom@entreprise.com" required></div>
+        <div class="lbl" style="margin-bottom:6px;">Email</div>
+        <div class="field"><input type="email" name="email" placeholder="prenom@entreprise.com" value="{{ form.email }}" required autocomplete="email"></div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:6px;">Département RESA</div>
+        <div class="field">
+          <select name="department" required>
+            <option value="">Choisir ton département…</option>
+            {% for d in departments %}
+            <option value="{{ d }}" {{ 'selected' if form.department == d else '' }}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:6px;">Mot de passe</div>
+        <div class="field"><input type="password" name="password" placeholder="8 caractères minimum" minlength="8" required autocomplete="new-password"></div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:6px;">Confirme ton mot de passe</div>
+        <div class="field"><input type="password" name="password_confirm" placeholder="Le même mot de passe" minlength="8" required autocomplete="new-password"></div>
       </div>
       <button class="btn full" type="submit" style="margin-top:4px;">Je participe ⚽</button>
     </form>
 
     <p class="muted" style="font-size:11px;margin-top:16px;text-align:center;">
-      Déjà inscrit ou lien perdu ? Remets le même email: tu seras renvoyé vers ton espace participant.
+      Déjà inscrit ? <a href="/" style="color:var(--primary);font-weight:700;">Connecte-toi</a>
+      ou utilise ton lien personnel.
     </p>
   </div>
 </div>

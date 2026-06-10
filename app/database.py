@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS participants (
   bio        TEXT,
   profile_visibility TEXT NOT NULL DEFAULT 'public' CHECK(profile_visibility IN ('public','limited')),
   email_opt_in INTEGER NOT NULL DEFAULT 1,
+  password_hash TEXT,
+  department TEXT,
   created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -168,6 +170,8 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
             "bio TEXT",
             "profile_visibility TEXT NOT NULL DEFAULT 'public' CHECK(profile_visibility IN ('public','limited'))",
             "email_opt_in INTEGER NOT NULL DEFAULT 1",
+            "password_hash TEXT",
+            "department TEXT",
         ]
         for column in participant_columns:
             try:

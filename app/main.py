@@ -50,11 +50,6 @@ app.include_router(api.router, prefix="/api")
 app.include_router(admin.router, prefix="/admin")
 
 
-@app.get("/", include_in_schema=False)
-async def root():
-    return RedirectResponse(url="/admin/login")
-
-
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
     return templates.TemplateResponse(request, "error.html",

@@ -12,6 +12,11 @@
 </div>
 
 <div class="page-content">
+  {% if edit_message %}
+  <div class="banner {{ 'red' if edit_message[0] == 'err' else 'acc' }}" style="margin-bottom:12px;">
+    {{ edit_message[1] }}
+  </div>
+  {% endif %}
   <form method="post" action="/p/{{ token }}/profil/edit" style="display:flex;flex-direction:column;gap:12px;">
     <div class="card">
       <div class="lbl" style="margin-bottom:10px;">Identité</div>
@@ -28,6 +33,18 @@
       <div style="margin-top:10px;">
         <div class="muted" style="font-size:11px;margin-bottom:5px;">Pseudo public</div>
         <div class="field"><input type="text" name="nickname" value="{{ participant.nickname or '' }}" placeholder="Ex: Captain Prono" maxlength="40"></div>
+      </div>
+      <div style="margin-top:10px;">
+        <div class="muted" style="font-size:11px;margin-bottom:5px;">Département RESA</div>
+        <div class="field">
+          <select name="department">
+            <option value="">Choisir ton département…</option>
+            {% for d in departments %}
+            <option value="{{ d }}" {{ 'selected' if participant.department == d else '' }}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <p class="muted helper-text">Servira au futur classement inter-départements.</p>
       </div>
     </div>
 
@@ -66,6 +83,27 @@
         Recevoir les rappels par email
         <span class="help-tip" tabindex="0" data-tip="Rappels utiles quand un match ou une question bonus approche de sa deadline.">?</span>
       </label>
+    </div>
+
+    <div class="card">
+      <div class="lbl" style="margin-bottom:10px;">Connexion par mot de passe</div>
+      <p class="muted helper-text" style="margin-top:0;">
+        {% if participant.password_hash %}
+        Tu peux te connecter avec ton email et ton mot de passe depuis la page d'accueil. Remplis les champs pour le changer.
+        {% else %}
+        Crée un mot de passe pour pouvoir te connecter avec ton email depuis la page d'accueil — en plus de ton lien personnel.
+        {% endif %}
+      </p>
+      <div class="grid2">
+        <div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">{{ 'Nouveau mot de passe' if participant.password_hash else 'Mot de passe' }}</div>
+          <div class="field"><input type="password" name="new_password" placeholder="8 caractères minimum" minlength="8" autocomplete="new-password"></div>
+        </div>
+        <div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">Confirmation</div>
+          <div class="field"><input type="password" name="new_password_confirm" placeholder="Le même mot de passe" minlength="8" autocomplete="new-password"></div>
+        </div>
+      </div>
     </div>
 
     <div class="row2">

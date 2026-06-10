@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Connexion — RESA Pronostics 2026{% endblock %}
+{% block body %}
+<div class="onboard-wrap">
+  <div class="onboard-card">
+    <div class="logo-icon"><span>R</span></div>
+    <h1 style="font-family:var(--display);font-weight:800;font-size:24px;margin:0 0 4px;">
+      RESA Pronostics 2026
+    </h1>
+    <p class="muted" style="font-size:13px;margin:0 0 20px;">
+      Connecte-toi pour retrouver tes pronostics 🏆
+    </p>
+
+    {% if error %}
+    <div class="banner red" style="margin-bottom:14px;">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/connexion" style="display:flex;flex-direction:column;gap:12px;text-align:left;">
+      <div>
+        <div class="lbl" style="margin-bottom:6px;">Email</div>
+        <div class="field"><input type="email" name="email" placeholder="prenom@entreprise.com" value="{{ email }}" required autofocus autocomplete="email"></div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:6px;">Mot de passe</div>
+        <div class="field"><input type="password" name="password" placeholder="Ton mot de passe" required autocomplete="current-password"></div>
+      </div>
+      <button class="btn full" type="submit" style="margin-top:4px;">Se connecter</button>
+    </form>
+
+    <div style="margin:18px 0 0;text-align:center;">
+      <a href="/rejoindre" class="btn ghost full" style="text-decoration:none;">Créer mon profil ⚽</a>
+    </div>
+
+    <p class="muted" style="font-size:11px;margin-top:16px;text-align:center;line-height:1.5;">
+      Tu as reçu un lien personnel par email ? Il fonctionne toujours, avec ou sans mot de passe.<br>
+      <a href="/admin/login" style="color:var(--n400);">Accès organisateur</a>
+    </p>
+  </div>
+</div>
+{% endblock body %}
