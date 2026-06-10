@@ -150,6 +150,19 @@ def _is_locked(match: dict) -> bool:
     return is_match_locked(match)
 
 
+# Durée max estimée d'un match (90' + arrêts + prolongations + TAB).
+LIVE_WINDOW_MINUTES = 150
+
+
+def _live_state(match: dict) -> str:
+    """'' (à venir) | 'live' | 'awaiting' (joué, résultat pas encodé) | 'done'."""
+    if not is_match_locked(match):
+        return ""
+    if match.get("result") is not None:
+        return "done"
+    return "live" if minutes_until_match(match) >= -LIVE_WINDOW_MINUTES else "awaiting"
+
+
 def _minutes_until(match: dict) -> int:
     return minutes_until_match(match)
 
@@ -199,6 +212,7 @@ def _enrich_prediction_matches(matches: list[dict]) -> None:
             match["section_key"] = match["phase"]
             match["section_label"] = PHASE_LABELS.get(match["phase"], match["phase"])
         match["is_locked"] = _is_locked(match)
+        match["live_state"] = _live_state(match)
         match["phase_label"] = PHASE_LABELS.get(match["phase"], match["phase"])
         match["has_score_prediction"] = (
             match.get("exact_score_team1") is not None
@@ -431,6 +445,7 @@ async def participant_home(request: Request, token: str):
         today_matches = [dict(r) for r in await rows.fetchall()]
         for m in today_matches:
             m["is_locked"] = _is_locked(m)
+            m["live_state"] = _live_state(m)
         # Urgency match: next unpredicted/locked-soon match
         urgency = None
         for m in today_matches:

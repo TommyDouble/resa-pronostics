@@ -110,7 +110,11 @@
         <div class="info">
           <div class="name">{{ m.team1_name }} – {{ m.team2_name }}</div>
           <div class="sub">
-            {% if m.is_locked and m.result %}
+            {% if m.live_state == 'live' %}
+              🔴 En cours
+            {% elif m.live_state == 'awaiting' %}
+              Joué · résultat en attente
+            {% elif m.is_locked and m.result %}
               Terminé
             {% elif m.is_top_match %}
               <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span> · ★ Top ×2

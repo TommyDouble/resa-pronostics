@@ -89,7 +89,11 @@
          data-team1="{{ m.team1_name }}"
          data-team2="{{ m.team2_name }}">
       <div class="mtop">
-        {% if m.is_locked %}
+        {% if m.live_state == 'live' %}
+          <span class="dot live"></span> En cours
+        {% elif m.live_state == 'awaiting' %}
+          <span class="dot r"></span> Attente du résultat officiel
+        {% elif m.is_locked %}
           <span class="dot r"></span> Terminé
         {% elif m.has_score_prediction %}
           <span class="dot g"></span> <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
