@@ -54,7 +54,8 @@
             <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;">✉ Inviter</button>
           </form>
           <form method="post" action="/admin/participants/{{ p.id }}/delete"
-                style="display:inline;" onsubmit="return confirm('Supprimer {{ p.name }} ?')">
+                style="display:inline;"
+                onsubmit="return confirm('Supprimer définitivement {{ p.name }}{% if p.pred_count > 0 %} ainsi que ses {{ p.pred_count }} pronostic(s) et tous ses points{% endif %} ? Cette action est irréversible.')">
             <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;color:var(--error);">🗑</button>
           </form>
         </td>

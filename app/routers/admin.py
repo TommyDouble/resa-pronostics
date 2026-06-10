@@ -295,16 +295,20 @@ async def toggle_paid(request: Request, participant_id: int):
 async def delete_participant(request: Request, participant_id: int):
     await require_admin(request)
     async with get_db() as db:
-        # Check if any predictions exist (can't delete if tournament started)
-        pred_row = await db.execute("SELECT COUNT(*) as cnt FROM predictions WHERE participant_id=?", (participant_id,))
-        pred_count = (await pred_row.fetchone())["cnt"]
-        if pred_count > 0:
-            # Soft delete: just mark unconfirmed
-            await db.execute("UPDATE participants SET is_confirmed=0 WHERE id=?", (participant_id,))
-        else:
-            await db.execute("DELETE FROM participants WHERE id=?", (participant_id,))
+        row = await db.execute(
+            "SELECT name FROM participants WHERE id=? AND is_admin=0", (participant_id,)
+        )
+        participant = await row.fetchone()
+        if not participant:
+            _flash(request, "Participant introuvable.", "err")
+            return RedirectResponse("/admin/participants", status_code=303)
+        # Hard delete: foreign keys cascade to predictions, scores, bonus answers
+        # and pre-tournament data (PRAGMA foreign_keys is ON in get_db).
+        await db.execute(
+            "DELETE FROM participants WHERE id=? AND is_admin=0", (participant_id,)
+        )
         await db.commit()
-    _flash(request, "Participant supprimé.")
+    _flash(request, f"Participant {participant['name']} supprimé.")
     return RedirectResponse("/admin/participants", status_code=303)
 
 
