@@ -1,5 +1,5 @@
 """UTC storage and Europe/Brussels display helpers."""
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.config import settings
@@ -58,6 +58,11 @@ def local_input_to_utc_iso(value: str, timezone_name: str | None = None) -> str:
             input_tz = DISPLAY_TZ
         local = local.replace(tzinfo=input_tz)
     return utc_iso(local)
+
+
+def local_today(offset_days: int = 0) -> date:
+    """Date locale (Brussels) avec décalage en jours (−1 = hier)."""
+    return (now_utc().astimezone(DISPLAY_TZ) + timedelta(days=offset_days)).date()
 
 
 def utc_day_bounds_for_local_date(day: date | None = None) -> tuple[str, str]:

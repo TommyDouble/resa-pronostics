@@ -1,0 +1,9 @@
+{# Macros partagées entre les templates participants. #}
+
+{% macro avatar(path, name, pid, size=None, font=None, initials=None) -%}
+{%- if path -%}
+<img src="/avatars/{{ path }}" class="av" {% if size %}style="width:{{ size }}px;height:{{ size }}px;"{% endif %} alt="">
+{%- else -%}
+<div class="av c{{ ((pid - 1) % 8) + 1 }}" {% if size %}style="width:{{ size }}px;height:{{ size }}px;{% if font %}font-size:{{ font }}px;{% endif %}"{% endif %}>{{ initials or name[:2].upper() }}</div>
+{%- endif -%}
+{%- endmacro %}

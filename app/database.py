@@ -3,6 +3,7 @@ import os
 from contextlib import asynccontextmanager
 from app.config import settings
 from app.pre_tournament import ensure_pre_tournament_defaults
+from app.settings_store import ensure_default_settings
 
 DB_PATH = settings.DATABASE_URL.replace("./", "")
 
@@ -90,7 +91,7 @@ CREATE TABLE IF NOT EXISTS pre_tournament_predictions (
 CREATE TABLE IF NOT EXISTS bonus_questions (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   question_text  TEXT    NOT NULL,
-  phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','round_of_32','quarter','semi')),
+  phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','round_of_32','round_of_16','quarter','semi','third_place','final')),
   answer_type    TEXT    NOT NULL CHECK(answer_type IN ('choice','number','text')),
   options        TEXT,
   points_value   INTEGER NOT NULL DEFAULT 5,
@@ -143,6 +144,34 @@ CREATE TABLE IF NOT EXISTS pre_tournament_questions (
   is_enabled   INTEGER NOT NULL DEFAULT 1,
   points_value INTEGER,
   correct_answer TEXT
+);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  endpoint       TEXT    NOT NULL UNIQUE,
+  p256dh         TEXT    NOT NULL,
+  auth           TEXT    NOT NULL,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS notification_log (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  kind           TEXT    NOT NULL,
+  ref            TEXT    NOT NULL,
+  sent_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(participant_id, kind, ref)
+);
+
+CREATE TABLE IF NOT EXISTS ranking_snapshots (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  snapshot_date  TEXT    NOT NULL,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  rank           INTEGER NOT NULL,
+  total_points   INTEGER NOT NULL,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(snapshot_date, participant_id)
 );
 
 CREATE TABLE IF NOT EXISTS pre_tournament_scores (
@@ -208,5 +237,42 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
             except Exception:
                 pass
 
+        # Migration: étendre les phases autorisées des questions bonus
+        # (huitièmes, 3e place, finale). SQLite ne modifie pas un CHECK:
+        # on reconstruit la table si l'ancien schéma est détecté.
+        schema_row = await db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='bonus_questions'"
+        )
+        schema = await schema_row.fetchone()
+        if schema and "round_of_16" not in schema["sql"]:
+            await db.execute("PRAGMA foreign_keys = OFF")
+            await db.executescript("""
+CREATE TABLE bonus_questions_new (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  question_text  TEXT    NOT NULL,
+  phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','round_of_32','round_of_16','quarter','semi','third_place','final')),
+  answer_type    TEXT    NOT NULL CHECK(answer_type IN ('choice','number','text')),
+  options        TEXT,
+  points_value   INTEGER NOT NULL DEFAULT 5,
+  correct_answer TEXT,
+  deadline       TEXT    NOT NULL,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+INSERT INTO bonus_questions_new
+  SELECT id, question_text, phase, answer_type, options, points_value, correct_answer, deadline, created_at
+  FROM bonus_questions;
+DROP TABLE bonus_questions;
+ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
+            """)
+            await db.execute("PRAGMA foreign_keys = ON")
+
+        # Les anciens brouillons comptent désormais comme des réponses valides.
+        await db.execute(
+            """UPDATE pre_tournament_predictions
+               SET submitted=1, submitted_at=COALESCE(submitted_at, created_at)
+               WHERE submitted=0"""
+        )
+
         await ensure_pre_tournament_defaults(db)
+        await ensure_default_settings(db)
         await db.commit()

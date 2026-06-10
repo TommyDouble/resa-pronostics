@@ -10,8 +10,11 @@ from PIL import Image, ImageOps
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.auth import hash_password, require_participant, verify_password
+from app.config import settings
 from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import get_db
+from app.flags import team_flag
+from app.mail import send_invitation
 from app.players import (
     OUTSIDERS,
     TEAMS_48,
@@ -23,9 +26,15 @@ from app.pre_tournament import (
     get_pre_tournament_deadline,
     get_pre_tournament_question_map,
     get_pre_tournament_questions,
+    pt_filled_keys,
 )
+from app.prizes import get_prize_info
+from app.settings_store import knockout_predictions_open
 from app.scoring import (
+    get_department_rankings,
+    get_rank_evolution,
     get_rankings,
+    get_remontada,
     is_match_prediction_correct,
     is_match_score_exact,
     predicted_match_winner,
@@ -33,6 +42,7 @@ from app.scoring import (
 from app.templating import create_templates
 from app.timeutils import (
     is_match_locked,
+    local_today,
     match_kickoff_utc,
     minutes_until_match,
     now_utc_iso,
@@ -87,6 +97,27 @@ def _now_utc() -> str:
     return now_utc_iso()
 
 
+async def _pt_status(db, participant_id: int) -> dict:
+    """Avancement pré-tournoi: questions remplies / total, complétude."""
+    row = await db.execute(
+        "SELECT * FROM pre_tournament_predictions WHERE participant_id = ?",
+        (participant_id,),
+    )
+    pt = await row.fetchone()
+    questions = await get_pre_tournament_questions(db)
+    enabled_keys = [q["key"] for q in questions]
+    filled = pt_filled_keys(dict(pt) if pt else None, enabled_keys)
+    deadline = await get_pre_tournament_deadline(db)
+    return {
+        "pt": dict(pt) if pt else {},
+        "filled_count": len(filled),
+        "question_count": len(enabled_keys),
+        "complete": len(filled) == len(enabled_keys) and len(enabled_keys) > 0,
+        "open": _now_utc() < deadline,
+        "deadline": deadline,
+    }
+
+
 def _split_name(name: str) -> tuple[str, str]:
     parts = name.strip().split()
     if not parts:
@@ -123,6 +154,19 @@ def _ordinal_fr(rank) -> str:
 
 def _is_locked(match: dict) -> bool:
     return is_match_locked(match)
+
+
+# Durée max estimée d'un match (90' + arrêts + prolongations + TAB).
+LIVE_WINDOW_MINUTES = 150
+
+
+def _live_state(match: dict) -> str:
+    """'' (à venir) | 'live' | 'awaiting' (joué, résultat pas encodé) | 'done'."""
+    if not is_match_locked(match):
+        return ""
+    if match.get("result") is not None:
+        return "done"
+    return "live" if minutes_until_match(match) >= -LIVE_WINDOW_MINUTES else "awaiting"
 
 
 def _minutes_until(match: dict) -> int:
@@ -174,6 +218,7 @@ def _enrich_prediction_matches(matches: list[dict]) -> None:
             match["section_key"] = match["phase"]
             match["section_label"] = PHASE_LABELS.get(match["phase"], match["phase"])
         match["is_locked"] = _is_locked(match)
+        match["live_state"] = _live_state(match)
         match["phase_label"] = PHASE_LABELS.get(match["phase"], match["phase"])
         match["has_score_prediction"] = (
             match.get("exact_score_team1") is not None
@@ -190,7 +235,10 @@ def _prediction_sections(matches: list[dict]) -> list[dict]:
         section_matches = [m for m in matches if m.get("section_key") == key]
         total = len(section_matches)
         done = sum(1 for m in section_matches if m.get("has_score_prediction"))
-        open_count = sum(1 for m in section_matches if not m.get("is_locked"))
+        open_count = sum(
+            1 for m in section_matches
+            if not m.get("is_locked") and not m.get("pronos_closed")
+        )
         sections.append({
             "key": key,
             "label": PREDICTION_SECTION_LABELS[key],
@@ -295,6 +343,32 @@ async def login_post(
     if not verify_password(password, participant["password_hash"]):
         return login_error("Email ou mot de passe incorrect.")
     return RedirectResponse(url=f"/p/{participant['token']}", status_code=303)
+
+
+@router.get("/lien-perdu", response_class=HTMLResponse)
+async def lost_link_page(request: Request):
+    return templates.TemplateResponse(request, "lost_link.html", {
+        "request": request, "sent": False, "email": ""
+    })
+
+
+@router.post("/lien-perdu", response_class=HTMLResponse)
+async def lost_link_post(request: Request, email: str = Form(default="")):
+    email = email.strip().lower()
+    if email and "@" in email:
+        async with get_db() as db:
+            row = await db.execute(
+                "SELECT * FROM participants WHERE email=? AND is_admin=0", (email,)
+            )
+            participant = await row.fetchone()
+        if participant:
+            await send_invitation(dict(participant))
+        else:
+            logger.info("Lien perdu demandé pour un email inconnu: %s", email)
+    # Réponse neutre: ne révèle pas si l'email est inscrit.
+    return templates.TemplateResponse(request, "lost_link.html", {
+        "request": request, "sent": True, "email": email
+    })
 
 
 def _register_context(error=None, **form):
@@ -403,6 +477,7 @@ async def participant_home(request: Request, token: str):
         today_matches = [dict(r) for r in await rows.fetchall()]
         for m in today_matches:
             m["is_locked"] = _is_locked(m)
+            m["live_state"] = _live_state(m)
         # Urgency match: next unpredicted/locked-soon match
         urgency = None
         for m in today_matches:
@@ -414,32 +489,76 @@ async def participant_home(request: Request, token: str):
                 break
         # Unmatched today alert
         unpredicted_today = sum(1 for m in today_matches if not m["is_locked"] and not m.get("prediction"))
-        # Mini ranking (top 3 + self)
+        # Next upcoming match (today or later) for the "all caught up" state
+        next_row = await db.execute(
+            """SELECT m.*, p.prediction
+               FROM matches m
+               LEFT JOIN predictions p ON p.match_id = m.id AND p.participant_id = ?
+               WHERE datetime(m.match_date || 'T' || m.kickoff_time) > datetime(?)
+               ORDER BY m.match_date, m.kickoff_time LIMIT 1""",
+            (p["id"], _now_utc())
+        )
+        next_match = await next_row.fetchone()
+        next_match = dict(next_match) if next_match else None
+        if next_match:
+            next_match["kickoff_ts"] = int(match_kickoff_utc(next_match).timestamp())
+        # Mini ranking (top 3 + self) + nearest rivals
         rankings = await get_rankings(db)
         mini_rank = rankings[:3]
         me_rank = next((r for r in rankings if r["id"] == p["id"]), None)
-        if me_rank and me_rank["rank"] > 3:
+        if me_rank and me_rank["rank"] > 3 and me_rank not in mini_rank:
             mini_rank.append(me_rank)
+        rival_ahead = None
+        rival_behind = None
+        if me_rank:
+            my_points = me_rank["total_points"]
+            for r in rankings:
+                if r["total_points"] > my_points:
+                    rival_ahead = {"name": r["name"], "gap": r["total_points"] - my_points}
+                elif r["total_points"] < my_points and rival_behind is None:
+                    rival_behind = {"name": r["name"], "gap": my_points - r["total_points"]}
+                    break
         # Encoded count
         encoded_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE result IS NOT NULL")
         encoded_count = (await encoded_row.fetchone())["cnt"]
-        # Pre-tournament status
-        pt_row2 = await db.execute(
-            "SELECT submitted FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
+        # Récap d'hier: points gagnés sur les matchs de la veille déjà encodés
+        y_start, y_end = utc_day_bounds_for_local_date(local_today(-1))
+        y_row = await db.execute(
+            """SELECT COALESCE(SUM(s.points), 0) AS pts, COUNT(m.id) AS cnt
+               FROM matches m
+               LEFT JOIN scores s ON s.match_id = m.id AND s.participant_id = ?
+               WHERE m.result IS NOT NULL
+                 AND datetime(m.match_date || 'T' || m.kickoff_time) >= datetime(?)
+                 AND datetime(m.match_date || 'T' || m.kickoff_time) <= datetime(?)""",
+            (p["id"], y_start, y_end)
         )
-        pt2 = await pt_row2.fetchone()
-        pt_submitted = bool(pt2 and pt2["submitted"])
-        pt_deadline = await get_pre_tournament_deadline(db)
-        pt_open = _now_utc() < pt_deadline
+        yesterday = dict(await y_row.fetchone())
+        my_evolution = (await get_rank_evolution(db)).get(p["id"])
+        # Pre-tournament status
+        pt_status = await _pt_status(db, p["id"])
+        all_caught_up = (
+            urgency is None
+            and unpredicted_today == 0
+            and (not pt_status["open"] or pt_status["complete"])
+            and ctx["pending_bonus"] == 0
+        )
         ctx.update({
             "today_matches": today_matches,
             "urgency": urgency,
             "unpredicted_today": unpredicted_today,
+            "next_match": next_match,
+            "all_caught_up": all_caught_up,
+            "yesterday": yesterday,
+            "my_evolution": my_evolution,
             "mini_rank": mini_rank,
+            "rival_ahead": rival_ahead,
+            "rival_behind": rival_behind,
             "encoded_count": encoded_count,
-            "pt_submitted": pt_submitted,
-            "pt_open": pt_open,
-            "pt_deadline": pt_deadline,
+            "pt_complete": pt_status["complete"],
+            "pt_filled_count": pt_status["filled_count"],
+            "pt_question_count": pt_status["question_count"],
+            "pt_open": pt_status["open"],
+            "pt_deadline": pt_status["deadline"],
         })
     return templates.TemplateResponse(request, "home.html", {"request": request, **ctx})
 
@@ -466,7 +585,8 @@ async def confirm_onboarding(request: Request, token: str,
 
 
 @router.get("/p/{token}/pronos", response_class=HTMLResponse)
-async def predictions_page(request: Request, token: str, section: str = "", phase: str = ""):
+async def predictions_page(request: Request, token: str, section: str = "",
+                           phase: str = "", match: int = 0):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "pronos")
         p = ctx["participant"]
@@ -482,8 +602,16 @@ async def predictions_page(request: Request, token: str, section: str = "", phas
         )
         all_matches = [dict(r) for r in await rows.fetchall()]
         _enrich_prediction_matches(all_matches)
+        knockout_open = await knockout_predictions_open(db)
+        for match in all_matches:
+            match["pronos_closed"] = match["phase"] != "group" and not knockout_open
         sections = _prediction_sections(all_matches)
         requested_section = section
+        if not requested_section and match:
+            # Lien profond depuis la home: ouvrir la section du match visé.
+            target = next((m for m in all_matches if m["id"] == match), None)
+            if target:
+                requested_section = target.get("section_key") or ""
         if not requested_section and phase:
             requested_section = "group_match_1" if phase == "group" else phase
         if requested_section not in PREDICTION_SECTION_ORDER:
@@ -492,11 +620,7 @@ async def predictions_page(request: Request, token: str, section: str = "", phas
             match for match in all_matches
             if match.get("section_key") == requested_section
         ]
-        pt_row = await db.execute(
-            "SELECT submitted FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
-        )
-        pt = await pt_row.fetchone()
-        pt_submitted = bool(pt and pt["submitted"])
+        pt_status = await _pt_status(db, p["id"])
         ctx.update({
             "matches": all_matches,
             "current_matches": current_matches,
@@ -505,7 +629,11 @@ async def predictions_page(request: Request, token: str, section: str = "", phas
             "current_section_help": _section_help(requested_section),
             "prediction_sections": sections,
             "phase_labels": PHASE_LABELS,
-            "pt_submitted": pt_submitted,
+            "pt_complete": pt_status["complete"],
+            "pt_filled_count": pt_status["filled_count"],
+            "pt_question_count": pt_status["question_count"],
+            "pt_open": pt_status["open"],
+            "knockout_open": knockout_open,
             "page_wide": True,
         })
     return templates.TemplateResponse(request, "predictions.html", {"request": request, **ctx})
@@ -516,6 +644,8 @@ async def rules_page(request: Request, token: str):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "rules")
         ctx["page_wide"] = True
+        ctx["prize_info"] = await get_prize_info(db)
+        ctx["knockout_open"] = await knockout_predictions_open(db)
     return templates.TemplateResponse(request, "rules.html", {"request": request, **ctx})
 
 
@@ -527,19 +657,16 @@ PT_ERRORS = {
 
 
 @router.get("/p/{token}/pre-tournoi", response_class=HTMLResponse)
-async def pre_tournament_page(request: Request, token: str, error: str = ""):
+async def pre_tournament_page(request: Request, token: str, error: str = "", saved: str = ""):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "bonus")
         p = ctx["participant"]
-        row = await db.execute(
-            "SELECT * FROM pre_tournament_predictions WHERE participant_id = ?", (p["id"],)
-        )
-        pt = await row.fetchone()
         outsiders = OUTSIDERS
-        pt_deadline = await get_pre_tournament_deadline(db)
+        pt_status = await _pt_status(db, p["id"])
+        pt_deadline = pt_status["deadline"]
         pt_questions = await get_pre_tournament_question_map(db)
-        pt_editable = _now_utc() < pt_deadline
-        pt_dict = dict(pt) if pt else {}
+        pt_editable = pt_status["open"]
+        pt_dict = pt_status["pt"]
         if pt_dict.get("top_scorer"):
             pt_dict["top_scorer"] = normalize_scorer(pt_dict["top_scorer"])
         # Results once correct answers are encoded (after deadline)
@@ -558,6 +685,10 @@ async def pre_tournament_page(request: Request, token: str, error: str = ""):
             "pt_deadline": pt_deadline,
             "pt_scores": pt_scores,
             "pt_error": PT_ERRORS.get(error),
+            "pt_saved": saved == "1",
+            "pt_filled_count": pt_status["filled_count"],
+            "pt_question_count": pt_status["question_count"],
+            "pt_complete": pt_status["complete"],
         })
     return templates.TemplateResponse(request, "pre_tournament.html", {"request": request, **ctx})
 
@@ -570,7 +701,6 @@ async def save_pre_tournament(
     top_scorer: str = Form(default=""),
     revelation: str = Form(default=""),
     total_goals: int = Form(default=0),
-    action: str = Form(default="draft"),
 ):
     p = await require_participant(token)
     winner = winner.strip()
@@ -620,39 +750,76 @@ async def save_pre_tournament(
         }
         for key in enabled:
             values[key] = incoming[key]
-        submitted = 1 if action == "submit" else 0
-        submitted_at = _now_utc() if submitted else None
+        # Toute sauvegarde compte pour les points : pas de notion de brouillon.
+        submitted_at = _now_utc()
         if existing:
             await db.execute(
                 """UPDATE pre_tournament_predictions
                    SET winner=?, finalist=?, top_scorer=?, revelation=?, total_goals=?,
-                       submitted=?, submitted_at=?
+                       submitted=1, submitted_at=?
                    WHERE participant_id=?""",
                 (values["winner"], values["finalist"], values["top_scorer"], values["revelation"], values["total_goals"],
-                 submitted, submitted_at, p["id"])
+                 submitted_at, p["id"])
             )
         else:
             await db.execute(
                 """INSERT INTO pre_tournament_predictions
                    (participant_id, winner, finalist, top_scorer, revelation, total_goals, submitted, submitted_at)
-                   VALUES (?,?,?,?,?,?,?,?)""",
-                (p["id"], values["winner"], values["finalist"], values["top_scorer"], values["revelation"], values["total_goals"], submitted, submitted_at)
+                   VALUES (?,?,?,?,?,?,1,?)""",
+                (p["id"], values["winner"], values["finalist"], values["top_scorer"], values["revelation"], values["total_goals"], submitted_at)
             )
         await db.commit()
-    return RedirectResponse(url=f"/p/{token}/pre-tournoi", status_code=303)
+    return RedirectResponse(url=f"/p/{token}/pre-tournoi?saved=1", status_code=303)
+
+
+RANKING_VIEWS = {
+    "general": "Général",
+    "groups": "Groupes",
+    "knockout": "Phase finale",
+    "bonus": "Bonus",
+    "remontada": "Remontada",
+    "departments": "Départements",
+}
 
 
 @router.get("/p/{token}/classement", response_class=HTMLResponse)
-async def ranking_page(request: Request, token: str):
+async def ranking_page(request: Request, token: str, view: str = "general"):
+    if view not in RANKING_VIEWS:
+        view = "general"
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "rank")
-        rankings = await get_rankings(db)
         p = ctx["participant"]
-        # Annotate own position
+        rankings = []
+        departments = []
+        evolution = {}
+        if view == "remontada":
+            rankings = await get_remontada(db)
+        elif view == "departments":
+            departments = await get_department_rankings(db)
+        else:
+            rankings = await get_rankings(db, scope=view)
+            if view == "general":
+                evolution = await get_rank_evolution(db)
         for r in rankings:
             r["is_me"] = (r["id"] == p["id"])
             r["color_class"] = f"c{((r['id'] - 1) % 8) + 1}"
-        ctx.update({"rankings": rankings})
+            r["evolution"] = evolution.get(r["id"])
+        # La remontada n'a de sens qu'une fois la phase finale entamée.
+        ko_row = await db.execute(
+            "SELECT COUNT(*) AS cnt FROM matches WHERE phase != 'group' AND result IS NOT NULL"
+        )
+        knockout_started = (await ko_row.fetchone())["cnt"] > 0
+        prize_info = await get_prize_info(db)
+        my_department = (p.get("department") or "").strip() or "Sans département"
+        ctx.update({
+            "rankings": rankings,
+            "departments": departments,
+            "my_department": my_department,
+            "view": view,
+            "ranking_views": RANKING_VIEWS,
+            "knockout_started": knockout_started,
+            "prize_info": prize_info,
+        })
     return templates.TemplateResponse(request, "ranking.html", {"request": request, **ctx})
 
 
@@ -742,7 +909,7 @@ PROFILE_EDIT_MESSAGES = {
     "avatar_invalid": ("err", "Fichier non reconnu — utilise une image JPEG, PNG ou WebP."),
 }
 
-AVATARS_DIR = "/data/avatars"
+AVATARS_DIR = settings.AVATARS_DIR
 
 
 @router.get("/p/{token}/profil/edit", response_class=HTMLResponse)
@@ -971,6 +1138,115 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
             m["result_chip"] = "ok"
         else:
             m["result_chip"] = "miss"
+    # Forme récente: 10 derniers matchs joués, du plus ancien au plus récent
+    form_rows = await db.execute(
+        """SELECT COALESCE(s.points, 0) AS points
+           FROM predictions pr
+           JOIN matches m ON m.id = pr.match_id
+           LEFT JOIN scores s ON s.match_id = pr.match_id AND s.participant_id = pr.participant_id
+           WHERE pr.participant_id=? AND m.result IS NOT NULL
+           ORDER BY m.match_date DESC, m.kickoff_time DESC
+           LIMIT 10""",
+        (participant_id,)
+    )
+    recent_form = [dict(r) for r in await form_rows.fetchall()][::-1]
+    for f in recent_form:
+        f["cls"] = "hi" if f["points"] >= 4 else ("mid" if f["points"] > 0 else "")
+        f["height"] = max(14, min(100, round(f["points"] / 6 * 100)))
+    # Total de matchs avec résultat (pour le badge d'assiduité)
+    tr_row = await db.execute("SELECT COUNT(*) AS cnt FROM matches WHERE result IS NOT NULL")
+    total_results = (await tr_row.fetchone())["cnt"]
+    # Soumissions de dernière minute (< 60 min avant le coup d'envoi)
+    lm_row = await db.execute(
+        """SELECT COUNT(*) AS cnt
+           FROM predictions pr
+           JOIN matches m ON m.id = pr.match_id
+           WHERE pr.participant_id=?
+             AND pr.submitted_at >= datetime(m.match_date || 'T' || m.kickoff_time, '-60 minutes')
+             AND pr.submitted_at <= datetime(m.match_date || 'T' || m.kickoff_time)""",
+        (participant_id,)
+    )
+    last_minute_count = (await lm_row.fetchone())["cnt"]
+    # Délai moyen de soumission avant le coup d'envoi (heures)
+    lead_row = await db.execute(
+        """SELECT AVG((julianday(datetime(m.match_date || 'T' || m.kickoff_time))
+                       - julianday(pr.submitted_at)) * 24) AS hours
+           FROM predictions pr
+           JOIN matches m ON m.id = pr.match_id
+           WHERE pr.participant_id=?
+             AND pr.submitted_at <= datetime(m.match_date || 'T' || m.kickoff_time)""",
+        (participant_id,)
+    )
+    lead_hours_raw = (await lead_row.fetchone())["hours"]
+    avg_lead_hours = round(lead_hours_raw, 1) if lead_hours_raw is not None else None
+    # Équipe la plus souvent donnée gagnante (équipes réelles uniquement)
+    fav_rows = await db.execute(
+        """SELECT CASE WHEN pr.prediction='team1' THEN m.team1_name
+                       ELSE m.team2_name END AS team, COUNT(*) AS cnt
+           FROM predictions pr
+           JOIN matches m ON m.id = pr.match_id
+           WHERE pr.participant_id=? AND pr.prediction != 'draw'
+           GROUP BY team ORDER BY cnt DESC LIMIT 8""",
+        (participant_id,)
+    )
+    favorite_pick = next(
+        ((r["team"], r["cnt"]) for r in await fav_rows.fetchall() if team_flag(r["team"])),
+        None,
+    )
+    # Nuls tentés / réussis
+    draw_row = await db.execute(
+        "SELECT COUNT(*) AS cnt FROM predictions WHERE participant_id=? AND prediction='draw'",
+        (participant_id,)
+    )
+    draw_attempts = (await draw_row.fetchone())["cnt"]
+    draw_correct = sum(
+        1 for r in played_predictions
+        if r["phase"] == "group" and r["prediction"] == "draw" and r["result"] == "draw"
+    )
+    # Roi des bonus: 1er du classement bonus avec des points
+    bonus_rankings = await get_rankings(db, scope="bonus")
+    bonus_king = bool(
+        bonus_rankings
+        and bonus_rankings[0]["total_points"] > 0
+        and bonus_rankings[0]["rank"] == 1
+        and bonus_rankings[0]["id"] == participant_id
+    )
+    badges = [
+        {"key": "sniper", "icon": "🎯", "label": "Sniper",
+         "desc": "5 scores exacts trouvés",
+         "unlocked": exact >= 5},
+        {"key": "streak", "icon": "🔥", "label": "En série",
+         "desc": "4 bons pronos d'affilée",
+         "unlocked": streak >= 4},
+        {"key": "loyal", "icon": "🛡️", "label": "Fidèle au poste",
+         "desc": "Tous les matchs joués pronostiqués (min. 5)",
+         "unlocked": total_results >= 5 and total_played >= total_results},
+        {"key": "draw_king", "icon": "🤝", "label": "Roi du nul",
+         "desc": "3 matchs nuls trouvés",
+         "unlocked": draw_correct >= 3},
+        {"key": "last_minute", "icon": "⏱️", "label": "Dernière minute",
+         "desc": "5 pronos dans l'heure avant le coup d'envoi",
+         "unlocked": last_minute_count >= 5},
+        {"key": "bonus_king", "icon": "⭐", "label": "Roi des bonus",
+         "desc": "1er au classement bonus",
+         "unlocked": bonus_king},
+    ]
+    fun_stats = []
+    if favorite_pick:
+        fun_stats.append({"icon": "❤️", "label": "Équipe la plus jouée gagnante",
+                          "value": f"{team_flag(favorite_pick[0])} {favorite_pick[0]} ({favorite_pick[1]}×)"})
+    if draw_attempts:
+        fun_stats.append({"icon": "🤝", "label": "Matchs nuls tentés / réussis",
+                          "value": f"{draw_attempts} / {draw_correct}"})
+    if avg_lead_hours is not None:
+        if avg_lead_hours >= 48:
+            lead_label = f"{round(avg_lead_hours / 24)} jours avant"
+        elif avg_lead_hours >= 1:
+            lead_label = f"{round(avg_lead_hours)} h avant"
+        else:
+            lead_label = f"{max(1, round(avg_lead_hours * 60))} min avant"
+        fun_stats.append({"icon": "⏱️", "label": "Délai moyen de soumission",
+                          "value": lead_label})
     # Comparison (if viewer is different)
     comparison = None
     if viewer_id and viewer_id != participant_id:
@@ -1006,6 +1282,9 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         "best_day": best_day,
         "best_day_pts": best_day_pts,
         "last5": [] if is_limited_view else last5,
+        "recent_form": [] if is_limited_view else recent_form,
+        "badges": badges,
+        "fun_stats": [] if is_limited_view else fun_stats,
         "comparison": comparison,
     }
 

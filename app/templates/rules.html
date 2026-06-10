@@ -155,6 +155,9 @@
     <h2>Dates limites et visibilité</h2>
     <ul>
       <li>Un match se <b>verrouille à son coup d'envoi</b> officiel : après ça, plus de modification.</li>
+      {% if not knockout_open %}
+      <li>Les pronostics des <b>matchs de phase finale</b> ne sont pas encore ouverts : ils seront débloqués quand les affiches se préciseront.</li>
+      {% endif %}
       <li>Le pré-tournoi se verrouille au coup d'envoi du <b>premier match du tournoi</b>.</li>
       <li>Chaque question bonus se verrouille à <b>sa propre date limite</b>.</li>
       <li>Les pronostics des autres participants restent <b>cachés</b> jusqu'au coup d'envoi du match concerné.</li>
@@ -164,13 +167,11 @@
 
   <section class="card rules-section">
     <h2>Classements et gains</h2>
-    <p>La cagnotte finale dépendra du nombre de participants. Elle sera répartie entre le podium général et plusieurs prix spéciaux. Les montants exacts seront confirmés plus tard, mais les catégories sont fixées à l'avance.</p>
+    <p>La cagnotte vaut <b>{{ prize_info.entry_fee }} € par inscrit</b> : avec {{ prize_info.count }} inscrit{{ 's' if prize_info.count != 1 else '' }} aujourd'hui, elle est de <b>{{ prize_info.pot }} €</b>. Les montants ci-dessous évoluent automatiquement avec les inscriptions et sont arrondis à la dizaine d'euros.</p>
     <div class="rules-grid gains-grid">
-      <div><b>Podium général</b><span>1er, 2e et 3e du classement total. Montants : à préciser.</span></div>
-      <div><b>Phase de groupes</b><span>Meilleur pronostiqueur sur les matchs de groupes. Montant : à préciser.</span></div>
-      <div><b>Phase finale</b><span>Meilleur score sur les matchs à élimination uniquement. Montant : à préciser.</span></div>
-      <div><b>Bonus</b><span>Meilleur cumul sur le pré-tournoi et les questions bonus. Montant : à préciser.</span></div>
-      <div><b>Remontada</b><span>Plus belle progression entre la fin des groupes et le classement final. Montant : à préciser.</span></div>
+      {% for pr in prize_info.prizes %}
+      <div><b>{{ pr.icon }} {{ pr.label }} — {{ pr.amount }} €</b><span>{{ pr.description }}</span></div>
+      {% endfor %}
       <div><b>Cumul possible</b><span>Un participant peut gagner plusieurs catégories à la fois.</span></div>
     </div>
     <div class="rules-example">

@@ -160,6 +160,34 @@ class TestAdminAnswers:
         # finalists 14 + champion 8 + scorer 8 + goals near 4 = 34
         assert me["total_points"] == 34
 
+    def test_any_saved_answer_scores_no_draft_trap(self, admin_client, participant):
+        """Une sauvegarde simple (ancien « brouillon ») compte pour les points."""
+        set_deadline_future()
+        admin_client.post(
+            f"/p/{participant['token']}/pre-tournoi",
+            data={
+                "winner": "Argentine",
+                "finalist": "",
+                "top_scorer": "",
+                "revelation": "",
+                "total_goals": "0",
+            },
+            follow_redirects=False,
+        )
+        row = get_pt_row(participant["id"])
+        assert row["submitted"] == 1
+        admin_client.post(
+            "/admin/pre-tournoi/reponses",
+            data={"winner": "Argentine", "finalist": "", "top_scorer": "",
+                  "revelation": "", "total_goals": ""},
+            follow_redirects=False,
+        )
+        rankings = run(get_rankings())
+        me = next(r for r in rankings if r["id"] == participant["id"])
+        # Champion correct (+8). Les points finalistes tomberont quand la
+        # réponse « finalist » sera encodée à son tour.
+        assert me["total_points"] == 8
+
     def test_inverted_finalists_still_score_finalist_points(self, admin_client, participant):
         set_deadline_future()
         admin_client.post(

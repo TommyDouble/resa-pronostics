@@ -2,8 +2,8 @@
 {% block body %}
 <div class="page-wrap {{ 'wide' if page_wide|default(false) else '' }}">
 
-  <!-- Desktop top nav -->
-  <nav class="top-nav" style="display:none" id="top-nav">
+  <!-- Desktop top nav (affichée en CSS ≥ 768px) -->
+  <nav class="top-nav" id="top-nav">
     <div class="brand">RESA <b>Pronos</b></div>
     <a href="/p/{{ token }}" class="{{ 'on' if active_nav == 'home' else '' }}">Accueil</a>
     <a href="/p/{{ token }}/pronos" class="{{ 'on' if active_nav == 'pronos' else '' }}">Pronos</a>
@@ -41,13 +41,4 @@
   </nav>
 </div>
 
-<script>
-// Show top nav on desktop
-if (window.innerWidth >= 768) {
-  document.getElementById('top-nav').style.display = 'flex';
-}
-window.addEventListener('resize', function() {
-  document.getElementById('top-nav').style.display = window.innerWidth >= 768 ? 'flex' : 'none';
-});
-</script>
 {% endblock %}

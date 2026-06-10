@@ -1,4 +1,5 @@
 {% extends "participant_base.html" %}
+{% from "_macros.html" import avatar %}
 {% block title %}Modifier mon profil — RESA Pronostics{% endblock %}
 {% block page_content %}
 
@@ -37,11 +38,7 @@
       <div style="margin-top:10px;">
         <div class="muted" style="font-size:11px;margin-bottom:5px;">Photo de profil</div>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          {% if participant.avatar_path %}
-          <img src="/avatars/{{ participant.avatar_path }}" class="av" style="width:52px;height:52px;flex-shrink:0;" alt="">
-          {% else %}
-          <div class="av {{ 'c' + ((participant.id - 1) % 8 + 1)|string }}" style="width:52px;height:52px;font-size:18px;flex-shrink:0;">{{ participant.name[:2].upper() }}</div>
-          {% endif %}
+          {{ avatar(participant.avatar_path, participant.name, participant.id, size=52, font=18) }}
           <div style="flex:1;min-width:180px;">
             <div class="field"><input type="file" name="avatar" accept="image/jpeg,image/png,image/webp" style="font-size:13px;padding:6px 8px;"></div>
             {% if participant.avatar_path %}
@@ -130,5 +127,17 @@
       <button type="submit" class="btn">Enregistrer</button>
     </div>
   </form>
+
+  <div class="card" data-push-card style="display:none;">
+    <div class="lbl" style="margin-bottom:8px;">🔔 Notifications sur cet appareil</div>
+    <p class="muted helper-text" style="margin-top:0;" data-push-status>
+      Reçois les rappels (matchs, bonus, récap) directement sur ton téléphone — sinon tu les reçois par email.
+    </p>
+    <div class="banner soft" data-push-ios-help style="display:none;">
+      <span>📲</span>
+      <span>Sur iPhone, installe d'abord l'app : bouton <b>Partager</b> de Safari → « <b>Sur l'écran d'accueil</b> ». Ouvre ensuite l'app depuis son icône et reviens ici pour activer les notifications.</span>
+    </div>
+    <button type="button" class="btn ghost sm" data-push-toggle style="display:none;margin-top:8px;">Activer les notifications</button>
+  </div>
 </div>
 {% endblock %}

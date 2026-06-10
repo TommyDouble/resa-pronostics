@@ -68,7 +68,7 @@ body {
   margin: 0;
   letter-spacing: -.01em;
 }
-.page-head .sub1 { font-size: 11px; color: var(--n600); }
+.page-head .sub1 { font-size: 12.5px; color: var(--n600); }
 .page-head .sp { margin-left: auto; }
 
 /* ---- Page content ---- */
@@ -137,12 +137,12 @@ body {
 .ic-bonus { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M12 2l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.9l1.1-6.5L2.6 8.8l6.5-.9z'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M12 2l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.9l1.1-6.5L2.6 8.8l6.5-.9z'/%3E%3C/svg%3E"); }
 
 /* ---- Typography & labels ---- */
-.lbl { font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--n400); }
+.lbl { font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--n600); }
 .scrib { font-family: var(--sketch); }
 .muted { color: var(--n600); }
 .helper-text {
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 12.5px;
+  line-height: 1.45;
   margin-top: 6px;
 }
 .inline-link {
@@ -157,8 +157,8 @@ body {
   position: relative;
 }
 .help-tip {
-  width: 17px;
-  height: 17px;
+  width: 18px;
+  height: 18px;
   border-radius: 99px;
   display: inline-flex;
   align-items: center;
@@ -166,11 +166,17 @@ body {
   margin-left: 4px;
   border: 1px solid currentColor;
   color: var(--n600);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1;
   cursor: help;
   vertical-align: middle;
+}
+/* Zone tactile élargie (44px) sans changer le rendu */
+.help-tip::before {
+  content: "";
+  position: absolute;
+  inset: -13px;
 }
 .help-tip::after,
 .tip[data-tip]::after {
@@ -393,13 +399,21 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
 .dot.gr { background: var(--n300); }
 .dot.r { background: var(--error); }
 .dot.o { background: var(--primary); }
+.dot.live {
+  background: var(--error);
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.45); }
+  50% { box-shadow: 0 0 0 5px rgba(220,38,38,0); }
+}
 
 /* ---- Banners ---- */
 .banner {
   border-radius: var(--r-sm);
   padding: 10px 12px;
   display: flex; gap: 9px; align-items: center;
-  font-size: 12px; font-weight: 600;
+  font-size: 13px; font-weight: 600;
 }
 .banner.acc { background: var(--primary-l); color: var(--primary-d); border: 1px solid rgba(211,69,13,.25); }
 .banner.red { background: #FBE6E6; color: var(--error); border: 1px solid rgba(220,38,38,.25); }
@@ -939,7 +953,7 @@ img.av { object-fit: cover; display: block; }
 .rrow .rk { font-family: var(--display); font-weight: 800; font-size: 20px; width: 24px; color: var(--n600); text-align: center; }
 .rrow .av { width: 34px; height: 34px; font-size: 12px; }
 .rrow .nm { flex: 1; font-weight: 600; font-size: 14px; }
-.rrow .nm small { display: block; font-weight: 400; font-size: 10px; color: var(--n400); }
+.rrow .nm small { display: block; font-weight: 400; font-size: 11px; color: var(--n600); }
 .rrow .sc { font-family: var(--display); font-weight: 800; font-size: 17px; color: var(--primary); }
 .rrow .sc small { display: block; font-family: var(--body); font-size: 9px; color: var(--n600); text-align: right; margin-top: -1px; }
 .rrow.me { background: var(--primary-l); border-left: 3px solid var(--primary); }
@@ -949,6 +963,28 @@ img.av { object-fit: cover; display: block; }
   gap: 11px;
   padding: 13px;
   background: var(--paper2);
+}
+
+/* ---- Cagnotte / prix ---- */
+.prize-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.prize-row:last-child { border-bottom: none; }
+.prize-row .ico { font-size: 15px; width: 20px; text-align: center; flex: none; }
+.prize-row .desc { display: block; font-weight: 400; font-size: 10.5px; color: var(--n600); margin-top: 1px; }
+.prize-row .v {
+  margin-left: auto;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--primary);
+  white-space: nowrap;
 }
 
 /* Avatar gradients */
@@ -978,6 +1014,7 @@ img.av { object-fit: cover; display: block; }
   overflow-wrap: anywhere;
   line-height: 1.15;
 }
+.scoreboard-flag { font-size: 26px; line-height: 1; }
 .scoreboard .sc { font-family: var(--display); font-weight: 800; font-size: 38px; }
 .scoreboard .sc small { display: block; font-size: 9px; font-weight: 600; color: rgba(255,255,255,.5); letter-spacing: .05em; }
 
@@ -989,7 +1026,7 @@ img.av { object-fit: cover; display: block; }
 .combar span { min-width: 0; overflow: hidden; white-space: nowrap; }
 .combar .a { background: var(--primary); display: flex; align-items: center; justify-content: center; }
 .combar .b { background: var(--n400); display: flex; align-items: center; justify-content: center; }
-.combar .c { background: #7A756C; display: flex; align-items: center; justify-content: center; }
+.combar .c { background: var(--n900); display: flex; align-items: center; justify-content: center; }
 .com-legend { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; color: var(--n600); margin-top: 5px; font-weight: 600; }
 .com-legend span { min-width: 0; overflow-wrap: anywhere; }
 
@@ -1026,7 +1063,7 @@ img.av { object-fit: cover; display: block; }
 .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .metric { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--sh); padding: 12px; }
 .metric .big { font-family: var(--display); font-weight: 800; font-size: 30px; line-height: .95; color: var(--primary); }
-.metric .cap { font-size: 10.5px; color: var(--n600); margin-top: 3px; line-height: 1.2; }
+.metric .cap { font-size: 11.5px; color: var(--n600); margin-top: 3px; line-height: 1.25; }
 
 .cmpbar { display: flex; height: 30px; border-radius: 8px; overflow: hidden; font-family: var(--display); font-weight: 800; font-size: 13px; }
 .cmpbar .me { background: var(--primary); color: #fff; display: flex; align-items: center; padding: 0 10px; }
@@ -1124,16 +1161,64 @@ img.av { object-fit: cover; display: block; }
 .urgency .sub { font-size: 12px; opacity: .9; margin-bottom: 12px; }
 .countdown { font-family: var(--sketch); font-size: 22px; font-weight: 700; }
 
+/* ---- "Tout est à jour" + prochain match ---- */
+.all-good {
+  background: #F0FDF4;
+  border-color: #BBF7D0;
+}
+.all-good .next-match {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #BBF7D0;
+}
+.all-good .nm-line {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-weight: 800;
+  font-size: 15px;
+  margin: 3px 0 2px;
+}
+.all-good .countdown { font-size: 16px; color: var(--primary); }
+
+/* ---- Carte récap d'hier ---- */
+.yesterday-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.yesterday-card .y-pts {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 26px;
+  color: var(--primary);
+  line-height: 1;
+  margin-top: 2px;
+}
+
+/* ---- Ligne rival (mini classement) ---- */
+.rival-line {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--n600);
+}
+.rival-line b { color: var(--primary); }
+
 /* ---- Today's matches list ---- */
 .match-list-item {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
+a.match-list-item.linked {
+  color: inherit;
+  text-decoration: none;
+}
+a.match-list-item.linked:hover { background: var(--n50); }
 .match-list-item:last-child { border-bottom: none; }
 .match-list-item .info { flex: 1; min-width: 0; }
-.match-list-item .info .name { font-weight: 700; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.match-list-item .info .sub { font-size: 10px; color: var(--n600); }
+.match-list-item .info .name { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.match-list-item .info .sub { font-size: 11.5px; color: var(--n600); }
 .match-list-item .right { text-align: right; flex: none; }
 .match-list-item .score { font-weight: 700; font-size: 14px; }
 .match-list-item .pts { font-size: 10px; font-weight: 700; color: var(--success); }
@@ -1349,6 +1434,8 @@ img.av { object-fit: cover; display: block; }
 hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 
 /* ---- Responsive (desktop) ---- */
+.top-nav { display: none; }
+
 @media (min-width: 768px) {
   .page-wrap {
     padding-bottom: 0;
@@ -1388,6 +1475,23 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
   .top-nav .sp { margin-left: auto; }
   .kpis { grid-template-columns: repeat(2, 1fr); }
   .prediction-card { scroll-margin-top: 138px; }
+
+  /* Pronos en deux colonnes sur desktop, bandeaux et séparateurs pleine largeur */
+  .predictions-page {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+  }
+  .predictions-page > .banner,
+  .predictions-page > .prono-progress,
+  .predictions-page > .daybar { grid-column: 1 / -1; }
+}
+
+/* Table du détail match: masquer la colonne issue sur très petit écran
+   (déductible du score prédit) */
+@media (max-width: 440px) {
+  .tbl .col-outcome { display: none; }
 }
 
 @media (max-width: 520px) {

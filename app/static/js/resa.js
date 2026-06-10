@@ -8,6 +8,9 @@ function initPredictionScores() {
     var token = document.body.dataset.token;
     var score1 = card.querySelector('.score-pick[data-side="1"]');
     var score2 = card.querySelector('.score-pick[data-side="2"]');
+    // Carte verrouillée ou pronos pas encore ouverts: rien d'interactif,
+    // le rendu serveur fait foi.
+    if (score1 && score1.disabled) return;
     var outcome = card.querySelector('[data-outcome]');
     var qualifierRow = card.querySelector('.qualifier-row');
     var qualifierBtns = card.querySelectorAll('.qualifier-btn');
@@ -328,22 +331,28 @@ function initStepper(id, min, max) {
   if (btnP) btnP.addEventListener('click', function() { setVal(getVal() + 1); });
 }
 
-/* ---- Countdown timer ---- */
+/* ---- Countdown timers ---- */
 function initCountdown() {
-  var el = document.querySelector('[data-countdown]');
-  if (!el) return;
-  var target = parseInt(el.dataset.countdown);
-  function update() {
-    var diff = target - Math.floor(Date.now() / 1000);
-    if (diff <= 0) { el.textContent = 'Commencé !'; return; }
-    var h = Math.floor(diff / 3600);
-    var m = Math.floor((diff % 3600) / 60);
-    var s = diff % 60;
-    el.textContent = (h > 0 ? h + 'h ' : '') + pad(m) + 'min ' + pad(s) + 's';
-    setTimeout(update, 1000);
-  }
   function pad(n) { return n < 10 ? '0' + n : String(n); }
-  update();
+  document.querySelectorAll('[data-countdown]').forEach(function(el) {
+    var target = parseInt(el.dataset.countdown);
+    function update() {
+      var diff = target - Math.floor(Date.now() / 1000);
+      if (diff <= 0) { el.textContent = 'Commencé !'; return; }
+      var d = Math.floor(diff / 86400);
+      var h = Math.floor((diff % 86400) / 3600);
+      var m = Math.floor((diff % 3600) / 60);
+      var s = diff % 60;
+      if (d > 0) {
+        el.textContent = d + 'j ' + h + 'h ' + pad(m) + 'min';
+        setTimeout(update, 30000);
+      } else {
+        el.textContent = (h > 0 ? h + 'h ' : '') + pad(m) + 'min ' + pad(s) + 's';
+        setTimeout(update, 1000);
+      }
+    }
+    update();
+  });
 }
 
 /* ---- Local time display ---- */
@@ -464,7 +473,7 @@ function initWinnerFinalistGuard() {
     form.addEventListener('submit', function(e) {
       if (conflict()) {
         showError(true);
-        alert("Le champion et l'autre finaliste ne peuvent pas être identiques.");
+        if (errorBox) errorBox.scrollIntoView({ block: 'center', behavior: 'smooth' });
         e.preventDefault();
       }
     });
@@ -769,6 +778,110 @@ function initPhaseFilter() {
   });
 }
 
+/* ---- Notifications push (plan hybride: push si possible, sinon email) ---- */
+function initPush() {
+  var cards = document.querySelectorAll('[data-push-card]');
+  if (!cards.length) return;
+  var token = document.body.dataset.token;
+  if (!token || !('serviceWorker' in navigator)) return;
+
+  function urlBase64ToUint8Array(base64String) {
+    var padding = '='.repeat((4 - base64String.length % 4) % 4);
+    var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    var raw = window.atob(base64);
+    var output = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; ++i) output[i] = raw.charCodeAt(i);
+    return output;
+  }
+
+  var standalone = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  var supported = 'PushManager' in window && 'Notification' in window;
+
+  fetch('/api/push/config?token=' + encodeURIComponent(token))
+    .then(function(r) { return r.json(); })
+    .then(function(cfg) {
+      if (!cfg.enabled) return;
+      navigator.serviceWorker.register('/sw.js').then(function(reg) {
+        cards.forEach(function(card) { setupCard(card, reg, cfg); });
+      });
+    })
+    .catch(function() {});
+
+  function setupCard(card, reg, cfg) {
+    var statusEl = card.querySelector('[data-push-status]');
+    var toggleBtn = card.querySelector('[data-push-toggle]');
+    var iosHelp = card.querySelector('[data-push-ios-help]');
+    var dismissBtn = card.querySelector('[data-push-dismiss]');
+    var isPromo = card.hasAttribute('data-push-promo');
+
+    if (isPromo && localStorage.getItem('pushPromoDismissed') === '1') return;
+    if (dismissBtn) {
+      dismissBtn.addEventListener('click', function() {
+        localStorage.setItem('pushPromoDismissed', '1');
+        card.style.display = 'none';
+      });
+    }
+
+    if (!supported) {
+      // iPhone hors app installée: guider vers l'installation.
+      if (isIOS && !standalone) {
+        card.style.display = '';
+        if (iosHelp) iosHelp.style.display = '';
+      }
+      return;
+    }
+
+    function render(sub) {
+      card.style.display = '';
+      if (isPromo && sub) { card.style.display = 'none'; return; }
+      if (toggleBtn) {
+        toggleBtn.style.display = '';
+        toggleBtn.textContent = sub ? 'Désactiver les notifications' : (isPromo ? 'Activer' : 'Activer les notifications');
+      }
+      if (statusEl && !isPromo) {
+        statusEl.textContent = sub
+          ? 'Notifications activées sur cet appareil ✓ — tu ne reçois plus les emails de rappel ici.'
+          : 'Reçois les rappels (matchs, bonus, récap) directement sur ton téléphone — sinon tu les reçois par email.';
+      }
+    }
+
+    reg.pushManager.getSubscription().then(function(sub) {
+      render(sub);
+      if (!toggleBtn) return;
+      toggleBtn.addEventListener('click', function() {
+        reg.pushManager.getSubscription().then(function(current) {
+          if (current) {
+            current.unsubscribe().then(function() {
+              fetch('/api/push/unsubscribe?token=' + encodeURIComponent(token), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ endpoint: current.endpoint })
+              });
+              render(null);
+            });
+            return;
+          }
+          Notification.requestPermission().then(function(permission) {
+            if (permission !== 'granted') return;
+            reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(cfg.publicKey)
+            }).then(function(sub) {
+              fetch('/api/push/subscribe?token=' + encodeURIComponent(token), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(sub.toJSON())
+              }).then(function() { render(sub); });
+            }).catch(function() {});
+          });
+        });
+      });
+    });
+  }
+}
+
 /* ---- Init all on DOM ready ---- */
 document.addEventListener('DOMContentLoaded', function() {
   initLocalTimes();
@@ -789,4 +902,5 @@ document.addEventListener('DOMContentLoaded', function() {
   initWinnerFinalistGuard();
   initScorerCombos();
   initBonusForms();
+  initPush();
 });

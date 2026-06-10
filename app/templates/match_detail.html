@@ -16,6 +16,7 @@
     <div class="ph">{{ match_phase_label }} · <span data-local-utc="{{ match|match_utc_iso }}">{{ match|match_datetime }}</span></div>
     <div class="grid">
       <div class="t">
+        <span class="scoreboard-flag">{{ match.team1_name|flag }}</span>
         <span class="scoreboard-team">{{ match.team1_name }}</span>
       </div>
       <div class="sc">
@@ -29,6 +30,7 @@
         {% endif %}
       </div>
       <div class="t">
+        <span class="scoreboard-flag">{{ match.team2_name|flag }}</span>
         <span class="scoreboard-team">{{ match.team2_name }}</span>
       </div>
     </div>
@@ -79,11 +81,11 @@
       <span class="c" style="width:{{ t2 }}%">{{ t2 }}%</span>
     </div>
     <div class="com-legend">
-      <span>{{ match.team1_name }} · {{ dist.get('team1', {}).get('cnt', 0) }}</span>
+      <span>{{ match.team1_name|team }} · {{ dist.get('team1', {}).get('cnt', 0) }}</span>
       {% if match.phase == 'group' %}
       <span>Nul · {{ dist.get('draw', {}).get('cnt', 0) }}</span>
       {% endif %}
-      <span>{{ match.team2_name }} · {{ dist.get('team2', {}).get('cnt', 0) }}</span>
+      <span>{{ match.team2_name|team }} · {{ dist.get('team2', {}).get('cnt', 0) }}</span>
     </div>
     <div class="muted" style="font-size:11px;margin-top:5px;">{{ dist_total }} pronostic{{ 's' if dist_total != 1 else '' }} enregistré{{ 's' if dist_total != 1 else '' }}</div>
   </div>
@@ -94,7 +96,7 @@
       <thead>
         <tr>
           <th>Joueur</th>
-          <th>Résultat prédit</th>
+          <th class="col-outcome">Résultat prédit</th>
           <th>Score prédit</th>
           <th style="text-align:right;">Pts</th>
         </tr>
@@ -103,7 +105,7 @@
         {% for pr in all_preds %}
         <tr>
           <td><a class="table-link" href="/p/{{ token }}/profil/{{ pr.participant_id }}">{{ pr.name }}</a></td>
-          <td>
+          <td class="col-outcome">
             {% if match.phase != 'group' %}
               {% if pr.exact_score_team1 is not none and pr.exact_score_team1 > pr.exact_score_team2 %}{{ match.team1_name }}{% elif pr.exact_score_team2 is not none and pr.exact_score_team2 > pr.exact_score_team1 %}{{ match.team2_name }}{% elif pr.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% elif pr.qualifier_prediction == 'team2' %}{{ match.team2_name }}{% else %}<span class="muted">—</span>{% endif %}
             {% elif pr.prediction == 'team1' %}{{ match.team1_name }}{% elif pr.prediction == 'team2' %}{{ match.team2_name }}{% else %}<span class="muted">Nul</span>{% endif %}

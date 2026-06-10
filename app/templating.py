@@ -16,6 +16,7 @@ def _static_version() -> str:
     except ValueError:
         return "1"
 
+from app.flags import team_flag, team_label
 from app.timeutils import (
     format_local_datetime,
     format_local_input,
@@ -54,6 +55,8 @@ def create_templates() -> Jinja2Templates:
     templates.env.filters["match_datetime"] = format_match_local_datetime
     templates.env.filters["utc_iso"] = format_utc_iso_z
     templates.env.filters["match_utc_iso"] = format_match_utc_iso_z
+    templates.env.filters["flag"] = team_flag
+    templates.env.filters["team"] = team_label
     templates.env.globals["display_tz_label"] = "heure locale"
     templates.env.globals["static_version"] = _static_version()
     return templates
