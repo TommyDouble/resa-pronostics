@@ -16,6 +16,7 @@ from app.mail import (
     send_match_reminder as send_match_reminder_email,
     send_pre_tournament_reminder,
 )
+from app.nameutils import split_full_name
 from app.players import OUTSIDERS, TEAMS_48, get_scorer_options, is_valid_scorer
 from app.pre_tournament import (
     DEFAULT_PRE_TOURNAMENT_QUESTIONS,
@@ -111,13 +112,6 @@ def _flash(request: Request, msg: str, kind: str = "ok"):
 
 def _get_flashes(request: Request):
     return request.session.pop("flashes", [])
-
-
-def _split_name(name: str) -> tuple[str, str]:
-    parts = name.strip().split()
-    if not parts:
-        return "", ""
-    return parts[0], " ".join(parts[1:])
 
 
 def _normalize_bonus_options(answer_type: str, options_text: str):
@@ -253,9 +247,9 @@ async def participants_list(request: Request):
 @router.post("/participants/add")
 async def add_participant(request: Request, name: str = Form(...), email: str = Form(...)):
     await require_admin(request)
-    name = name.strip()
+    first_name, last_name = split_full_name(name)
+    name = f"{first_name} {last_name}".strip()
     email = email.strip().lower()
-    first_name, last_name = _split_name(name)
     token = str(uuid.uuid4())
     participant = {"name": name, "email": email, "token": token}
     async with get_db() as db:
@@ -348,7 +342,8 @@ async def import_csv(request: Request, csv_file: UploadFile = File(...)):
     errors = []
     valid = []
     for i, row in enumerate(rows, 1):
-        name = row.get("nom", row.get("name", "")).strip()
+        first_name, last_name = split_full_name(row.get("nom", row.get("name", "")))
+        name = f"{first_name} {last_name}".strip()
         email = row.get("email", "").strip().lower()
         if not name or not email or "@" not in email:
             errors.append(f"Ligne {i}: nom ou email invalide")
@@ -362,7 +357,7 @@ async def import_csv(request: Request, csv_file: UploadFile = File(...)):
     imported_participants = []
     async with get_db() as db:
         for name, email in valid:
-            first_name, last_name = _split_name(name)
+            first_name, last_name = split_full_name(name)
             token = str(uuid.uuid4())
             try:
                 cursor = await db.execute(
@@ -1106,6 +1101,7 @@ async def send_match_reminder(request: Request, match_id: int = Form(...)):
 async def send_push_test(
     request: Request,
     participant_ids: list[int] = Form(default=[]),
+    target_mode: str = Form(default="selected"),
     title: str = Form(default=""),
     body: str = Form(default=""),
     destination: str = Form(default="home"),
@@ -1121,24 +1117,33 @@ async def send_push_test(
         _flash(request, "Titre et message sont obligatoires pour le test push.", "err")
         return RedirectResponse("/admin/communications", status_code=303)
 
+    target_mode = "all" if target_mode == "all" else "selected"
     selected_ids = list(dict.fromkeys(pid for pid in participant_ids if pid > 0))
-    if not selected_ids:
+    if target_mode == "selected" and not selected_ids:
         _flash(request, "Sélectionne au moins un participant.", "err")
         return RedirectResponse("/admin/communications", status_code=303)
 
     if destination not in PUSH_TEST_DESTINATIONS:
         destination = "home"
 
-    placeholders = ",".join("?" for _ in selected_ids)
     async with get_db() as db:
-        rows = await db.execute(
-            f"""SELECT id, name, token
-                FROM participants
-                WHERE is_confirmed=1 AND is_admin=0
-                  AND id IN ({placeholders})
-                ORDER BY name COLLATE NOCASE""",
-            selected_ids,
-        )
+        if target_mode == "all":
+            rows = await db.execute(
+                """SELECT id, name, token
+                   FROM participants
+                   WHERE is_confirmed=1 AND is_admin=0
+                   ORDER BY name COLLATE NOCASE"""
+            )
+        else:
+            placeholders = ",".join("?" for _ in selected_ids)
+            rows = await db.execute(
+                f"""SELECT id, name, token
+                    FROM participants
+                    WHERE is_confirmed=1 AND is_admin=0
+                      AND id IN ({placeholders})
+                    ORDER BY name COLLATE NOCASE""",
+                selected_ids,
+            )
         participants = [dict(r) for r in await rows.fetchall()]
 
         if not participants:

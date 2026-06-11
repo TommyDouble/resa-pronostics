@@ -1036,6 +1036,17 @@ img.av { object-fit: cover; display: block; }
 .tbl td { padding: 8px; border-bottom: 1px solid var(--line); }
 .tbl td.s { font-family: var(--display); font-weight: 800; }
 .tbl tr:last-child td { border-bottom: none; }
+.tbl th[data-sort] { cursor: pointer; user-select: none; color: var(--n600); }
+.tbl th[data-sort]::after { content: "↕"; margin-left: 4px; color: var(--n300); font-size: 9px; }
+.tbl th.sort-asc::after { content: "↑"; color: var(--primary); }
+.tbl th.sort-desc::after { content: "↓"; color: var(--primary); }
+.admin-table-tools {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.card.p0 > .admin-table-tools { padding: 10px 12px 0; }
+.admin-table-tools .input-search { max-width: 320px; }
+.admin-table-count { margin-left: auto; font-size: 11px; color: var(--n500); }
 .table-link {
   color: var(--n900);
   font-weight: 800;

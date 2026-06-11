@@ -40,22 +40,22 @@
 <div class="card">
   <div class="lbl" style="margin-bottom:10px;">5 derniers résultats encodés</div>
   {% if last_encoded %}
-  <table class="tbl">
+  <table class="tbl" data-admin-table data-admin-search-placeholder="⌕ Filtrer résultats...">
     <thead>
       <tr>
-        <th>#</th>
-        <th>Match</th>
-        <th>Score</th>
-        <th>Encodé</th>
+        <th data-sort="number">#</th>
+        <th data-sort="text">Match</th>
+        <th data-sort="text">Score</th>
+        <th data-sort="date">Encodé</th>
       </tr>
     </thead>
     <tbody>
       {% for m in last_encoded %}
       <tr>
-        <td>{{ m.match_number }}</td>
+        <td data-sort-value="{{ m.match_number }}">{{ m.match_number }}</td>
         <td>{{ m.team1_name }} – {{ m.team2_name }}</td>
         <td style="color:var(--primary);font-weight:700;font-family:var(--display);">{{ m.score_team1 }}–{{ m.score_team2 }}</td>
-        <td class="muted" style="font-size:11px;">
+        <td class="muted" style="font-size:11px;" data-sort-value="{{ m.created_at|utc_iso if m.created_at else '' }}">
           {% if m.created_at %}<span data-local-utc="{{ m.created_at|utc_iso }}">{{ m.created_at|local_datetime }}</span>{% else %}—{% endif %}
         </td>
       </tr>

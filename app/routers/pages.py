@@ -15,6 +15,7 @@ from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import get_db
 from app.flags import team_flag
 from app.mail import send_invitation
+from app.nameutils import build_full_name
 from app.players import (
     OUTSIDERS,
     TEAMS_48,
@@ -116,13 +117,6 @@ async def _pt_status(db, participant_id: int) -> dict:
         "open": _now_utc() < deadline,
         "deadline": deadline,
     }
-
-
-def _split_name(name: str) -> tuple[str, str]:
-    parts = name.strip().split()
-    if not parts:
-        return "", ""
-    return parts[0], " ".join(parts[1:])
 
 
 def _display_name(participant: dict) -> str:
@@ -401,8 +395,7 @@ async def register_post(
     password: str = Form(default=""),
     password_confirm: str = Form(default=""),
 ):
-    first_name = first_name.strip()[:80]
-    last_name = last_name.strip()[:80]
+    first_name, last_name, name = build_full_name(first_name[:80], last_name[:80])
     email = email.strip().lower()
     department = department.strip()
 
@@ -424,7 +417,6 @@ async def register_post(
     if password != password_confirm:
         return register_error("Les deux mots de passe ne correspondent pas.")
 
-    name = f"{first_name} {last_name}"
     token = str(uuid.uuid4())
     async with get_db() as db:
         existing = await (await db.execute(
@@ -568,7 +560,7 @@ async def confirm_onboarding(request: Request, token: str,
                               first_name: str = Form(...), last_name: str = Form(...),
                               department: str = Form(default="")):
     p = await require_participant(token)
-    name = f"{first_name.strip()} {last_name.strip()}"
+    first_name, last_name, name = build_full_name(first_name[:80], last_name[:80], p["name"])
     department = department.strip()
     if department not in DEPARTMENTS:
         department = ""
@@ -578,7 +570,7 @@ async def confirm_onboarding(request: Request, token: str,
                SET name = ?, first_name = ?, last_name = ?, is_confirmed = 1,
                    department = COALESCE(NULLIF(?, ''), department)
                WHERE token = ?""",
-            (name, first_name.strip(), last_name.strip(), department, token)
+            (name, first_name, last_name, department, token)
         )
         await db.commit()
     return RedirectResponse(url=f"/p/{token}", status_code=303)
@@ -953,8 +945,7 @@ async def save_profile(
     delete_avatar: str = Form(default="0"),
 ):
     p = dict(await require_participant(token))
-    first_name = first_name.strip()[:80]
-    last_name = last_name.strip()[:80]
+    first_name, last_name, full_name = build_full_name(first_name[:80], last_name[:80], p["name"])
     nickname = nickname.strip()[:40]
     favorite_team = favorite_team.strip()[:80]
     department = department.strip()
@@ -963,7 +954,6 @@ async def save_profile(
     bio = bio.strip()[:240]
     if profile_visibility not in ("public", "limited"):
         profile_visibility = "public"
-    full_name = f"{first_name} {last_name}".strip() or p["name"]
 
     password_msg = ""
     password_hash = None

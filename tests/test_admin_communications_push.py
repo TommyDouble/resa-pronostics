@@ -61,8 +61,9 @@ def test_communications_shows_manual_push_card(admin_client, participant, monkey
     assert "Notification push de test" in response.text
     assert f"{participant['token']}@test.local" in response.text
     assert "1 appareil" in response.text
+    assert 'name="target_mode" value="all"' in response.text
     assert 'type="checkbox" name="participant_ids"' in response.text
-    assert "Envoyer le test push" in response.text
+    assert "Envoyer la notification push" in response.text
 
 
 def test_push_test_refuses_without_vapid(admin_client, participant, monkeypatch):
@@ -142,6 +143,47 @@ def test_push_test_filters_targets_and_uses_personal_url(admin_client, participa
         "body": "Message de test",
         "url": f"{settings.BASE_URL.rstrip('/')}/p/{participant['token']}/pronos",
     }]
+
+
+def test_push_test_all_targets_confirmed_non_admins_without_notification_log(
+    admin_client, participant, monkeypatch
+):
+    confirmed = create_participant(name="Global Push")
+    create_participant(name="Admin Push", is_admin=1)
+    create_participant(name="Pending Push", confirmed=0)
+    before_logs = notification_log_count()
+    calls = []
+
+    async def fake_send(db, participant_id, *, title, body, url):
+        calls.append({"participant_id": participant_id, "title": title, "body": body, "url": url})
+        return True
+
+    monkeypatch.setattr(admin_routes, "push_enabled", lambda: True)
+    monkeypatch.setattr(admin_routes, "send_push_to_participant", fake_send)
+
+    response = admin_client.post(
+        "/admin/communications/send-push-test",
+        data={
+            "target_mode": "all",
+            "title": "Bon tournoi",
+            "body": "Les notifications globales fonctionnent.",
+            "destination": "classement",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "notification(s) push envoyée(s)" in response.text
+    call_ids = {call["participant_id"] for call in calls}
+    assert participant["id"] in call_ids
+    assert confirmed["id"] in call_ids
+    assert all(call["title"] == "Bon tournoi" for call in calls)
+    assert all(call["body"] == "Les notifications globales fonctionnent." for call in calls)
+    assert {
+        f"{settings.BASE_URL.rstrip('/')}/p/{participant['token']}/classement",
+        f"{settings.BASE_URL.rstrip('/')}/p/{confirmed['token']}/classement",
+    }.issubset({call["url"] for call in calls})
+    assert notification_log_count() == before_logs
 
 
 def test_push_test_reports_partial_delivery_without_notification_log(

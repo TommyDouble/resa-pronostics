@@ -37,16 +37,16 @@
 
 {% if view == 'matches' %}
 <div class="card p0">
-  <table class="tbl">
+  <table class="tbl" data-admin-table>
     <thead>
       <tr>
-        <th>Participant</th>
-        <th>Match</th>
-        <th>Pronostic</th>
-        <th>Score exact</th>
-        <th>Résultat</th>
-        <th>Pts</th>
-        <th>Envoyé</th>
+        <th data-sort="text">Participant</th>
+        <th data-sort="number">Match</th>
+        <th data-sort="text">Pronostic</th>
+        <th data-sort="text">Score exact</th>
+        <th data-sort="text">Résultat</th>
+        <th data-sort="number">Pts</th>
+        <th data-sort="date">Envoyé</th>
       </tr>
     </thead>
     <tbody>
@@ -56,7 +56,7 @@
           <b>{{ r.participant_name }}</b>
           {% if r.full_name != r.participant_name %}<div class="muted" style="font-size:10px;">{{ r.full_name }}</div>{% endif %}
         </td>
-        <td>#{{ r.match_number }} · {{ r.team1_name }} – {{ r.team2_name }}</td>
+        <td data-sort-value="{{ r.match_number }}">#{{ r.match_number }} · {{ r.team1_name }} – {{ r.team2_name }}</td>
         <td>
           {% if r.prediction == 'team1' %}{{ r.team1_name }}{% elif r.prediction == 'team2' %}{{ r.team2_name }}{% else %}Nul{% endif %}
         </td>
@@ -73,11 +73,11 @@
           {% endif %}
         </td>
         <td>{% if r.result %}{{ r.score_team1 }}–{{ r.score_team2 }}{% else %}<span class="muted">À venir</span>{% endif %}</td>
-        <td class="s">{{ r.points }}</td>
-        <td class="muted" style="font-size:10px;" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}</td>
+        <td class="s" data-sort-value="{{ r.points }}">{{ r.points }}</td>
+        <td class="muted" style="font-size:10px;" data-sort-value="{{ r.submitted_at|utc_iso }}" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--n400);">Aucun pronostic match.</td></tr>
+      <tr data-empty-row><td colspan="7" style="text-align:center;padding:24px;color:var(--n400);">Aucun pronostic match.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -86,16 +86,16 @@
 
 {% if view == 'pre_tournament' %}
 <div class="card p0">
-  <table class="tbl">
+  <table class="tbl" data-admin-table>
     <thead>
       <tr>
-        <th>Participant</th>
-        <th>{{ pt_questions.winner.label }}</th>
-        <th>{{ pt_questions.finalist.label }}</th>
-        <th>{{ pt_questions.top_scorer.label }}</th>
-        <th>{{ pt_questions.revelation.label }}</th>
-        <th>{{ pt_questions.total_goals.label }}</th>
-        <th>Statut</th>
+        <th data-sort="text">Participant</th>
+        <th data-sort="text">{{ pt_questions.winner.label }}</th>
+        <th data-sort="text">{{ pt_questions.finalist.label }}</th>
+        <th data-sort="text">{{ pt_questions.top_scorer.label }}</th>
+        <th data-sort="text">{{ pt_questions.revelation.label }}</th>
+        <th data-sort="number">{{ pt_questions.total_goals.label }}</th>
+        <th data-sort="number">Statut</th>
       </tr>
     </thead>
     <tbody>
@@ -109,8 +109,8 @@
         <td>{{ r.finalist or '—' }}</td>
         <td>{{ r.top_scorer or '—' }}</td>
         <td>{{ r.revelation or '—' }}</td>
-        <td>{{ r.total_goals or '—' }}</td>
-        <td>
+        <td data-sort-value="{{ r.total_goals or 0 }}">{{ r.total_goals or '—' }}</td>
+        <td data-sort-value="{{ 2 if r.submitted else (1 if r.winner or r.finalist or r.top_scorer or r.revelation or r.total_goals else 0) }}">
           {% if r.submitted %}
           <span class="chip ok">Soumis</span>
           {% if r.submitted_at %}
@@ -124,7 +124,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--n400);">Aucune réponse pré-tournoi.</td></tr>
+      <tr data-empty-row><td colspan="7" style="text-align:center;padding:24px;color:var(--n400);">Aucune réponse pré-tournoi.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -133,15 +133,15 @@
 
 {% if view == 'bonus' %}
 <div class="card p0">
-  <table class="tbl">
+  <table class="tbl" data-admin-table>
     <thead>
       <tr>
-        <th>Participant</th>
-        <th>Question</th>
-        <th>Réponse</th>
-        <th>Correct</th>
-        <th>Pts</th>
-        <th>Envoyé</th>
+        <th data-sort="text">Participant</th>
+        <th data-sort="text">Question</th>
+        <th data-sort="text">Réponse</th>
+        <th data-sort="text">Correct</th>
+        <th data-sort="number">Pts</th>
+        <th data-sort="date">Envoyé</th>
       </tr>
     </thead>
     <tbody>
@@ -154,11 +154,11 @@
         <td>{{ r.question_text }}<div class="muted" style="font-size:10px;">{{ phase_labels.get(r.phase, r.phase) }} · {{ r.points_value }} pts</div></td>
         <td>{{ r.answer }}</td>
         <td>{{ r.correct_answer or '—' }}</td>
-        <td class="s">{{ r.points }}</td>
-        <td class="muted" style="font-size:10px;" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}</td>
+        <td class="s" data-sort-value="{{ r.points }}">{{ r.points }}</td>
+        <td class="muted" style="font-size:10px;" data-sort-value="{{ r.submitted_at|utc_iso }}" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--n400);">Aucune réponse bonus.</td></tr>
+      <tr data-empty-row><td colspan="6" style="text-align:center;padding:24px;color:var(--n400);">Aucune réponse bonus.</td></tr>
       {% endfor %}
     </tbody>
   </table>

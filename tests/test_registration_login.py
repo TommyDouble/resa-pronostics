@@ -33,6 +33,16 @@ def get_participant(email):
     return run(_get())
 
 
+def get_participant_by_id(participant_id):
+    async def _get():
+        async with get_db() as db:
+            row = await db.execute("SELECT * FROM participants WHERE id=?", (participant_id,))
+            result = await row.fetchone()
+            return dict(result) if result else None
+
+    return run(_get())
+
+
 def unique_email():
     return f"{uuid.uuid4().hex[:10]}@test.local"
 
@@ -78,6 +88,20 @@ class TestRegistration:
         assert p["department"] == DEPARTMENTS[0]
         assert p["first_name"] == "Marie"
         assert p["password_hash"] and p["password_hash"] != "motdepasse8"
+
+    def test_register_normalizes_name_casing(self, client):
+        email = unique_email()
+        response = client.post(
+            "/rejoindre",
+            data=register_payload(email, first_name=" anne-sophie ", last_name="DUPONT"),
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        p = get_participant(email)
+        assert p["first_name"] == "Anne-Sophie"
+        assert p["last_name"] == "Dupont"
+        assert p["name"] == "Anne-Sophie Dupont"
 
     def test_register_requires_department(self, client):
         email = unique_email()
@@ -169,6 +193,38 @@ class TestLogin:
 
 
 class TestProfilePassword:
+    def test_onboarding_normalizes_name_casing(self, client):
+        token = str(uuid.uuid4())
+        email = unique_email()
+
+        async def _create():
+            async with get_db() as db:
+                cursor = await db.execute(
+                    """INSERT INTO participants (name, first_name, last_name, email, token)
+                       VALUES (?,?,?,?,?)""",
+                    ("pending user", "", "", email, token),
+                )
+                await db.commit()
+                return cursor.lastrowid
+
+        participant_id = run(_create())
+
+        response = client.post(
+            f"/p/{token}/confirm",
+            data={
+                "first_name": "jean pierre",
+                "last_name": "d'angelo",
+                "department": DEPARTMENTS[1],
+            },
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        p = get_participant_by_id(participant_id)
+        assert p["first_name"] == "Jean Pierre"
+        assert p["last_name"] == "D'Angelo"
+        assert p["name"] == "Jean Pierre D'Angelo"
+
     def test_profile_password_form_exposes_username(self, client, participant):
         response = client.get(f"/p/{participant['token']}/profil/edit")
 
@@ -206,6 +262,24 @@ class TestProfilePassword:
         )
         assert login.status_code == 303
         assert login.headers["location"] == f"/p/{token}"
+
+    def test_profile_edit_normalizes_name_casing(self, client, participant):
+        token = participant["token"]
+        response = client.post(
+            f"/p/{token}/profil/edit",
+            data={
+                "first_name": "anne sophie",
+                "last_name": "VAN DEN BROECK",
+                "department": DEPARTMENTS[2],
+            },
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        p = get_participant_by_id(participant["id"])
+        assert p["first_name"] == "Anne Sophie"
+        assert p["last_name"] == "Van Den Broeck"
+        assert p["name"] == "Anne Sophie Van Den Broeck"
 
     def test_password_mismatch_keeps_old_login(self, client, participant):
         token = participant["token"]

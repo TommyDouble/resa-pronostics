@@ -35,30 +35,30 @@
 </div>
 
 <div class="card p0">
-  <table class="tbl">
+  <table class="tbl" data-admin-table>
     <thead>
       <tr>
-        <th>#</th>
-        <th>Match</th>
-        <th>Date</th>
-        <th>Top ★</th>
-        <th>Statut</th>
+        <th data-sort="number">#</th>
+        <th data-sort="text">Match</th>
+        <th data-sort="date">Date</th>
+        <th data-sort="number">Top ★</th>
+        <th data-sort="number">Statut</th>
       </tr>
     </thead>
     <tbody>
       {% for m in matches %}
       <tr>
-        <td style="color:var(--n600);">{{ m.match_number }}</td>
+        <td style="color:var(--n600);" data-sort-value="{{ m.match_number }}">{{ m.match_number }}</td>
         <td style="font-weight:600;">{{ m.team1_name }} – {{ m.team2_name }}</td>
-        <td class="muted" style="font-size:12px;" data-local-utc="{{ m|match_utc_iso }}">{{ m|match_datetime }}</td>
-        <td>
+        <td class="muted" style="font-size:12px;" data-sort-value="{{ m|match_utc_iso }}" data-local-utc="{{ m|match_utc_iso }}">{{ m|match_datetime }}</td>
+        <td data-sort-value="{{ 1 if m.is_top_match else 0 }}">
           <button class="chip {{ 'acc' if m.is_top_match else 'gr' }}"
                   data-toggle-top="{{ m.id }}"
                   style="cursor:pointer;border:none;background:none;padding:4px 9px;">
             {{ '★ ×2' if m.is_top_match else '○ ×1' }}
           </button>
         </td>
-        <td>
+        <td data-sort-value="{{ 2 if m.result is not none else (0 if m.team1_name.startswith('Équipe') or m.team2_name.startswith('Équipe') else 1) }}">
           {% if m.result is not none %}
             <span class="chip lock">🔒 joué {{ m.score_team1 }}–{{ m.score_team2 }}</span>
             {% if m.phase != 'group' and m.qualifier_winner %}
@@ -74,7 +74,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--n400);">Aucun match.</td></tr>
+      <tr data-empty-row><td colspan="5" style="text-align:center;padding:24px;color:var(--n400);">Aucun match.</td></tr>
       {% endfor %}
     </tbody>
   </table>

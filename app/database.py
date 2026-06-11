@@ -2,10 +2,31 @@ import aiosqlite
 import os
 from contextlib import asynccontextmanager
 from app.config import settings
+from app.nameutils import build_full_name, split_full_name
 from app.pre_tournament import ensure_pre_tournament_defaults
 from app.settings_store import ensure_default_settings
 
 DB_PATH = settings.DATABASE_URL.replace("./", "")
+
+
+async def _normalize_existing_participant_names(db):
+    rows = await db.execute("SELECT id, name, first_name, last_name FROM participants")
+    participants = await rows.fetchall()
+    for p in participants:
+        if p["first_name"] and p["last_name"]:
+            first_name, last_name, name = build_full_name(
+                p["first_name"], p["last_name"], p["name"] or ""
+            )
+        else:
+            first_name, last_name = split_full_name(p["name"] or "")
+            name = f"{first_name} {last_name}".strip()
+        if not name:
+            continue
+        if name != p["name"] or first_name != p["first_name"] or last_name != p["last_name"]:
+            await db.execute(
+                "UPDATE participants SET name=?, first_name=?, last_name=? WHERE id=?",
+                (name, first_name, last_name, p["id"]),
+            )
 
 
 @asynccontextmanager
@@ -273,6 +294,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
                WHERE submitted=0"""
         )
 
+        await _normalize_existing_participant_names(db)
         await ensure_pre_tournament_defaults(db)
         await ensure_default_settings(db)
         await db.commit()

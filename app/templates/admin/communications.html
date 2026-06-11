@@ -54,7 +54,7 @@
   </div>
   {% endif %}
 
-  <form method="post" action="/admin/communications/send-push-test" style="display:flex;flex-direction:column;gap:10px;">
+  <form method="post" action="/admin/communications/send-push-test" data-push-test-form style="display:flex;flex-direction:column;gap:10px;">
     <div class="grid2">
       <div>
         <div class="muted" style="font-size:11px;margin-bottom:5px;">Titre</div>
@@ -81,10 +81,19 @@
 
     <div>
       <div class="muted" style="font-size:11px;margin-bottom:5px;">Destinataires</div>
+      <label style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;font-size:13px;font-weight:700;cursor:pointer;">
+        <input type="checkbox" name="target_mode" value="all" data-push-target-all {% if not push_is_enabled or not push_participants %}disabled{% endif %}>
+        <span>
+          Envoyer à tous les participants confirmés
+          <span class="muted" style="display:block;font-size:11px;font-weight:400;margin-top:2px;">
+            Push uniquement, aucun email de secours.
+          </span>
+        </span>
+      </label>
       <div style="border:1.5px solid var(--n300);border-radius:var(--r-sm);background:#fff;max-height:260px;overflow:auto;">
         {% for p in push_participants %}
         <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);font-size:13px;cursor:pointer;">
-          <input type="checkbox" name="participant_ids" value="{{ p.id }}" {% if not push_is_enabled %}disabled{% endif %}>
+          <input type="checkbox" name="participant_ids" value="{{ p.id }}" data-push-recipient {% if not push_is_enabled %}disabled{% endif %}>
           <span style="display:block;min-width:0;">
             <span style="display:block;font-weight:700;color:var(--n900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ p.name }}</span>
             <span class="muted" style="display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
@@ -97,12 +106,12 @@
         {% endfor %}
       </div>
       <p class="muted helper-text">
-        Coche un ou plusieurs participants. Ce test n'envoie aucun email.
+        Coche un ou plusieurs participants, ou utilise l'envoi global ci-dessus. Ce test n'envoie aucun email.
       </p>
     </div>
 
     <div class="row2">
-      <button type="submit" class="btn sm" {% if not push_is_enabled or not push_participants %}disabled{% endif %}>Envoyer le test push</button>
+      <button type="submit" class="btn sm" {% if not push_is_enabled or not push_participants %}disabled{% endif %}>Envoyer la notification push</button>
     </div>
   </form>
 </div>

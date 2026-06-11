@@ -183,13 +183,13 @@
     {% set answers = answers_by_question.get(q.id, []) %}
     {% if answers %}
     <div class="card p0" style="box-shadow:none;">
-      <table class="tbl">
+      <table class="tbl" data-admin-table data-admin-search-placeholder="⌕ Filtrer réponses...">
         <thead>
           <tr>
-            <th>Participant</th>
-            <th>Réponse</th>
-            <th>Pts</th>
-            <th>Envoyé</th>
+            <th data-sort="text">Participant</th>
+            <th data-sort="text">Réponse</th>
+            <th data-sort="number">Pts</th>
+            <th data-sort="date">Envoyé</th>
           </tr>
         </thead>
         <tbody>
@@ -207,8 +207,8 @@
               <span class="chip lock" style="margin-left:6px;">0 pt</span>
               {% endif %}
             </td>
-            <td class="s">{{ a.points }}</td>
-            <td class="muted" style="font-size:10px;" data-local-utc="{{ a.submitted_at|utc_iso }}">{{ a.submitted_at|local_datetime }}</td>
+            <td class="s" data-sort-value="{{ a.points }}">{{ a.points }}</td>
+            <td class="muted" style="font-size:10px;" data-sort-value="{{ a.submitted_at|utc_iso }}" data-local-utc="{{ a.submitted_at|utc_iso }}">{{ a.submitted_at|local_datetime }}</td>
           </tr>
           {% endfor %}
         </tbody>

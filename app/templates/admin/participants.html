@@ -11,16 +11,16 @@
 </div>
 
 <div class="card p0">
-  <table class="tbl">
+  <table class="tbl" data-admin-table data-admin-search="participant-search">
     <thead>
       <tr>
-        <th>Nom</th>
-        <th>Email</th>
-        <th>Département</th>
-        <th>Statut</th>
-        <th>Payé</th>
-        <th>Pré-t.</th>
-        <th>≥1 prono</th>
+        <th data-sort="text">Nom</th>
+        <th data-sort="text">Email</th>
+        <th data-sort="text">Département</th>
+        <th data-sort="number">Statut</th>
+        <th data-sort="number">Payé</th>
+        <th data-sort="number">Pré-t.</th>
+        <th data-sort="number">≥1 prono</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -30,14 +30,14 @@
         <td style="font-weight:600;">{{ p.name }}</td>
         <td class="muted">{{ p.email }}</td>
         <td class="muted" style="font-size:11px;">{{ p.department or '—' }}</td>
-        <td>
+        <td data-sort-value="{{ 1 if p.is_confirmed else 0 }}">
           {% if p.is_confirmed %}
             <span class="chip ok">confirmé</span>
           {% else %}
             <span class="chip warn">invité</span>
           {% endif %}
         </td>
-        <td>
+        <td data-sort-value="{{ 1 if p.has_paid else 0 }}">
           <form method="post" action="/admin/participants/{{ p.id }}/toggle-paid" style="display:inline;">
             <button type="submit" class="chip {% if p.has_paid %}ok{% else %}gr{% endif %}"
                     style="cursor:pointer;border:none;background:none;padding:4px 9px;font-size:11px;">
@@ -45,8 +45,8 @@
             </button>
           </form>
         </td>
-        <td>{{ '✓' if p.pt_submitted else '—' }}</td>
-        <td>{{ '✓' if p.pred_count > 0 else '—' }}</td>
+        <td data-sort-value="{{ 1 if p.pt_submitted else 0 }}">{{ '✓' if p.pt_submitted else '—' }}</td>
+        <td data-sort-value="{{ p.pred_count }}">{{ '✓' if p.pred_count > 0 else '—' }}</td>
         <td>
           <button class="btn ghost sm" style="font-size:11px;padding:4px 8px;"
                   onclick="copyToken('{{ base_url }}p/{{ p.token }}')">⧉ Lien</button>
@@ -61,7 +61,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--n400);">Aucun participant.</td></tr>
+      <tr data-empty-row><td colspan="8" style="text-align:center;padding:24px;color:var(--n400);">Aucun participant.</td></tr>
       {% endfor %}
     </tbody>
   </table>
