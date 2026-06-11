@@ -61,6 +61,7 @@ def test_communications_shows_manual_push_card(admin_client, participant, monkey
     assert "Notification push de test" in response.text
     assert f"{participant['token']}@test.local" in response.text
     assert "1 appareil" in response.text
+    assert 'type="checkbox" name="participant_ids"' in response.text
     assert "Envoyer le test push" in response.text
 
 
