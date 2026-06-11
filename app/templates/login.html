@@ -18,11 +18,11 @@
     <form method="post" action="/connexion" style="display:flex;flex-direction:column;gap:12px;text-align:left;">
       <div>
         <div class="lbl" style="margin-bottom:6px;">Email</div>
-        <div class="field"><input type="email" name="email" placeholder="prenom@entreprise.com" value="{{ email }}" required autofocus autocomplete="email"></div>
+        <div class="field"><input id="login-email" type="email" name="email" placeholder="prenom@entreprise.com" value="{{ email }}" required autofocus autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false"></div>
       </div>
       <div>
         <div class="lbl" style="margin-bottom:6px;">Mot de passe</div>
-        <div class="field"><input type="password" name="password" placeholder="Ton mot de passe" required autocomplete="current-password"></div>
+        <div class="field"><input id="login-password" type="password" name="password" placeholder="Ton mot de passe" required autocomplete="current-password"></div>
       </div>
       <button class="btn full" type="submit" style="margin-top:4px;">Se connecter</button>
     </form>

@@ -110,14 +110,18 @@
         Crée un mot de passe pour pouvoir te connecter avec ton email depuis la page d'accueil — en plus de ton lien personnel.
         {% endif %}
       </p>
+      <input type="email" name="email_username" value="{{ participant.email }}"
+             autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false"
+             readonly tabindex="-1" aria-hidden="true"
+             style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;">
       <div class="grid2">
         <div>
           <div class="muted" style="font-size:11px;margin-bottom:5px;">{{ 'Nouveau mot de passe' if participant.password_hash else 'Mot de passe' }}</div>
-          <div class="field"><input type="password" name="new_password" placeholder="8 caractères minimum" minlength="8" autocomplete="new-password"></div>
+          <div class="field"><input id="profile-new-password" type="password" name="new_password" placeholder="8 caractères minimum" minlength="8" autocomplete="new-password"></div>
         </div>
         <div>
           <div class="muted" style="font-size:11px;margin-bottom:5px;">Confirmation</div>
-          <div class="field"><input type="password" name="new_password_confirm" placeholder="Le même mot de passe" minlength="8" autocomplete="new-password"></div>
+          <div class="field"><input id="profile-new-password-confirm" type="password" name="new_password_confirm" placeholder="Le même mot de passe" minlength="8" autocomplete="new-password"></div>
         </div>
       </div>
     </div>

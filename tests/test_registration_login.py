@@ -122,6 +122,8 @@ class TestLogin:
         response = client.get("/")
         assert response.status_code == 200
         assert "Se connecter" in response.text
+        assert 'autocomplete="username"' in response.text
+        assert 'autocomplete="current-password"' in response.text
 
     def test_login_success_redirects_to_token_space(self, client):
         email = unique_email()
@@ -167,6 +169,13 @@ class TestLogin:
 
 
 class TestProfilePassword:
+    def test_profile_password_form_exposes_username(self, client, participant):
+        response = client.get(f"/p/{participant['token']}/profil/edit")
+
+        assert response.status_code == 200
+        assert 'autocomplete="username"' in response.text
+        assert f"{participant['token']}@test.local" in response.text
+
     def test_set_password_from_profile_then_login(self, client, participant):
         token = participant["token"]
         response = client.post(
