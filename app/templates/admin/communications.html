@@ -36,6 +36,72 @@
 </div>
 
 <div class="card">
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+    <div style="flex:1;min-width:220px;">
+      <b style="font-size:13px;">Notification push de test</b>
+      <div class="muted" style="font-size:11px;margin-top:2px;">
+        Push {{ 'configuré' if push_is_enabled else 'non configuré' }} · {{ push_subscription_count }} appareil(s) abonné(s)
+      </div>
+    </div>
+    {% if not push_is_enabled %}
+    <span class="chip warn">VAPID manquant</span>
+    {% endif %}
+  </div>
+
+  {% if not push_is_enabled %}
+  <div class="banner soft" style="margin-bottom:12px;">
+    Configure les clés VAPID pour envoyer des notifications push réelles.
+  </div>
+  {% endif %}
+
+  <form method="post" action="/admin/communications/send-push-test" style="display:flex;flex-direction:column;gap:10px;">
+    <div class="grid2">
+      <div>
+        <div class="muted" style="font-size:11px;margin-bottom:5px;">Titre</div>
+        <div class="field">
+          <input type="text" name="title" value="Test RESA Pronostics" maxlength="80" required>
+        </div>
+      </div>
+      <div>
+        <div class="muted" style="font-size:11px;margin-bottom:5px;">Destination au clic</div>
+        <div class="field">
+          <select name="destination">
+            {% for key, dest in push_destinations.items() %}
+            <option value="{{ key }}">{{ dest[0] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="muted" style="font-size:11px;margin-bottom:5px;">Message</div>
+      <textarea name="body" maxlength="180" rows="3" class="textarea" required>Si tu reçois ceci, tes notifications fonctionnent.</textarea>
+    </div>
+
+    <div>
+      <div class="muted" style="font-size:11px;margin-bottom:5px;">Destinataires</div>
+      <div class="field">
+        <select name="participant_ids" multiple size="8" {% if not push_is_enabled or not push_participants %}disabled{% endif %}>
+          {% for p in push_participants %}
+          <option value="{{ p.id }}">
+            {{ p.name }} · {{ p.email }} · {{ p.subscription_count }} appareil{{ 's' if p.subscription_count != 1 else '' }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <p class="muted helper-text">
+        Maintiens Cmd/Ctrl pour sélectionner plusieurs participants. Ce test n'envoie aucun email.
+      </p>
+    </div>
+
+    <div class="row2">
+      <button type="submit" class="btn sm" {% if not push_is_enabled or not push_participants %}disabled{% endif %}>Envoyer le test push</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
   <div class="lbl" style="margin-bottom:12px;">Configuration SMTP</div>
   <form style="display:flex;flex-direction:column;gap:10px;">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">

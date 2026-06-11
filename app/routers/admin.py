@@ -35,6 +35,7 @@ from app.settings_store import (
     knockout_predictions_open,
     set_setting,
 )
+from app.push import push_enabled, send_push_to_participant
 from app.templating import create_templates
 from app.timeutils import is_match_locked, local_input_to_utc_iso, now_utc_iso
 
@@ -55,6 +56,13 @@ PHASE_LABELS = {
 BONUS_PHASES = {
     "pre_tournament", "round_of_32", "round_of_16",
     "quarter", "semi", "third_place", "final",
+}
+
+PUSH_TEST_DESTINATIONS = {
+    "home": ("Accueil", ""),
+    "pronos": ("Pronos", "/pronos"),
+    "classement": ("Classement", "/classement"),
+    "profil": ("Profil", "/profil"),
 }
 
 STATUSES = {
@@ -122,6 +130,11 @@ def _normalize_bonus_options(answer_type: str, options_text: str):
         if opt.strip()
     ]
     return json.dumps(options, ensure_ascii=False) if options else None
+
+
+def _push_test_url(token: str, destination: str) -> str:
+    _, suffix = PUSH_TEST_DESTINATIONS.get(destination, PUSH_TEST_DESTINATIONS["home"])
+    return f"{settings.BASE_URL.rstrip('/')}/p/{token}{suffix}"
 
 
 # ---- Login ----
@@ -1017,12 +1030,26 @@ async def communications(request: Request):
             (now,)
         )
         upcoming = [dict(r) for r in await m_rows.fetchall()]
+        p_rows = await db.execute(
+            """SELECT p.id, p.name, p.email, p.token,
+                      COUNT(ps.id) AS subscription_count
+               FROM participants p
+               LEFT JOIN push_subscriptions ps ON ps.participant_id = p.id
+               WHERE p.is_confirmed=1 AND p.is_admin=0
+               GROUP BY p.id, p.name, p.email, p.token
+               ORDER BY p.name COLLATE NOCASE"""
+        )
+        push_participants = [dict(r) for r in await p_rows.fetchall()]
     return templates.TemplateResponse(request, "admin/communications.html", {
         "request": request,
         "active": "communications",
         "flashes": _get_flashes(request),
         "no_pt": no_pt,
         "upcoming_matches": upcoming,
+        "push_is_enabled": push_enabled(),
+        "push_destinations": PUSH_TEST_DESTINATIONS,
+        "push_participants": push_participants,
+        "push_subscription_count": sum(p["subscription_count"] for p in push_participants),
         "smtp_host": settings.SMTP_HOST,
         "smtp_port": settings.SMTP_PORT,
     })
@@ -1072,6 +1099,71 @@ async def send_match_reminder(request: Request, match_id: int = Form(...)):
         if await send_match_reminder_email(participant, match_dict):
             sent_count += 1
     _flash(request, f"{sent_count}/{len(participants)} rappel(s) match envoyé(s).")
+    return RedirectResponse("/admin/communications", status_code=303)
+
+
+@router.post("/communications/send-push-test")
+async def send_push_test(
+    request: Request,
+    participant_ids: list[int] = Form(default=[]),
+    title: str = Form(default=""),
+    body: str = Form(default=""),
+    destination: str = Form(default="home"),
+):
+    await require_admin(request)
+    if not push_enabled():
+        _flash(request, "Notifications push non configurées: clés VAPID manquantes.", "err")
+        return RedirectResponse("/admin/communications", status_code=303)
+
+    title = title.strip()[:80]
+    body = body.strip()[:180]
+    if not title or not body:
+        _flash(request, "Titre et message sont obligatoires pour le test push.", "err")
+        return RedirectResponse("/admin/communications", status_code=303)
+
+    selected_ids = list(dict.fromkeys(pid for pid in participant_ids if pid > 0))
+    if not selected_ids:
+        _flash(request, "Sélectionne au moins un participant.", "err")
+        return RedirectResponse("/admin/communications", status_code=303)
+
+    if destination not in PUSH_TEST_DESTINATIONS:
+        destination = "home"
+
+    placeholders = ",".join("?" for _ in selected_ids)
+    async with get_db() as db:
+        rows = await db.execute(
+            f"""SELECT id, name, token
+                FROM participants
+                WHERE is_confirmed=1 AND is_admin=0
+                  AND id IN ({placeholders})
+                ORDER BY name COLLATE NOCASE""",
+            selected_ids,
+        )
+        participants = [dict(r) for r in await rows.fetchall()]
+
+        if not participants:
+            _flash(request, "Aucun destinataire valide pour ce test push.", "err")
+            return RedirectResponse("/admin/communications", status_code=303)
+
+        sent_count = 0
+        for participant in participants:
+            delivered = await send_push_to_participant(
+                db,
+                participant["id"],
+                title=title,
+                body=body,
+                url=_push_test_url(participant["token"], destination),
+            )
+            if delivered:
+                sent_count += 1
+
+    failed_count = len(participants) - sent_count
+    _flash(
+        request,
+        f"{sent_count}/{len(participants)} notification(s) push envoyée(s). "
+        f"{failed_count} sans abonnement actif ou en échec.",
+        "ok" if sent_count else "err",
+    )
     return RedirectResponse("/admin/communications", status_code=303)
 
 
