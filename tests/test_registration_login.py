@@ -1,5 +1,9 @@
 """Integration tests: registration with department + email/password login."""
+import io
+import os
 import uuid
+
+from PIL import Image
 
 from app.constants import DEPARTMENTS
 from app.database import get_db
@@ -31,6 +35,36 @@ def get_participant(email):
 
 def unique_email():
     return f"{uuid.uuid4().hex[:10]}@test.local"
+
+
+def avatar_image_bytes(color=(211, 69, 13)):
+    image = Image.new("RGB", (20, 20), color)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def get_avatar_path(participant_id):
+    async def _get():
+        async with get_db() as db:
+            row = await db.execute(
+                "SELECT avatar_path FROM participants WHERE id=?", (participant_id,)
+            )
+            return (await row.fetchone())["avatar_path"]
+
+    return run(_get())
+
+
+def set_avatar_path(participant_id, avatar_path):
+    async def _set():
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE participants SET avatar_path=? WHERE id=?",
+                (avatar_path, participant_id),
+            )
+            await db.commit()
+
+    run(_set())
 
 
 class TestRegistration:
@@ -175,6 +209,82 @@ class TestProfilePassword:
             follow_redirects=False,
         )
         assert "msg=password_mismatch" in response.headers["location"]
+
+
+class TestProfileAvatar:
+    def test_delete_existing_avatar(self, client, participant, avatars_dir):
+        old_path = f"{participant['id']}.jpg"
+        old_file = os.path.join(avatars_dir, old_path)
+        with open(old_file, "wb") as fh:
+            fh.write(b"legacy avatar")
+        set_avatar_path(participant["id"], old_path)
+
+        response = client.post(
+            f"/p/{participant['token']}/profil/edit",
+            data={"first_name": "Test", "last_name": "User", "delete_avatar": "1"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers["location"] == f"/p/{participant['token']}/profil"
+        assert get_avatar_path(participant["id"]) is None
+        assert not os.path.exists(old_file)
+
+    def test_upload_avatar_uses_versioned_name(self, client, participant, avatars_dir):
+        response = client.post(
+            f"/p/{participant['token']}/profil/edit",
+            data={"first_name": "Test", "last_name": "User"},
+            files={"avatar": ("avatar.png", avatar_image_bytes(), "image/png")},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        avatar_path = get_avatar_path(participant["id"])
+        assert avatar_path.startswith(f"{participant['id']}-")
+        assert avatar_path.endswith(".jpg")
+        assert avatar_path != f"{participant['id']}.jpg"
+        assert os.path.exists(os.path.join(avatars_dir, avatar_path))
+
+    def test_replace_avatar_deletes_previous_file(self, client, participant, avatars_dir):
+        old_path = f"{participant['id']}.jpg"
+        old_file = os.path.join(avatars_dir, old_path)
+        with open(old_file, "wb") as fh:
+            fh.write(b"legacy avatar")
+        set_avatar_path(participant["id"], old_path)
+
+        response = client.post(
+            f"/p/{participant['token']}/profil/edit",
+            data={"first_name": "Test", "last_name": "User"},
+            files={"avatar": ("avatar.png", avatar_image_bytes((46, 125, 50)), "image/png")},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        avatar_path = get_avatar_path(participant["id"])
+        assert avatar_path != old_path
+        assert os.path.exists(os.path.join(avatars_dir, avatar_path))
+        assert not os.path.exists(old_file)
+
+    def test_invalid_avatar_keeps_existing_file(self, client, participant, avatars_dir):
+        old_path = f"{participant['id']}.jpg"
+        old_file = os.path.join(avatars_dir, old_path)
+        with open(old_file, "wb") as fh:
+            fh.write(b"legacy avatar")
+        set_avatar_path(participant["id"], old_path)
+        before_files = set(os.listdir(avatars_dir))
+
+        response = client.post(
+            f"/p/{participant['token']}/profil/edit",
+            data={"first_name": "Test", "last_name": "User"},
+            files={"avatar": ("avatar.txt", b"not an image", "text/plain")},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert "msg=avatar_invalid" in response.headers["location"]
+        assert get_avatar_path(participant["id"]) == old_path
+        assert os.path.exists(old_file)
+        assert set(os.listdir(avatars_dir)) == before_files
 
 
 class TestLostLink:

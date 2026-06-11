@@ -912,6 +912,17 @@ PROFILE_EDIT_MESSAGES = {
 AVATARS_DIR = settings.AVATARS_DIR
 
 
+def _delete_avatar_file(path: str | None) -> None:
+    if not path:
+        return
+    if os.path.basename(path) != path:
+        return
+    try:
+        os.remove(os.path.join(AVATARS_DIR, path))
+    except OSError:
+        pass
+
+
 @router.get("/p/{token}/profil/edit", response_class=HTMLResponse)
 async def edit_profile_page(request: Request, token: str, msg: str = ""):
     async with get_db() as db:
@@ -941,7 +952,7 @@ async def save_profile(
     avatar: UploadFile = File(None),
     delete_avatar: str = Form(default="0"),
 ):
-    p = await require_participant(token)
+    p = dict(await require_participant(token))
     first_name = first_name.strip()[:80]
     last_name = last_name.strip()[:80]
     nickname = nickname.strip()[:40]
@@ -969,15 +980,10 @@ async def save_profile(
     avatar_new_path = None   # None = no change
     avatar_delete = False
     avatar_msg = ""
+    avatar_old_path = p.get("avatar_path")
 
     if delete_avatar == "1":
         avatar_delete = True
-        existing = p.get("avatar_path")
-        if existing:
-            try:
-                os.remove(os.path.join(AVATARS_DIR, existing))
-            except OSError:
-                pass
     elif avatar and avatar.filename:
         content = await avatar.read()
         if content:
@@ -993,7 +999,7 @@ async def save_profile(
                 elif image.mode != "RGB":
                     image = image.convert("RGB")
                 os.makedirs(AVATARS_DIR, exist_ok=True)
-                filename = f"{p['id']}.jpg"
+                filename = f"{p['id']}-{uuid.uuid4().hex[:12]}.jpg"
                 image.save(os.path.join(AVATARS_DIR, filename), "JPEG", quality=85)
                 avatar_new_path = filename
             except Exception:
@@ -1031,6 +1037,9 @@ async def save_profile(
                 (password_hash, token),
             )
         await db.commit()
+
+    if avatar_delete or avatar_new_path:
+        _delete_avatar_file(avatar_old_path)
 
     if avatar_msg:
         return RedirectResponse(url=f"/p/{token}/profil/edit?msg={avatar_msg}", status_code=303)

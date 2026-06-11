@@ -1,9 +1,12 @@
 import os
+import shutil
 import tempfile
 
 # Must be set before any app module imports settings.
 _db_file = tempfile.NamedTemporaryFile(prefix="resa_test_", suffix=".db", delete=False)
+_avatars_dir = tempfile.mkdtemp(prefix="resa_test_avatars_")
 os.environ["DATABASE_URL"] = _db_file.name
+os.environ["AVATARS_DIR"] = _avatars_dir
 os.environ["SCHEDULER_ENABLED"] = "0"
 _db_file.close()
 
@@ -23,10 +26,16 @@ def client():
     with TestClient(app) as test_client:  # lifespan runs init_db
         yield test_client
     os.unlink(os.environ["DATABASE_URL"])
+    shutil.rmtree(_avatars_dir, ignore_errors=True)
 
 
 def run(coro):
     return asyncio.run(coro)
+
+
+@pytest.fixture()
+def avatars_dir():
+    return _avatars_dir
 
 
 @pytest.fixture()
