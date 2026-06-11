@@ -8,9 +8,9 @@ function initPredictionScores() {
     var token = document.body.dataset.token;
     var score1 = card.querySelector('.score-pick[data-side="1"]');
     var score2 = card.querySelector('.score-pick[data-side="2"]');
-    // Carte verrouillée ou pronos pas encore ouverts: rien d'interactif,
-    // le rendu serveur fait foi.
-    if (score1 && score1.disabled) return;
+    // Carte verrouillée, terminée (sans inputs) ou pronos pas encore ouverts:
+    // rien d'interactif, le rendu serveur fait foi.
+    if (!score1 || score1.disabled) return;
     var outcome = card.querySelector('[data-outcome]');
     var qualifierRow = card.querySelector('.qualifier-row');
     var qualifierBtns = card.querySelectorAll('.qualifier-btn');
@@ -996,6 +996,90 @@ function initPush() {
   }
 }
 
+/* ---- Match detail: suivi live ---- */
+function initMatchLive() {
+  var board = document.querySelector('.scoreboard[data-live-state]');
+  if (!board) return;
+  var state = board.dataset.liveState;
+  var token = document.body.dataset.token;
+
+  // Temps écoulé depuis le coup d'envoi, rafraîchi chaque minute.
+  var elapsedEl = board.querySelector('[data-elapsed-since]');
+  if (elapsedEl) {
+    var kickoff = new Date(elapsedEl.dataset.elapsedSince);
+    function renderElapsed() {
+      var mins = Math.floor((Date.now() - kickoff.getTime()) / 60000);
+      if (mins < 0) return;
+      elapsedEl.textContent = mins < 60
+        ? '· coup d’envoi il y a ' + mins + ' min'
+        : '· coup d’envoi il y a ' + Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min';
+      setTimeout(renderElapsed, 60000);
+    }
+    renderElapsed();
+  }
+
+  // Tant que le résultat n'est pas encodé, on vérifie régulièrement :
+  // dès qu'il tombe, on recharge pour afficher points et classement du match.
+  if ((state === 'live' || state === 'awaiting') && token) {
+    var matchId = board.dataset.matchId;
+    setInterval(function() {
+      fetch('/api/match/' + matchId + '/status?token=' + encodeURIComponent(token))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.state === 'done') window.location.reload();
+        })
+        .catch(function() {});
+    }, 60000);
+  }
+}
+
+/* ---- Compteur animé pour les points gagnés ---- */
+function initCountUp() {
+  var els = document.querySelectorAll('[data-countup]');
+  if (!els.length) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  function animate(el) {
+    var target = parseInt(el.dataset.countup, 10);
+    if (!target || target <= 0) return;
+    var start = null;
+    var duration = 700;
+    function step(ts) {
+      if (start === null) start = ts;
+      var progress = Math.min((ts - start) / duration, 1);
+      // ease-out cubic
+      var eased = 1 - Math.pow(1 - progress, 3);
+      el.textContent = Math.round(eased * target);
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  if (!('IntersectionObserver' in window)) return;
+  var seen = new WeakSet();
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (!entry.isIntersecting || seen.has(entry.target)) return;
+      seen.add(entry.target);
+      observer.unobserve(entry.target);
+      animate(entry.target);
+    });
+  }, { threshold: 0.5 });
+  els.forEach(function(el) { observer.observe(el); });
+}
+
+/* ---- Offset des en-têtes sticky sous le bandeau de page ---- */
+function initStickyTop() {
+  var pageHead = document.querySelector('.page-head');
+  if (!pageHead || !document.querySelector('.pgroup-head')) return;
+  function apply() {
+    document.documentElement.style.setProperty(
+      '--sticky-top', pageHead.getBoundingClientRect().height + 'px');
+  }
+  apply();
+  window.addEventListener('resize', apply);
+}
+
 /* ---- Init all on DOM ready ---- */
 document.addEventListener('DOMContentLoaded', function() {
   initLocalTimes();
@@ -1018,4 +1102,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initScorerCombos();
   initBonusForms();
   initPush();
+  initMatchLive();
+  initCountUp();
+  initStickyTop();
 });

@@ -3,6 +3,7 @@ from collections import defaultdict
 import io
 import logging
 import os
+import unicodedata
 import uuid
 
 from fastapi import APIRouter, File, HTTPException, Request, Form, UploadFile
@@ -45,6 +46,7 @@ from app.timeutils import (
     is_match_locked,
     local_today,
     match_kickoff_utc,
+    match_live_state,
     minutes_until_match,
     now_utc_iso,
     utc_day_bounds_for_local_date,
@@ -150,17 +152,8 @@ def _is_locked(match: dict) -> bool:
     return is_match_locked(match)
 
 
-# Durée max estimée d'un match (90' + arrêts + prolongations + TAB).
-LIVE_WINDOW_MINUTES = 150
-
-
 def _live_state(match: dict) -> str:
-    """'' (à venir) | 'live' | 'awaiting' (joué, résultat pas encodé) | 'done'."""
-    if not is_match_locked(match):
-        return ""
-    if match.get("result") is not None:
-        return "done"
-    return "live" if minutes_until_match(match) >= -LIVE_WINDOW_MINUTES else "awaiting"
+    return match_live_state(match)
 
 
 def _minutes_until(match: dict) -> int:
@@ -179,6 +172,19 @@ def _prediction_label(match: dict) -> str:
     if match.get("prediction") == "draw":
         return "Nul"
     return "—"
+
+
+def _prediction_tier(prediction: dict, match: dict) -> str:
+    """'exact' | 'correct' | 'wrong' | '' (pas de résultat ou pas de prono)."""
+    if match.get("result") is None:
+        return ""
+    if prediction.get("prediction") is None and prediction.get("exact_score_team1") is None:
+        return ""
+    if is_match_score_exact(prediction, match):
+        return "exact"
+    if is_match_prediction_correct(prediction, match):
+        return "correct"
+    return "wrong"
 
 
 def _qualifier_label(match: dict) -> str:
@@ -221,6 +227,7 @@ def _enrich_prediction_matches(matches: list[dict]) -> None:
         match["prediction_short"] = _prediction_short(match.get("prediction"))
         match["prediction_label"] = _prediction_label(match)
         match["qualifier_label"] = _qualifier_label(match)
+        match["tier"] = _prediction_tier(match, match)
 
 
 def _prediction_sections(matches: list[dict]) -> list[dict]:
@@ -815,6 +822,66 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
     return templates.TemplateResponse(request, "ranking.html", {"request": request, **ctx})
 
 
+def _fold_name(name: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFD", (name or "").lower())
+        if unicodedata.category(c) != "Mn"
+    )
+
+
+def _group_match_predictions(all_preds: list[dict], match: dict) -> list[dict]:
+    """Regroupe les pronostics par score prédit (et par qualifié pour un nul KO),
+    joueurs triés alphabétiquement dans chaque sous-groupe."""
+    is_knockout = match["phase"] != "group"
+    done = match.get("result") is not None
+    buckets: dict[tuple, list[dict]] = {}
+    for pr in all_preds:
+        s1, s2 = pr.get("exact_score_team1"), pr.get("exact_score_team2")
+        if s1 is None or s2 is None:
+            key = ("none", None, None, None)
+        else:
+            qual = pr.get("qualifier_prediction") if (is_knockout and s1 == s2) else None
+            key = ("score", s1, s2, qual)
+        buckets.setdefault(key, []).append(pr)
+
+    groups = []
+    for (kind, s1, s2, qual), preds in buckets.items():
+        if kind == "none":
+            label, outcome = "Sans score exact", ""
+        else:
+            label = f"{s1}–{s2}"
+            if s1 > s2:
+                outcome = f"Victoire {match['team1_name']}"
+            elif s2 > s1:
+                outcome = f"Victoire {match['team2_name']}"
+            elif qual:
+                team = match["team1_name"] if qual == "team1" else match["team2_name"]
+                outcome = f"Nul · {team} qualifié"
+            else:
+                outcome = "Match nul"
+        tiers = {pr["tier"] for pr in preds}
+        tier = next(iter(tiers)) if len(tiers) == 1 else ""
+        points_set = {pr.get("points") or 0 for pr in preds}
+        points = next(iter(points_set)) if done and len(points_set) == 1 else None
+        preds.sort(key=lambda pr: _fold_name(pr["name"]))
+        groups.append({
+            "label": label,
+            "outcome": outcome,
+            "tier": tier,
+            "points": points,
+            "preds": preds,
+            "count": len(preds),
+            "has_me": any(pr["is_me"] for pr in preds),
+        })
+
+    tier_rank = {"exact": 0, "correct": 1, "wrong": 2, "": 3}
+    if done:
+        groups.sort(key=lambda g: (tier_rank.get(g["tier"], 3), -g["count"], g["label"]))
+    else:
+        groups.sort(key=lambda g: (-g["count"], g["label"]))
+    return groups
+
+
 @router.get("/p/{token}/match/{match_id}", response_class=HTMLResponse)
 async def match_detail_page(request: Request, token: str, match_id: int):
     async with get_db() as db:
@@ -872,14 +939,30 @@ async def match_detail_page(request: Request, token: str, match_id: int):
             (match_id,)
         )
         all_preds = [dict(r) for r in await all_preds_rows.fetchall()]
+        live_state = _live_state(match_dict)
+        for pr in all_preds:
+            pr["tier"] = _prediction_tier(pr, match_dict)
+            pr["is_me"] = pr["participant_id"] == p["id"]
+        pred_groups = _group_match_predictions(all_preds, match_dict)
+        tier_stats = {"exact": 0, "correct": 0, "wrong": 0}
+        if live_state == "done":
+            for pr in all_preds:
+                if pr["tier"] in tier_stats:
+                    tier_stats[pr["tier"]] += 1
+        my_pred_dict = dict(my_pred) if my_pred else None
         ctx.update({
             "match": match_dict,
             "match_phase_label": PHASE_LABELS.get(match["phase"], match["phase"]),
-            "my_pred": dict(my_pred) if my_pred else None,
+            "live_state": live_state,
+            "my_pred": my_pred_dict,
             "my_score": dict(my_score) if my_score else None,
+            "my_tier": _prediction_tier(my_pred_dict, match_dict) if my_pred_dict else "",
+            "my_dist_key": predicted_match_winner(my_pred_dict, match_dict) if my_pred_dict else "",
             "dist": dist,
             "dist_total": dist_total,
             "all_preds": all_preds,
+            "pred_groups": pred_groups,
+            "tier_stats": tier_stats,
         })
     return templates.TemplateResponse(request, "match_detail.html", {"request": request, **ctx})
 

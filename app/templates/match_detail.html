@@ -12,16 +12,30 @@
 
 <div class="page-content">
 
-  <div class="scoreboard">
+  <div class="scoreboard" style="view-transition-name:match-card-{{ match.id }};"
+       data-live-state="{{ live_state }}" data-match-id="{{ match.id }}">
     <div class="ph">{{ match_phase_label }} · <span data-local-utc="{{ match|match_utc_iso }}">{{ match|match_datetime }}</span></div>
+    {% if live_state == 'live' %}
+    <div class="sb-status live" aria-live="polite">
+      <span class="dot live"></span> En direct
+      <span class="sb-elapsed" data-elapsed-since="{{ match|match_utc_iso }}"></span>
+    </div>
+    {% elif live_state == 'awaiting' %}
+    <div class="sb-status" aria-live="polite">Match joué · résultat en cours d'encodage</div>
+    {% endif %}
     <div class="grid">
       <div class="t">
         <span class="scoreboard-flag">{{ match.team1_name|flag }}</span>
         <span class="scoreboard-team">{{ match.team1_name }}</span>
       </div>
-      <div class="sc">
+      <div class="sc" data-score-slot>
+        {% if match.score_team1 is not none and match.score_team2 is not none %}
         {{ match.score_team1 }} – {{ match.score_team2 }}
         <small>RÉSULTAT OFFICIEL</small>
+        {% else %}
+        <span class="sc-pending">– : –</span>
+        <small>{% if live_state == 'live' %}MATCH EN COURS{% else %}EN ATTENTE DU RÉSULTAT{% endif %}</small>
+        {% endif %}
         {% if match.phase != 'group' and match.qualifier_winner %}
         <small>
           Vainqueur:
@@ -39,7 +53,7 @@
   {% if my_pred %}
   <div class="card" style="padding:13px;">
     <div class="lbl">Mon pronostic</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;">
       <div style="font-weight:700;font-size:14px;">
         {% if match.phase != 'group' %}
           {% if my_pred.exact_score_team1 is not none and my_pred.exact_score_team1 > my_pred.exact_score_team2 %}{{ match.team1_name }}{% elif my_pred.exact_score_team2 is not none and my_pred.exact_score_team2 > my_pred.exact_score_team1 %}{{ match.team2_name }}{% elif my_pred.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% elif my_pred.qualifier_prediction == 'team2' %}{{ match.team2_name }}{% else %}—{% endif %}
@@ -53,10 +67,14 @@
         </div>
         {% endif %}
       </div>
-      {% if my_score and my_score.points > 0 %}
-      <span class="chip ok">{{ '+' + my_score.points|string if my_score else '+0' }} pts</span>
+      {% if live_state != 'done' %}
+      <span class="chip gr">En attente</span>
+      {% elif my_tier == 'exact' %}
+      <span class="chip ok">Score exact · +<b data-countup="{{ my_score.points if my_score else 0 }}">{{ my_score.points if my_score else 0 }}</b> pts</span>
+      {% elif my_tier == 'correct' %}
+      <span class="chip warn">Bon résultat · +<b data-countup="{{ my_score.points if my_score else 0 }}">{{ my_score.points if my_score else 0 }}</b> pts</span>
       {% else %}
-      <span class="chip gr">0 pts</span>
+      <span class="chip gr">0 pt</span>
       {% endif %}
     </div>
   </div>
@@ -72,60 +90,73 @@
       Répartition de la communauté
       <span class="help-tip" tabindex="0" data-tip="En groupes, elle montre les issues pronostiquées. En phase finale, elle montre les vainqueurs/qualifiés pronostiqués.">?</span>
     </div>
-    {% set t1 = dist.get('team1', {}).get('pct', 0) %}
-    {% set dr = dist.get('draw', {}).get('pct', 0) %}
-    {% set t2 = dist.get('team2', {}).get('pct', 0) %}
+    {% set t1 = dist.get('team1', {}) %}
+    {% set dr = dist.get('draw', {}) %}
+    {% set t2 = dist.get('team2', {}) %}
     <div class="combar">
-      <span class="a" style="width:{{ t1 }}%">{{ t1 }}%</span>
-      <span class="b" style="width:{{ dr }}%">{{ dr }}%</span>
-      <span class="c" style="width:{{ t2 }}%">{{ t2 }}%</span>
+      <span class="a {{ 'has' if t1.get('cnt') }}" style="flex-grow:{{ t1.get('pct', 0) }};">{% if t1.get('pct', 0) >= 14 %}{{ t1.pct }}%{% endif %}</span>
+      {% if match.phase == 'group' %}
+      <span class="b {{ 'has' if dr.get('cnt') }}" style="flex-grow:{{ dr.get('pct', 0) }};">{% if dr.get('pct', 0) >= 14 %}{{ dr.pct }}%{% endif %}</span>
+      {% endif %}
+      <span class="c {{ 'has' if t2.get('cnt') }}" style="flex-grow:{{ t2.get('pct', 0) }};">{% if t2.get('pct', 0) >= 14 %}{{ t2.pct }}%{% endif %}</span>
     </div>
     <div class="com-legend">
-      <span>{{ match.team1_name|team }} · {{ dist.get('team1', {}).get('cnt', 0) }}</span>
+      <span><i class="k a"></i>{{ match.team1_name|team }} · {{ t1.get('cnt', 0) }} ({{ t1.get('pct', 0) }}%){% if my_dist_key == 'team1' %} <b class="you">toi</b>{% endif %}</span>
       {% if match.phase == 'group' %}
-      <span>Nul · {{ dist.get('draw', {}).get('cnt', 0) }}</span>
+      <span><i class="k b"></i>Nul · {{ dr.get('cnt', 0) }} ({{ dr.get('pct', 0) }}%){% if my_dist_key == 'draw' %} <b class="you">toi</b>{% endif %}</span>
       {% endif %}
-      <span>{{ match.team2_name|team }} · {{ dist.get('team2', {}).get('cnt', 0) }}</span>
+      <span><i class="k c"></i>{{ match.team2_name|team }} · {{ t2.get('cnt', 0) }} ({{ t2.get('pct', 0) }}%){% if my_dist_key == 'team2' %} <b class="you">toi</b>{% endif %}</span>
     </div>
     <div class="muted" style="font-size:11px;margin-top:5px;">{{ dist_total }} pronostic{{ 's' if dist_total != 1 else '' }} enregistré{{ 's' if dist_total != 1 else '' }}</div>
   </div>
 
-  <div class="card p0">
-    <div style="padding:9px 12px 2px;"><div class="lbl">Tous les pronostics</div></div>
-    <table class="tbl">
-      <thead>
-        <tr>
-          <th>Joueur</th>
-          <th class="col-outcome">Résultat prédit</th>
-          <th>Score prédit</th>
-          <th style="text-align:right;">Pts</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for pr in all_preds %}
-        <tr>
-          <td><a class="table-link" href="/p/{{ token }}/profil/{{ pr.participant_id }}">{{ pr.name }}</a></td>
-          <td class="col-outcome">
-            {% if match.phase != 'group' %}
-              {% if pr.exact_score_team1 is not none and pr.exact_score_team1 > pr.exact_score_team2 %}{{ match.team1_name }}{% elif pr.exact_score_team2 is not none and pr.exact_score_team2 > pr.exact_score_team1 %}{{ match.team2_name }}{% elif pr.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% elif pr.qualifier_prediction == 'team2' %}{{ match.team2_name }}{% else %}<span class="muted">—</span>{% endif %}
-            {% elif pr.prediction == 'team1' %}{{ match.team1_name }}{% elif pr.prediction == 'team2' %}{{ match.team2_name }}{% else %}<span class="muted">Nul</span>{% endif %}
-          </td>
-          <td>
-            {% if pr.exact_score_team1 is not none %}
-              <span style="color:var(--primary);font-weight:700;">{{ pr.exact_score_team1 }}–{{ pr.exact_score_team2 }}</span>
-              {% if pr.qualifier_prediction %}
-              <div class="muted" style="font-size:10px;">Qualifié si nul : {% if pr.qualifier_prediction == 'team1' %}{{ match.team1_name }}{% else %}{{ match.team2_name }}{% endif %}</div>
-              {% endif %}
-            {% else %}
-              <span class="muted">—</span>
-            {% endif %}
-          </td>
-          <td class="s" style="text-align:right;">{{ pr.points or 0 }} pts</td>
-        </tr>
+  <div class="pred-groups">
+    <div class="pred-groups-head">
+      <div class="lbl">Tous les pronostics</div>
+      {% if live_state == 'done' %}
+      <div class="tier-stats">
+        <span class="chip ok">{{ tier_stats.exact }} score exact</span>
+        <span class="chip warn">{{ tier_stats.correct }} bon résultat</span>
+        <span class="chip gr">{{ tier_stats.wrong }} à côté</span>
+      </div>
+      {% endif %}
+    </div>
+
+    {% for g in pred_groups %}
+    <section class="pgroup tier-{{ g.tier or 'none' }} {{ 'mine' if g.has_me }}">
+      <header class="pgroup-head">
+        {% if g.label != 'Sans score exact' %}
+        <span class="pg-score">{{ g.label }}</span>
+        {% endif %}
+        <span class="pg-outcome">{{ g.outcome if g.outcome else g.label }}</span>
+        <span class="pg-count">{{ g.count }} joueur{{ 's' if g.count > 1 else '' }}</span>
+        <span class="sp"></span>
+        {% if live_state == 'done' and g.points is not none %}
+          {% if g.tier == 'exact' %}
+          <span class="chip ok">✓ Score exact · +{{ g.points }} pts</span>
+          {% elif g.tier == 'correct' %}
+          <span class="chip warn">✓ Bon résultat · +{{ g.points }} pts</span>
+          {% else %}
+          <span class="chip gr">{{ g.points }} pt{{ 's' if g.points > 1 else '' }}</span>
+          {% endif %}
+        {% endif %}
+      </header>
+      <div class="pgroup-names">
+        {% for pr in g.preds %}
+        <a class="pname {{ 'me' if pr.is_me }}" href="/p/{{ token }}/profil/{{ pr.participant_id }}">
+          {{ pr.name }}{% if pr.is_me %} <b>· toi</b>{% endif %}
+          {% if g.points is none and live_state == 'done' %}<i>{{ pr.points or 0 }} pts</i>{% endif %}
+          {% if g.label == 'Sans score exact' and pr.prediction %}<i>{{ {'team1': '1', 'draw': 'X', 'team2': '2'}.get(pr.prediction, '') }}</i>{% endif %}
+        </a>
         {% endfor %}
-      </tbody>
-    </table>
+      </div>
+    </section>
+    {% endfor %}
   </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>document.body.dataset.token = "{{ token }}";</script>
 {% endblock %}

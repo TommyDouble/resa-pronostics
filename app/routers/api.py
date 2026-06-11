@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import get_db
 from app.push import push_enabled
 from app.settings_store import knockout_predictions_open
-from app.timeutils import is_match_locked
+from app.timeutils import is_match_locked, match_live_state
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -87,6 +87,26 @@ async def submit_prediction(body: PredictionIn, token: str = Query(...)):
         "message": "Enregistré",
         "prediction": prediction,
         "qualifier_prediction": qualifier_prediction,
+    }
+
+
+@router.get("/match/{match_id}/status")
+async def match_status(match_id: int, token: str = Query(...)):
+    """État live d'un match, pollé par la page de détail pendant un match."""
+    p = await get_participant_by_token(token)
+    if not p:
+        raise HTTPException(403, "Token invalide")
+    async with get_db() as db:
+        row = await db.execute("SELECT * FROM matches WHERE id=?", (match_id,))
+        match = await row.fetchone()
+    if not match:
+        raise HTTPException(404, "Match introuvable")
+    match = dict(match)
+    return {
+        "state": match_live_state(match),
+        "score_team1": match.get("score_team1"),
+        "score_team2": match.get("score_team2"),
+        "qualifier_winner": match.get("qualifier_winner"),
     }
 
 
