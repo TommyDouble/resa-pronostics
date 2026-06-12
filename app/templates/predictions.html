@@ -16,15 +16,28 @@
     <span class="sp"></span>
     <span class="chip ok" id="global-save-badge" style="display:none;">Enregistré ✓</span>
   </div>
+  {% set st = namespace(open=0, todo=0) %}
+  {% for m in current_matches %}
+    {% if not m.is_locked and not m.pronos_closed %}
+      {% set st.open = st.open + 1 %}
+      {% if not m.has_score_prediction %}{% set st.todo = st.todo + 1 %}{% endif %}
+    {% endif %}
+  {% endfor %}
   <div class="sub1">
-    Indique le score que tu imagines. L’application calcule le résultat.
-    <span class="help-tip" tabindex="0" data-tip="1 = victoire de l'équipe de gauche, X = match nul, 2 = victoire de l'équipe de droite.">?</span>
+    {% if st.todo > 0 %}
+      {{ st.todo }} match{{ 's' if st.todo > 1 else '' }} à pronostiquer — indique le score, l'application calcule le résultat.
+      <span class="help-tip" tabindex="0" data-tip="1 = victoire de l'équipe de gauche, X = match nul, 2 = victoire de l'équipe de droite.">?</span>
+    {% elif st.open > 0 %}
+      Tout est pronostiqué ✓ — modifiable jusqu'au coup d'envoi.
+    {% else %}
+      Tous les matchs de cette section sont joués.
+    {% endif %}
   </div>
   <div class="fchips prono-tabs">
     {% for sec in prediction_sections %}
     <a href="/p/{{ token }}/pronos?section={{ sec.key }}"
        class="{{ 'on' if current_section == sec.key else '' }}"
-       title="{{ sec.label }} · {{ sec.done }}/{{ sec.total }} complétés">
+       title="{{ sec.label }} · {{ sec.done }}/{{ sec.total }} pronos complétés">
       {% if not knockout_open and not sec.key.startswith('group_match') %}🔒 {% endif %}{{ sec.short_label }}
       <span>{{ sec.done }}/{{ sec.total }}</span>
     </a>
@@ -79,16 +92,38 @@
     {% set display_date = m|match_date %}
     {% if display_date != ns.current_date %}
       {% set ns.current_date = display_date %}
-      <div class="daybar"><span data-local-utc="{{ m|match_utc_iso }}" data-local-format="date">{{ display_date }}</span></div>
+      <div class="daybar"><span data-local-utc="{{ m|match_utc_iso }}" data-local-format="day">{{ display_date }}</span></div>
     {% endif %}
 
-    <div class="match prediction-card {% if m.is_top_match and not m.is_locked %}top{% endif %} {% if m.is_locked %}past{% endif %} {{ 'complete' if m.has_score_prediction else '' }}"
+    {% set compact = m.live_state == 'done' and m.is_past_day and m.score_team1 is not none %}
+    <div class="match prediction-card {% if m.is_top_match and not m.is_locked %}top{% endif %} {% if m.is_locked %}past{% endif %} {{ 'complete' if m.has_score_prediction else '' }} {{ 'compact' if compact else '' }}"
          id="match-{{ m.id }}"
          data-match-id="{{ m.id }}"
          data-knockout="{{ '1' if m.phase != 'group' else '0' }}"
          data-team1="{{ m.team1_name }}"
          data-team2="{{ m.team2_name }}"
          {% if m.is_locked %}style="view-transition-name:match-card-{{ m.id }};"{% endif %}>
+      {% if compact %}
+      <button type="button" class="compact-summary" data-compact-toggle aria-expanded="false">
+        <span class="dot gr"></span>
+        <span class="cs-line">
+          <b>{{ m.team1_name|team }}</b>
+          <span class="cs-score">{{ m.score_team1 }}–{{ m.score_team2 }}</span>
+          <b>{{ m.team2_name|team }}</b>
+        </span>
+        {% if m.tier == 'exact' %}
+        <span class="chip ok">✓ +{{ m.points or 0 }}</span>
+        {% elif m.tier == 'correct' %}
+        <span class="chip warn">✓ +{{ m.points or 0 }}</span>
+        {% elif m.tier == 'wrong' %}
+        <span class="chip gr">✗ 0</span>
+        {% else %}
+        <span class="chip gr">—</span>
+        {% endif %}
+        <span class="cs-chev">▾</span>
+      </button>
+      <div class="compact-body">
+      {% endif %}
       <div class="mtop">
         {% if m.live_state == 'live' %}
           <span class="dot live"></span> En direct
@@ -115,6 +150,9 @@
           <span class="chip warn tip" tabindex="0" data-tip="Top Match: bon résultat à +4 points au lieu de +2. Le bonus score exact reste +2.">★ Top Match ×2</span>
         {% else %}
           <span class="chip gr tip" tabindex="0" data-tip="Poids du match: les points de bon résultat sont multipliés par {{ m.weight }}.">×{{ m.weight }}</span>
+        {% endif %}
+        {% if m.is_locked %}
+          <a href="/p/{{ token }}/match/{{ m.id }}" class="detail-link {{ '' if compact else 'stretch' }}">Détail ›</a>
         {% endif %}
       </div>
 
@@ -150,7 +188,7 @@
           {% elif m.tier == 'correct' %}
             <span class="chip warn">✓ Bon résultat</span>
           {% elif m.tier == 'wrong' %}
-            <span class="chip gr">✗ À côté</span>
+            <span class="chip gr">✗ À côté · 0 pt</span>
           {% else %}
             <span class="chip gr">Pas de pronostic</span>
           {% endif %}
@@ -175,9 +213,6 @@
         {% endif %}
         <span class="sp"></span>
         <span class="save-badge">Enregistré ✓</span>
-        {% if m.is_locked %}
-          <a href="/p/{{ token }}/match/{{ m.id }}" class="detail-link stretch">Détail ›</a>
-        {% endif %}
       </div>
 
       {% if m.pronos_closed %}
@@ -209,6 +244,7 @@
       {% endif %}
 
       <div class="prediction-error" role="alert"></div>
+      {% if compact %}</div>{% endif %}
     </div>
   {% else %}
     <div style="text-align:center;padding:40px 20px;color:var(--n600);">
