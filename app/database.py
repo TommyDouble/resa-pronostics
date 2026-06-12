@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS predictions (
   qualifier_prediction TEXT   CHECK(qualifier_prediction IN ('team1','team2') OR qualifier_prediction IS NULL),
   submitted_at        TEXT    NOT NULL DEFAULT (datetime('now')),
   is_locked           INTEGER NOT NULL DEFAULT 0,
+  admin_entered       INTEGER NOT NULL DEFAULT 0,
   UNIQUE(participant_id, match_id)
 );
 
@@ -106,6 +107,7 @@ CREATE TABLE IF NOT EXISTS pre_tournament_predictions (
   total_goals    INTEGER,
   submitted      INTEGER NOT NULL DEFAULT 0,
   submitted_at   TEXT,
+  admin_entered  INTEGER NOT NULL DEFAULT 0,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -127,6 +129,7 @@ CREATE TABLE IF NOT EXISTS bonus_answers (
   question_id    INTEGER NOT NULL REFERENCES bonus_questions(id) ON DELETE CASCADE,
   answer         TEXT    NOT NULL,
   submitted_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+  admin_entered  INTEGER NOT NULL DEFAULT 0,
   UNIQUE(participant_id, question_id)
 );
 
@@ -232,10 +235,19 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
 
         prediction_columns = [
             "qualifier_prediction TEXT CHECK(qualifier_prediction IN ('team1','team2') OR qualifier_prediction IS NULL)",
+            "admin_entered INTEGER NOT NULL DEFAULT 0",
         ]
         for column in prediction_columns:
             try:
                 await db.execute(f"ALTER TABLE predictions ADD COLUMN {column}")
+            except Exception:
+                pass
+
+        for table in ("pre_tournament_predictions", "bonus_answers"):
+            try:
+                await db.execute(
+                    f"ALTER TABLE {table} ADD COLUMN admin_entered INTEGER NOT NULL DEFAULT 0"
+                )
             except Exception:
                 pass
 
