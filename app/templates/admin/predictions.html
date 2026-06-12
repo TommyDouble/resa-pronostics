@@ -142,6 +142,65 @@
 {% endif %}
 
 {% if view == 'pre_tournament' %}
+<details class="card" style="margin-bottom:12px;">
+  <summary style="cursor:pointer;font-weight:800;font-family:var(--display);font-size:14px;">
+    ✎ Encoder des réponses pré-tournoi pour un joueur
+  </summary>
+  <p class="muted" style="font-size:12px;margin:8px 0 10px;">
+    Pour pousser des réponses reçues hors application (SMS, mail…) avant la deadline.
+    Seuls les champs remplis sont modifiés, le reste est conservé. Les réponses seront marquées « saisi admin »
+    et les points recalculés si les réponses officielles sont déjà connues.
+  </p>
+  <form method="post" action="/admin/pronostics/force-pre-tournoi"
+        style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;">
+    <div class="field" style="max-width:220px;">
+      <div class="lbl" style="margin-bottom:4px;">Participant</div>
+      <select name="participant_id" required>
+        <option value="">Participant...</option>
+        {% for p in participants %}
+        <option value="{{ p.id }}">{{ p.nickname or p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field" style="max-width:190px;">
+      <div class="lbl" style="margin-bottom:4px;">{{ pt_questions.winner.label }}</div>
+      <select name="winner">
+        <option value="">— inchangé —</option>
+        {% for t in teams_48 %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field" style="max-width:190px;">
+      <div class="lbl" style="margin-bottom:4px;">{{ pt_questions.finalist.label }}</div>
+      <select name="finalist">
+        <option value="">— inchangé —</option>
+        {% for t in teams_48 %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="max-width:240px;">
+      <div class="lbl" style="margin-bottom:4px;">{{ pt_questions.top_scorer.label }}</div>
+      <div class="autocomplete-wrap" data-scorer-combo>
+        <div class="field">
+          <input type="text" data-combo-input placeholder="— inchangé —" autocomplete="off">
+        </div>
+        <input type="hidden" name="top_scorer" data-combo-value value="">
+        <ul class="autocomplete-list" data-combo-list style="display:none;"></ul>
+      </div>
+    </div>
+    <div class="field" style="max-width:190px;">
+      <div class="lbl" style="margin-bottom:4px;">{{ pt_questions.revelation.label }}</div>
+      <select name="revelation">
+        <option value="">— inchangé —</option>
+        {% for t in outsiders %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field" style="max-width:130px;">
+      <div class="lbl" style="margin-bottom:4px;">{{ pt_questions.total_goals.label }}</div>
+      <input type="number" name="total_goals" min="0" max="1000" placeholder="— inchangé —">
+    </div>
+    <button type="submit" class="btn sm">Enregistrer</button>
+  </form>
+</details>
+<script type="application/json" id="scorer-data">{{ scorer_options|list|tojson }}</script>
 <div class="card p0">
   <table class="tbl" data-admin-table>
     <thead>
@@ -170,6 +229,7 @@
         <td data-sort-value="{{ 2 if r.submitted else (1 if r.winner or r.finalist or r.top_scorer or r.revelation or r.total_goals else 0) }}">
           {% if r.submitted %}
           <span class="chip ok">Soumis</span>
+          {% if r.admin_entered %}<span class="chip warn">saisi admin</span>{% endif %}
           {% if r.submitted_at %}
           <div class="muted" style="font-size:10px;margin-top:3px;" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}</div>
           {% endif %}
@@ -189,6 +249,70 @@
 {% endif %}
 
 {% if view == 'bonus' %}
+<details class="card" style="margin-bottom:12px;">
+  <summary style="cursor:pointer;font-weight:800;font-family:var(--display);font-size:14px;">
+    ✎ Encoder une réponse bonus pour un joueur
+  </summary>
+  <p class="muted" style="font-size:12px;margin:8px 0 10px;">
+    Pour pousser une réponse reçue hors application (SMS, mail…) avant la deadline,
+    même si celle-ci est passée. La réponse sera marquée « saisi admin »
+    et les points recalculés si la réponse officielle est déjà connue.
+  </p>
+  <form method="post" action="/admin/pronostics/force-bonus"
+        style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <div class="field" style="max-width:240px;">
+      <select name="participant_id" required>
+        <option value="">Participant...</option>
+        {% for p in participants %}
+        <option value="{{ p.id }}">{{ p.nickname or p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field" style="max-width:340px;">
+      <select name="question_id" id="force-bonus-question" required>
+        <option value="">Question...</option>
+        {% for q in bonus_questions %}
+        <option value="{{ q.id }}" data-type="{{ q.answer_type }}"
+                data-options="{{ q.options or '[]' }}">
+          {{ q.question_text }} ({{ phase_labels.get(q.phase, q.phase) }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field" style="max-width:240px;">
+      <input type="text" name="answer" id="force-bonus-answer" placeholder="Réponse..." required>
+    </div>
+    <select id="force-bonus-answer-choice" style="max-width:240px;display:none;"></select>
+    <button type="submit" class="btn sm">Enregistrer</button>
+  </form>
+</details>
+<script>
+(function() {
+  var questionSel = document.getElementById('force-bonus-question');
+  var answerInput = document.getElementById('force-bonus-answer');
+  var choiceSel = document.getElementById('force-bonus-answer-choice');
+  if (!questionSel || !answerInput || !choiceSel) return;
+  // Pour une question à choix, on remplace le champ libre par la liste des options.
+  choiceSel.addEventListener('change', function() { answerInput.value = choiceSel.value; });
+  questionSel.addEventListener('change', function() {
+    var opt = questionSel.options[questionSel.selectedIndex];
+    var options = [];
+    try { options = JSON.parse(opt ? opt.dataset.options : '[]'); } catch (e) {}
+    var isChoice = opt && opt.dataset.type === 'choice' && options.length;
+    choiceSel.style.display = isChoice ? '' : 'none';
+    answerInput.parentElement.style.display = isChoice ? 'none' : '';
+    answerInput.value = '';
+    if (isChoice) {
+      choiceSel.innerHTML = '<option value="">Réponse...</option>';
+      options.forEach(function(o) {
+        var el = document.createElement('option');
+        el.value = o; el.textContent = o;
+        choiceSel.appendChild(el);
+      });
+    }
+  });
+})();
+</script>
 <div class="card p0">
   <table class="tbl" data-admin-table>
     <thead>
@@ -212,7 +336,7 @@
         <td>{{ r.answer }}</td>
         <td>{{ r.correct_answer or '—' }}</td>
         <td class="s" data-sort-value="{{ r.points }}">{{ r.points }}</td>
-        <td class="muted" style="font-size:10px;" data-sort-value="{{ r.submitted_at|utc_iso }}" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}</td>
+        <td class="muted" style="font-size:10px;" data-sort-value="{{ r.submitted_at|utc_iso }}" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}{% if r.admin_entered %}<div><span class="chip warn" style="margin-top:3px;">saisi admin</span></div>{% endif %}</td>
       </tr>
       {% else %}
       <tr data-empty-row><td colspan="6" style="text-align:center;padding:24px;color:var(--n400);">Aucune réponse bonus.</td></tr>
