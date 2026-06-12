@@ -36,6 +36,63 @@
 </form>
 
 {% if view == 'matches' %}
+<details class="card" style="margin-bottom:12px;">
+  <summary style="cursor:pointer;font-weight:800;font-family:var(--display);font-size:14px;">
+    ✎ Encoder un prono pour un joueur
+  </summary>
+  <p class="muted" style="font-size:12px;margin:8px 0 10px;">
+    Pour pousser un prono reçu hors application (SMS, mail…) avant le coup d'envoi.
+    Fonctionne même si le match est verrouillé ; si le résultat est déjà encodé, les points sont recalculés.
+    Le prono sera marqué « saisi admin ».
+  </p>
+  <form method="post" action="/admin/pronostics/force" id="force-prono-form"
+        style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <div class="field" style="max-width:240px;">
+      <select name="participant_id" required>
+        <option value="">Participant...</option>
+        {% for p in participants %}
+        <option value="{{ p.id }}">{{ p.nickname or p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field" style="max-width:320px;">
+      <select name="match_id" id="force-match-select" required>
+        <option value="">Match...</option>
+        {% for m in all_matches %}
+        <option value="{{ m.id }}" data-phase="{{ m.phase }}"
+                data-team1="{{ m.team1_name }}" data-team2="{{ m.team2_name }}">
+          #{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }} · {{ m.match_date }}{{ ' · résultat encodé' if m.result else '' }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <input class="score-input" type="number" name="score_team1" min="0" max="30" placeholder="0" required>
+    <span style="font-family:var(--sketch);font-size:20px;color:var(--n600);">–</span>
+    <input class="score-input" type="number" name="score_team2" min="0" max="30" placeholder="0" required>
+    <select name="qualifier_prediction" id="force-qualifier" style="min-width:170px;display:none;">
+      <option value="">Qualifié si nul...</option>
+      <option value="team1">Équipe 1</option>
+      <option value="team2">Équipe 2</option>
+    </select>
+    <button type="submit" class="btn sm">Enregistrer</button>
+  </form>
+</details>
+<script>
+(function() {
+  var matchSel = document.getElementById('force-match-select');
+  var qualSel = document.getElementById('force-qualifier');
+  if (!matchSel || !qualSel) return;
+  matchSel.addEventListener('change', function() {
+    var opt = matchSel.options[matchSel.selectedIndex];
+    var knockout = opt && opt.dataset.phase && opt.dataset.phase !== 'group';
+    qualSel.style.display = knockout ? '' : 'none';
+    if (opt && knockout) {
+      qualSel.options[1].textContent = opt.dataset.team1;
+      qualSel.options[2].textContent = opt.dataset.team2;
+    }
+  });
+})();
+</script>
 <div class="card p0">
   <table class="tbl" data-admin-table>
     <thead>
@@ -74,7 +131,7 @@
         </td>
         <td>{% if r.result %}{{ r.score_team1 }}–{{ r.score_team2 }}{% else %}<span class="muted">À venir</span>{% endif %}</td>
         <td class="s" data-sort-value="{{ r.points }}">{{ r.points }}</td>
-        <td class="muted" style="font-size:10px;" data-sort-value="{{ r.submitted_at|utc_iso }}" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}</td>
+        <td class="muted" style="font-size:10px;" data-sort-value="{{ r.submitted_at|utc_iso }}" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}{% if r.admin_entered %}<div><span class="chip warn" style="margin-top:3px;">saisi admin</span></div>{% endif %}</td>
       </tr>
       {% else %}
       <tr data-empty-row><td colspan="7" style="text-align:center;padding:24px;color:var(--n400);">Aucun pronostic match.</td></tr>

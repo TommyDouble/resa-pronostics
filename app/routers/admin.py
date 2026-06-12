@@ -404,7 +404,16 @@ async def predictions_admin(
         match_predictions = []
         pre_tournament_rows = []
         bonus_answers = []
+        all_matches = []
         pt_questions = await get_pre_tournament_question_map(db, include_disabled=True)
+
+        if view == "matches":
+            m_rows = await db.execute(
+                """SELECT id, match_number, phase, team1_name, team2_name,
+                          match_date, kickoff_time, result
+                   FROM matches ORDER BY match_date, kickoff_time"""
+            )
+            all_matches = [dict(r) for r in await m_rows.fetchall()]
 
         if view == "matches":
             where = ["p.is_admin=0"]
@@ -423,7 +432,7 @@ async def predictions_admin(
                       m.match_number, m.phase, m.team1_name, m.team2_name,
                       m.score_team1, m.score_team2, m.result,
                       pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
-                      pr.qualifier_prediction,
+                      pr.qualifier_prediction, pr.admin_entered,
                       pr.submitted_at, COALESCE(s.points, 0) as points
                     FROM predictions pr
                     JOIN participants p ON p.id = pr.participant_id
@@ -496,7 +505,74 @@ async def predictions_admin(
         "pre_tournament_rows": pre_tournament_rows,
         "bonus_answers": bonus_answers,
         "pt_questions": pt_questions,
+        "all_matches": all_matches,
     })
+
+
+@router.post("/pronostics/force")
+async def force_prediction(request: Request,
+                           participant_id: int = Form(...),
+                           match_id: int = Form(...),
+                           score_team1: int = Form(...),
+                           score_team2: int = Form(...),
+                           qualifier_prediction: str = Form(default="")):
+    """Encode un prono au nom d'un participant (ex: reçu par SMS avant le coup
+    d'envoi), même si le match est déjà verrouillé."""
+    await require_admin(request)
+    redirect = RedirectResponse("/admin/pronostics?view=matches", status_code=303)
+    if not (0 <= score_team1 <= 30 and 0 <= score_team2 <= 30):
+        _flash(request, "Le score doit être compris entre 0 et 30.", "err")
+        return redirect
+    async with get_db() as db:
+        p_row = await db.execute(
+            "SELECT * FROM participants WHERE id=? AND is_admin=0", (participant_id,)
+        )
+        participant = await p_row.fetchone()
+        m_row = await db.execute("SELECT * FROM matches WHERE id=?", (match_id,))
+        match = await m_row.fetchone()
+        if not participant or not match:
+            _flash(request, "Participant ou match introuvable.", "err")
+            return redirect
+        match_dict = dict(match)
+        prediction = _result_from_scores(score_team1, score_team2)
+        qualifier = None
+        if match_dict["phase"] != "group" and prediction == "draw":
+            if qualifier_prediction not in ("team1", "team2"):
+                _flash(request, "Nul en phase finale : indique l'équipe qualifiée.", "err")
+                return redirect
+            qualifier = qualifier_prediction
+        old_row = await db.execute(
+            """SELECT exact_score_team1, exact_score_team2 FROM predictions
+               WHERE participant_id=? AND match_id=?""",
+            (participant_id, match_id),
+        )
+        old = await old_row.fetchone()
+        await db.execute(
+            """INSERT INTO predictions (participant_id, match_id, prediction,
+                 exact_score_team1, exact_score_team2, qualifier_prediction, admin_entered)
+               VALUES (?,?,?,?,?,?,1)
+               ON CONFLICT(participant_id, match_id) DO UPDATE SET
+                 prediction=excluded.prediction,
+                 exact_score_team1=excluded.exact_score_team1,
+                 exact_score_team2=excluded.exact_score_team2,
+                 qualifier_prediction=excluded.qualifier_prediction,
+                 admin_entered=1,
+                 submitted_at=datetime('now')""",
+            (participant_id, match_id, prediction, score_team1, score_team2, qualifier),
+        )
+        await db.commit()
+        name = participant["nickname"] or participant["name"]
+        label = f"{match_dict['team1_name']} – {match_dict['team2_name']}"
+        has_result = match_dict.get("result") is not None
+    if has_result:
+        await recalculate_match_scores(match_id)
+    msg = f"Prono {score_team1}-{score_team2} enregistré pour {name} sur {label}."
+    if old and old["exact_score_team1"] is not None:
+        msg += f" Remplace l'ancien prono {old['exact_score_team1']}-{old['exact_score_team2']}."
+    if has_result:
+        msg += " Points recalculés."
+    _flash(request, msg)
+    return redirect
 
 
 # ---- Pre-tournament Admin ----

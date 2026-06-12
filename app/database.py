@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS predictions (
   qualifier_prediction TEXT   CHECK(qualifier_prediction IN ('team1','team2') OR qualifier_prediction IS NULL),
   submitted_at        TEXT    NOT NULL DEFAULT (datetime('now')),
   is_locked           INTEGER NOT NULL DEFAULT 0,
+  admin_entered       INTEGER NOT NULL DEFAULT 0,
   UNIQUE(participant_id, match_id)
 );
 
@@ -232,6 +233,7 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
 
         prediction_columns = [
             "qualifier_prediction TEXT CHECK(qualifier_prediction IN ('team1','team2') OR qualifier_prediction IS NULL)",
+            "admin_entered INTEGER NOT NULL DEFAULT 0",
         ]
         for column in prediction_columns:
             try:
