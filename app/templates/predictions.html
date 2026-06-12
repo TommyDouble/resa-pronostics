@@ -87,14 +87,15 @@
          data-match-id="{{ m.id }}"
          data-knockout="{{ '1' if m.phase != 'group' else '0' }}"
          data-team1="{{ m.team1_name }}"
-         data-team2="{{ m.team2_name }}">
+         data-team2="{{ m.team2_name }}"
+         {% if m.is_locked %}style="view-transition-name:match-card-{{ m.id }};"{% endif %}>
       <div class="mtop">
         {% if m.live_state == 'live' %}
-          <span class="dot live"></span> En cours
+          <span class="dot live"></span> En direct
         {% elif m.live_state == 'awaiting' %}
-          <span class="dot r"></span> Attente du résultat officiel
+          <span class="dot o"></span> Attente du résultat officiel
         {% elif m.is_locked %}
-          <span class="dot r"></span> Terminé
+          <span class="dot gr"></span> Terminé
         {% elif m.has_score_prediction %}
           <span class="dot g"></span> <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
         {% else %}
@@ -104,13 +105,12 @@
           <span class="muted">· {{ m.group_name }}</span>
         {% endif %}
         <span class="sp"></span>
-        {% if m.is_locked and m.result is not none and m.score_team1 is not none %}
-          <span class="chip lock">
-            Réel {{ m.score_team1 }}-{{ m.score_team2 }}
-            {% if m.phase != 'group' and m.qualifier_winner %}
-              · {% if m.qualifier_winner == 'team1' %}{{ m.team1_name }}{% else %}{{ m.team2_name }}{% endif %}
-            {% endif %}
-          </span>
+        {% if m.live_state == 'done' %}
+          {% if m.is_top_match %}
+            <span class="chip warn tip" tabindex="0" data-tip="Top Match: bon résultat à +4 points au lieu de +2. Le bonus score exact reste +2.">★ Top Match ×2</span>
+          {% elif m.weight != 1 %}
+            <span class="chip gr tip" tabindex="0" data-tip="Poids du match: les points de bon résultat sont multipliés par {{ m.weight }}.">×{{ m.weight }}</span>
+          {% endif %}
         {% elif m.is_top_match %}
           <span class="chip warn tip" tabindex="0" data-tip="Top Match: bon résultat à +4 points au lieu de +2. Le bonus score exact reste +2.">★ Top Match ×2</span>
         {% else %}
@@ -118,6 +118,16 @@
         {% endif %}
       </div>
 
+      {% if m.live_state == 'done' and m.score_team1 is not none %}
+      <div class="result-final">
+        <div class="score-team" title="{{ m.team1_name }}">{{ m.team1_name|team }}</div>
+        <div class="rf-score">
+          {{ m.score_team1 }}–{{ m.score_team2 }}
+          <small>Score final{% if m.phase != 'group' and m.qualifier_winner %} · {% if m.qualifier_winner == 'team1' %}{{ m.team1_name|team }}{% else %}{{ m.team2_name|team }}{% endif %} qualifié{% endif %}</small>
+        </div>
+        <div class="score-team r" title="{{ m.team2_name }}">{{ m.team2_name|team }}</div>
+      </div>
+      {% else %}
       <div class="score-entry">
         <div class="score-team" title="{{ m.team1_name }}">{{ m.team1_name|team }}</div>
         <input class="score-pick" type="number" min="0" max="30" inputmode="numeric"
@@ -131,23 +141,42 @@
                placeholder="-" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>
         <div class="score-team r" title="{{ m.team2_name }}">{{ m.team2_name|team }}</div>
       </div>
+      {% endif %}
 
       <div class="prediction-meta">
-        <span class="outcome-chip {{ '' if m.has_score_prediction else 'empty' }}" data-outcome>
-          {% if m.has_score_prediction %}
-            {% if m.prediction == 'team1' %}Victoire {{ m.team1_name }}{% elif m.prediction == 'team2' %}Victoire {{ m.team2_name }}{% else %}Match nul{% endif %}
-          {% elif m.pronos_closed %}Pas encore ouvert{% else %}Score requis{% endif %}
-        </span>
-        {% if m.points is not none %}
-          <span class="chip ok tip" tabindex="0" data-tip="Points obtenus sur ce match après résultat officiel.">+{{ m.points }} pts</span>
+        {% if m.live_state == 'done' %}
+          {% if m.tier == 'exact' %}
+            <span class="chip ok">✓ Score exact</span>
+          {% elif m.tier == 'correct' %}
+            <span class="chip warn">✓ Bon résultat</span>
+          {% elif m.tier == 'wrong' %}
+            <span class="chip gr">✗ À côté</span>
+          {% else %}
+            <span class="chip gr">Pas de pronostic</span>
+          {% endif %}
+          {% if m.points %}
+            <span class="chip ok tip" tabindex="0" data-tip="Points obtenus sur ce match après résultat officiel.">+<b data-countup="{{ m.points }}">{{ m.points }}</b> pts</span>
+          {% endif %}
+          <span class="muted prono-text">
+            {% if m.has_score_prediction %}Ton prono {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }}{% endif %}
+          </span>
+        {% else %}
+          <span class="outcome-chip {{ '' if m.has_score_prediction else 'empty' }}" data-outcome>
+            {% if m.has_score_prediction %}
+              {% if m.prediction == 'team1' %}Victoire {{ m.team1_name }}{% elif m.prediction == 'team2' %}Victoire {{ m.team2_name }}{% else %}Match nul{% endif %}
+            {% elif m.pronos_closed %}Pas encore ouvert{% else %}Score requis{% endif %}
+          </span>
+          {% if m.points is not none %}
+            <span class="chip ok tip" tabindex="0" data-tip="Points obtenus sur ce match après résultat officiel.">+{{ m.points }} pts</span>
+          {% endif %}
+          <span class="muted prono-text {{ 'empty' if not m.has_score_prediction else '' }}">
+            {% if m.has_score_prediction %}Prono {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }} · {{ m.prediction_label }}{% endif %}
+          </span>
         {% endif %}
-        <span class="muted prono-text {{ 'empty' if not m.has_score_prediction else '' }}">
-          {% if m.has_score_prediction %}Prono {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }} · {{ m.prediction_label }}{% endif %}
-        </span>
         <span class="sp"></span>
         <span class="save-badge">Enregistré ✓</span>
         {% if m.is_locked %}
-          <a href="/p/{{ token }}/match/{{ m.id }}" class="detail-link">Détail</a>
+          <a href="/p/{{ token }}/match/{{ m.id }}" class="detail-link stretch">Détail ›</a>
         {% endif %}
       </div>
 

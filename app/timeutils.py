@@ -49,6 +49,19 @@ def minutes_until_match(match: dict) -> int:
         return 99999
 
 
+# Durée max estimée d'un match (90' + arrêts + prolongations + TAB).
+LIVE_WINDOW_MINUTES = 150
+
+
+def match_live_state(match: dict) -> str:
+    """'' (à venir) | 'live' | 'awaiting' (joué, résultat pas encodé) | 'done'."""
+    if not is_match_locked(match):
+        return ""
+    if match.get("result") is not None:
+        return "done"
+    return "live" if minutes_until_match(match) >= -LIVE_WINDOW_MINUTES else "awaiting"
+
+
 def local_input_to_utc_iso(value: str, timezone_name: str | None = None) -> str:
     local = datetime.fromisoformat(value.strip())
     if local.tzinfo is None:
