@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import re
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
@@ -9,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.auth import set_participant_cookie
 from app.config import settings
 from app.database import init_db
 from app.routers import admin, api, pages
@@ -47,6 +49,23 @@ app.add_middleware(
     secret_key=settings.SECRET_KEY,
     max_age=8 * 60 * 60,
 )
+
+_PARTICIPANT_PATH = re.compile(r"^/p/([^/]+)")
+
+
+@app.middleware("http")
+async def refresh_participant_cookie(request: Request, call_next):
+    """Pose/rafraîchit le cookie de reconnexion sur toute page participant servie
+    avec succès. Les routes /p/{token} valident le token (404 sinon), donc un
+    statut < 400 garantit un token légitime."""
+    response = await call_next(request)
+    match = _PARTICIPANT_PATH.match(request.url.path)
+    if match and response.status_code < 400:
+        set_participant_cookie(
+            response, match.group(1), secure=request.url.scheme == "https"
+        )
+    return response
+
 
 # Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")

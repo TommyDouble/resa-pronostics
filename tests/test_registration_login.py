@@ -143,6 +143,9 @@ class TestRegistration:
 
 class TestLogin:
     def test_login_page_at_root(self, client):
+        # Sans cookie de reconnexion, la racine montre le formulaire de login.
+        if "resa_token" in client.cookies:
+            client.cookies.delete("resa_token")
         response = client.get("/")
         assert response.status_code == 200
         assert "Se connecter" in response.text
