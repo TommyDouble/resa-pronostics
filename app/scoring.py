@@ -296,13 +296,23 @@ async def record_ranking_snapshot(db):
 
 
 async def get_rank_evolution(db) -> dict:
-    """participant_id → delta de rang depuis le dernier jour photographié.
+    """participant_id → delta de rang du dernier mouvement réel du classement.
 
-    Positif = places gagnées. Vide tant qu'aucun snapshot antérieur n'existe.
+    Positif = places gagnées. Tant qu'aucun résultat n'a été encodé
+    aujourd'hui (nuit, matinée, jours sans match), la référence reste
+    l'avant-dernière journée photographiée : l'évolution de la veille ne
+    s'efface pas à minuit, elle est remplacée par celle du jour en cours au
+    premier encodage. Vide tant qu'aucun snapshot antérieur n'existe.
     """
+    latest_row = await db.execute("SELECT MAX(snapshot_date) AS d FROM ranking_snapshots")
+    latest = (await latest_row.fetchone())["d"]
+    if not latest:
+        return {}
+    today = _local_today()
+    pivot = today if latest == today else latest
     row = await db.execute(
         "SELECT MAX(snapshot_date) AS d FROM ranking_snapshots WHERE snapshot_date < ?",
-        (_local_today(),),
+        (pivot,),
     )
     last = (await row.fetchone())["d"]
     if not last:
