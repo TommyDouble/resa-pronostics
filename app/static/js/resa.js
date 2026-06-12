@@ -903,11 +903,13 @@ function initAdminPushTarget() {
   updateRecipients();
 }
 
-/* ---- Admin: auto-refresh dashboard ---- */
-function initAutoRefresh(seconds) {
-  if (!document.querySelector('.admin-dashboard')) return;
+/* ---- Admin: rafraîchissement discret du tableau de bord ----
+   Recharge le HTML de la page en arrière-plan et remplace les sections
+   marquées data-dash-swap, sans reload ni perte de contexte. */
+function initDashboardRefresh(seconds) {
+  if (!document.querySelector('[data-dash-swap]')) return;
   function busy() {
-    // Ne pas recharger pendant une saisie ou un formulaire déplié.
+    // Ne pas toucher au DOM pendant une saisie ou un panneau déplié.
     var el = document.activeElement;
     if (el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return true;
     return !!document.querySelector('details[open]');
@@ -917,7 +919,23 @@ function initAutoRefresh(seconds) {
       setTimeout(tick, seconds * 1000);
       return;
     }
-    window.location.reload();
+    fetch(window.location.href, { headers: { 'Accept': 'text/html' } })
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      })
+      .then(function(html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        document.querySelectorAll('[data-dash-swap]').forEach(function(section) {
+          var fresh = doc.querySelector('[data-dash-swap="' + section.dataset.dashSwap + '"]');
+          if (fresh) section.innerHTML = fresh.innerHTML;
+        });
+        // Les nœuds remplacés perdent leurs handlers : on les rebranche.
+        initLocalTimes();
+        initResultForms();
+      })
+      .catch(function() {})
+      .then(function() { setTimeout(tick, seconds * 1000); });
   }
   setTimeout(tick, seconds * 1000);
 }
@@ -1161,7 +1179,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initResultForms();
   initAdminTables();
   initAdminPushTarget();
-  initAutoRefresh(60);
+  initDashboardRefresh(60);
   initCsvImport();
   initPhaseFilter();
   initStepper('goals-stepper', 50, 300);

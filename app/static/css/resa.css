@@ -1649,3 +1649,69 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 }
 .fav-btn.on { color: var(--warning); }
 .fav-btn:disabled { opacity: .5; cursor: wait; }
+
+/* ---- Tableau de bord admin v2 ---- */
+.dash-h2 {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--n600);
+  margin: 18px 0 10px;
+}
+.dash-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px 6px;
+}
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.dash-match {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.dash-match .dm-info { flex: 1; min-width: 150px; }
+.dash-match .dm-info b { font-size: 13px; }
+.dash-score {
+  font-family: var(--display); font-weight: 800; font-size: 16px;
+  color: var(--primary);
+}
+.dash-encode {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.dash-encode .score-sep { font-family: var(--sketch); font-size: 18px; color: var(--n600); }
+.dash-big {
+  font-family: var(--display); font-weight: 800; font-size: 28px;
+  line-height: 1; margin: 6px 0 4px;
+}
+.dash-big small { font-family: var(--body); font-weight: 600; font-size: 12px; color: var(--n600); }
+.dash-details-toggle {
+  cursor: pointer; font-size: 12px; font-weight: 700; color: var(--n600);
+}
+.dash-names { font-size: 11.5px; color: var(--n600); line-height: 1.5; margin-top: 5px; }
+.dash-link {
+  display: inline-block; margin-top: 8px;
+  font-size: 12px; font-weight: 800; color: var(--primary);
+  text-decoration: none;
+}
+.dash-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.dash-bar-labels {
+  display: flex; gap: 4px; margin-top: 4px;
+  font-size: 9px; color: var(--n400);
+}
+.dash-bar-labels span { flex: 1; text-align: center; }
+.dash-podium-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0; font-size: 13px;
+}
+.dash-podium-row .nm { flex: 1; font-weight: 600; }
+.dash-podium-row .pts { font-family: var(--display); font-weight: 800; color: var(--primary); }
+.dash-mini-bar {
+  width: 70px; height: 6px; flex: none;
+  background: var(--n100); border-radius: 99px; overflow: hidden;
+}
+.dash-mini-bar span { display: block; height: 100%; background: var(--success); border-radius: inherit; }
