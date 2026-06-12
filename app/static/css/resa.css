@@ -1769,3 +1769,12 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 .bnav { view-transition-name: bottom-nav; }
 .page-head { view-transition-name: page-head; }
 .top-nav { view-transition-name: top-nav; }
+
+/* ---- Ligne de verdict des cartes terminées ---- */
+.your-prono { font-size: 12px; color: var(--n600); }
+.your-prono b {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--n900);
+}
