@@ -185,6 +185,7 @@ def _rankings_sql(scope: str) -> str:
     FROM participants p
     WHERE p.is_confirmed = 1 AND p.is_admin = 0
     ORDER BY total_points DESC,
+             p.is_favorite DESC,
              COALESCE(NULLIF(p.nickname, ''), p.name) ASC
     """
 
