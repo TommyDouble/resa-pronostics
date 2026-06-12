@@ -183,6 +183,11 @@
 
       <div class="prediction-meta">
         {% if m.live_state == 'done' %}
+          {# Ligne de verdict à structure fixe : prono à gauche, chip à droite. #}
+          <span class="your-prono">
+            {% if m.has_score_prediction %}Ton prono <b>{{ m.exact_score_team1 }}-{{ m.exact_score_team2 }}</b>{% endif %}
+          </span>
+          <span class="sp"></span>
           {% if m.tier == 'exact' %}
             <span class="chip ok">✓ Score exact · +<b data-countup="{{ m.points or 0 }}">{{ m.points or 0 }}</b> pts</span>
           {% elif m.tier == 'correct' %}
@@ -192,24 +197,17 @@
           {% else %}
             <span class="chip gr">Pas de pronostic</span>
           {% endif %}
-          <span class="muted prono-text">
-            {% if m.has_score_prediction %}Ton prono {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }}{% endif %}
-          </span>
         {% else %}
+          {# Le score saisi est la source unique : la chip ne fait que confirmer
+             l'issue 1X2 qui en découle, sans répéter le prono. #}
           <span class="outcome-chip {{ '' if m.has_score_prediction else 'empty' }}" data-outcome>
             {% if m.has_score_prediction %}
               {% if m.prediction == 'team1' %}Victoire {{ m.team1_name }}{% elif m.prediction == 'team2' %}Victoire {{ m.team2_name }}{% else %}Match nul{% endif %}
             {% elif m.pronos_closed %}Pas encore ouvert{% else %}Score requis{% endif %}
           </span>
-          {% if m.points is not none %}
-            <span class="chip ok tip" tabindex="0" data-tip="Points obtenus sur ce match après résultat officiel.">+{{ m.points }} pts</span>
-          {% endif %}
-          <span class="muted prono-text {{ 'empty' if not m.has_score_prediction else '' }}">
-            {% if m.has_score_prediction %}Prono {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }} · {{ m.prediction_label }}{% endif %}
-          </span>
+          <span class="sp"></span>
+          <span class="save-badge">Enregistré ✓</span>
         {% endif %}
-        <span class="sp"></span>
-        <span class="save-badge">Enregistré ✓</span>
       </div>
 
       {% if m.pronos_closed %}
