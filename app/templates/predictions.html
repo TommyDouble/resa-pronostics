@@ -112,11 +112,11 @@
           <b>{{ m.team2_name|team }}</b>
         </span>
         {% if m.tier == 'exact' %}
-        <span class="chip ok">✓ +{{ m.points or 0 }}</span>
+        <span class="chip ok">+{{ m.points or 0 }} pts</span>
         {% elif m.tier == 'correct' %}
-        <span class="chip warn">✓ +{{ m.points or 0 }}</span>
+        <span class="chip warn">+{{ m.points or 0 }} pts</span>
         {% elif m.tier == 'wrong' %}
-        <span class="chip gr">✗ 0</span>
+        <span class="chip gr">0 pt</span>
         {% else %}
         <span class="chip gr">—</span>
         {% endif %}
@@ -184,16 +184,13 @@
       <div class="prediction-meta">
         {% if m.live_state == 'done' %}
           {% if m.tier == 'exact' %}
-            <span class="chip ok">✓ Score exact</span>
+            <span class="chip ok">✓ Score exact · +<b data-countup="{{ m.points or 0 }}">{{ m.points or 0 }}</b> pts</span>
           {% elif m.tier == 'correct' %}
-            <span class="chip warn">✓ Bon résultat</span>
+            <span class="chip warn">✓ Bon résultat · +<b data-countup="{{ m.points or 0 }}">{{ m.points or 0 }}</b> pts</span>
           {% elif m.tier == 'wrong' %}
             <span class="chip gr">✗ À côté · 0 pt</span>
           {% else %}
             <span class="chip gr">Pas de pronostic</span>
-          {% endif %}
-          {% if m.points %}
-            <span class="chip ok tip" tabindex="0" data-tip="Points obtenus sur ce match après résultat officiel.">+<b data-countup="{{ m.points }}">{{ m.points }}</b> pts</span>
           {% endif %}
           <span class="muted prono-text">
             {% if m.has_score_prediction %}Ton prono {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }}{% endif %}
@@ -244,7 +241,10 @@
       {% endif %}
 
       <div class="prediction-error" role="alert"></div>
-      {% if compact %}</div>{% endif %}
+      {% if compact %}
+      <button type="button" class="compact-collapse" data-compact-toggle aria-expanded="true">Réduire ▴</button>
+      </div>
+      {% endif %}
     </div>
   {% else %}
     <div style="text-align:center;padding:40px 20px;color:var(--n600);">
