@@ -41,7 +41,7 @@
   </aside>
 
   <!-- Main -->
-  <main class="admin-main admin-dashboard">
+  <main class="admin-main{% block main_class %}{% endblock %}">
     {% block admin_content %}{% endblock %}
   </main>
 
