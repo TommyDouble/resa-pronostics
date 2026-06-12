@@ -151,53 +151,64 @@
     Seuls les champs remplis sont modifiés, le reste est conservé. Les réponses seront marquées « saisi admin »
     et les points recalculés si les réponses officielles sont déjà connues.
   </p>
-  <form method="post" action="/admin/pronostics/force-pre-tournoi"
-        style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;">
-    <div class="field" style="max-width:220px;">
-      <div class="lbl" style="margin-bottom:4px;">Participant</div>
-      <select name="participant_id" required>
-        <option value="">Participant...</option>
-        {% for p in participants %}
-        <option value="{{ p.id }}">{{ p.nickname or p.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="field" style="max-width:190px;">
-      <div class="lbl" style="margin-bottom:4px;">{{ pt_questions.winner.label }}</div>
-      <select name="winner">
-        <option value="">— inchangé —</option>
-        {% for t in teams_48 %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-      </select>
-    </div>
-    <div class="field" style="max-width:190px;">
-      <div class="lbl" style="margin-bottom:4px;">{{ pt_questions.finalist.label }}</div>
-      <select name="finalist">
-        <option value="">— inchangé —</option>
-        {% for t in teams_48 %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-      </select>
-    </div>
-    <div style="max-width:240px;">
-      <div class="lbl" style="margin-bottom:4px;">{{ pt_questions.top_scorer.label }}</div>
-      <div class="autocomplete-wrap" data-scorer-combo>
+  <form method="post" action="/admin/pronostics/force-pre-tournoi">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;align-items:end;">
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Participant</div>
         <div class="field">
-          <input type="text" data-combo-input placeholder="— inchangé —" autocomplete="off">
+          <select name="participant_id" required>
+            <option value="">Choisir...</option>
+            {% for p in participants %}
+            <option value="{{ p.id }}">{{ p.nickname or p.name }}</option>
+            {% endfor %}
+          </select>
         </div>
-        <input type="hidden" name="top_scorer" data-combo-value value="">
-        <ul class="autocomplete-list" data-combo-list style="display:none;"></ul>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">{{ pt_questions.winner.label }}</div>
+        <div class="field">
+          <select name="winner">
+            <option value="">— inchangé —</option>
+            {% for t in teams_48 %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">{{ pt_questions.finalist.label }}</div>
+        <div class="field">
+          <select name="finalist">
+            <option value="">— inchangé —</option>
+            {% for t in teams_48 %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">{{ pt_questions.top_scorer.label }}</div>
+        <div class="autocomplete-wrap" data-scorer-combo>
+          <div class="field">
+            <input type="text" data-combo-input placeholder="— inchangé —" autocomplete="off">
+          </div>
+          <input type="hidden" name="top_scorer" data-combo-value value="">
+          <ul class="autocomplete-list" data-combo-list style="display:none;"></ul>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">{{ pt_questions.revelation.label }}</div>
+        <div class="field">
+          <select name="revelation">
+            <option value="">— inchangé —</option>
+            {% for t in outsiders %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">{{ pt_questions.total_goals.label }}</div>
+        <div class="field">
+          <input type="number" name="total_goals" min="0" max="1000" placeholder="— inchangé —">
+        </div>
       </div>
     </div>
-    <div class="field" style="max-width:190px;">
-      <div class="lbl" style="margin-bottom:4px;">{{ pt_questions.revelation.label }}</div>
-      <select name="revelation">
-        <option value="">— inchangé —</option>
-        {% for t in outsiders %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-      </select>
-    </div>
-    <div class="field" style="max-width:130px;">
-      <div class="lbl" style="margin-bottom:4px;">{{ pt_questions.total_goals.label }}</div>
-      <input type="number" name="total_goals" min="0" max="1000" placeholder="— inchangé —">
-    </div>
-    <button type="submit" class="btn sm">Enregistrer</button>
+    <button type="submit" class="btn sm" style="margin-top:12px;">Enregistrer</button>
   </form>
 </details>
 <script type="application/json" id="scorer-data">{{ scorer_options|list|tojson }}</script>
