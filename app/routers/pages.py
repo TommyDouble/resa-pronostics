@@ -10,7 +10,15 @@ from fastapi import APIRouter, File, HTTPException, Request, Form, UploadFile
 from PIL import Image, ImageOps
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.auth import hash_password, require_participant, verify_password
+from app.auth import (
+    PARTICIPANT_COOKIE,
+    clear_participant_cookie,
+    get_participant_by_token,
+    hash_password,
+    require_participant,
+    set_participant_cookie,
+    verify_password,
+)
 from app.config import settings
 from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import get_db
@@ -308,9 +316,20 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
 
 @router.get("/", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse(request, "login.html", {
+    # Reconnexion automatique : la PWA démarre sur "/", le cookie ramène
+    # directement le participant chez lui sans repasser par le login.
+    cookie_token = request.cookies.get(PARTICIPANT_COOKIE)
+    if cookie_token:
+        participant = await get_participant_by_token(cookie_token)
+        if participant:
+            return RedirectResponse(url=f"/p/{cookie_token}", status_code=303)
+    response = templates.TemplateResponse(request, "login.html", {
         "request": request, "error": None, "email": ""
     })
+    if cookie_token:
+        # Token périmé (participant supprimé, base réinitialisée…) : on purge.
+        clear_participant_cookie(response)
+    return response
 
 
 @router.post("/connexion", response_class=HTMLResponse)
@@ -343,7 +362,19 @@ async def login_post(
         )
     if not verify_password(password, participant["password_hash"]):
         return login_error("Email ou mot de passe incorrect.")
-    return RedirectResponse(url=f"/p/{participant['token']}", status_code=303)
+    response = RedirectResponse(url=f"/p/{participant['token']}", status_code=303)
+    set_participant_cookie(
+        response, participant["token"], secure=request.url.scheme == "https"
+    )
+    return response
+
+
+@router.post("/deconnexion")
+async def participant_logout(request: Request):
+    """Oublie ce compte sur cet appareil (efface le cookie de reconnexion)."""
+    response = RedirectResponse(url="/", status_code=303)
+    clear_participant_cookie(response)
+    return response
 
 
 @router.get("/lien-perdu", response_class=HTMLResponse)

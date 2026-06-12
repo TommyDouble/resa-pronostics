@@ -143,5 +143,16 @@
     </div>
     <button type="button" class="btn ghost sm" data-push-toggle style="display:none;margin-top:8px;">Activer les notifications</button>
   </div>
+
+  <div class="card">
+    <div class="lbl" style="margin-bottom:8px;">Cet appareil</div>
+    <p class="muted helper-text" style="margin-top:0;">
+      Ton compte reste mémorisé sur cet appareil : l'app s'ouvre directement sur tes pronos.
+      Sur un téléphone partagé, tu peux l'oublier ici.
+    </p>
+    <form method="post" action="/deconnexion" style="margin-top:8px;">
+      <button type="submit" class="btn ghost sm">Se déconnecter de cet appareil</button>
+    </form>
+  </div>
 </div>
 {% endblock %}
