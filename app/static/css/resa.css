@@ -1778,3 +1778,89 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
   font-size: 13px;
   color: var(--n900);
 }
+
+/* ---- Évolution du classement : référence + grimpeur du jour ---- */
+.evo-ref {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 12px;
+  font-size: 11.5px; font-weight: 600;
+  color: var(--n600);
+  background: linear-gradient(90deg, var(--primary-l), transparent 70%);
+  border-bottom: 1px solid var(--line);
+}
+.evo-ref b { color: var(--primary-d); font-weight: 800; }
+.evo-ref-ico { font-size: 13px; }
+
+.climber-hero {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 16px;
+  border-radius: var(--r-card);
+  background: linear-gradient(120deg, var(--primary) 0%, #E8590C 55%, var(--warning) 130%);
+  color: #fff;
+  box-shadow: var(--sh2);
+  overflow: hidden;
+  position: relative;
+}
+.climber-hero::after {
+  /* Traînée décorative derrière la fusée. */
+  content: "";
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 18% 30%, rgba(255,255,255,.22), transparent 42%);
+  pointer-events: none;
+}
+.ch-rocket {
+  font-size: 30px; line-height: 1; flex: none;
+  animation: rocket-float 2.4s ease-in-out infinite;
+}
+.ch-body { flex: 1; min-width: 0; }
+.ch-label {
+  display: block;
+  font-size: 10px; font-weight: 800;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: rgba(255,255,255,.75);
+}
+.ch-name {
+  display: block;
+  font-family: var(--sketch);
+  font-size: 24px; line-height: 1.05;
+  overflow-wrap: break-word;
+}
+.ch-delta {
+  flex: none;
+  font-family: var(--display); font-weight: 800; font-size: 26px;
+  line-height: 1; text-align: center;
+}
+.ch-delta small {
+  display: block;
+  font-family: var(--body); font-weight: 600; font-size: 9px;
+  color: rgba(255,255,255,.75);
+  letter-spacing: .05em; text-transform: uppercase; margin-top: 2px;
+}
+@keyframes rocket-float {
+  0%, 100% { transform: translateY(1px) rotate(-4deg); }
+  50% { transform: translateY(-3px) rotate(4deg); }
+}
+
+/* Flèches d'évolution : gabarit fixe + apparition douce */
+.evo-chip {
+  min-width: 38px;
+  justify-content: center;
+  font-family: var(--display);
+  font-variant-numeric: tabular-nums;
+  animation: evo-pop .35s ease both;
+}
+@keyframes evo-pop {
+  from { opacity: 0; transform: translateY(4px) scale(.92); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Ligne du grimpeur : halo doré discret */
+.rrow.climber {
+  background: linear-gradient(90deg, rgba(245,158,11,.12), transparent 60%);
+  border-left: 3px solid var(--warning);
+}
+.climber-mark { font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ch-rocket, .evo-chip { animation: none; }
+}

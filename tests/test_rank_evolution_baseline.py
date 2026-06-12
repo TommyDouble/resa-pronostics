@@ -1,9 +1,11 @@
-"""Flèches d'évolution : référence = dernier mouvement réel du classement."""
+"""Flèches d'évolution : référence = dernier mouvement réel, journée sportive à 5 h."""
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
+import app.scoring as scoring
 from app.database import get_db
-from app.scoring import _local_today, get_rank_evolution
+from app.scoring import _snapshot_day, get_rank_evolution
+from app.timeutils import DISPLAY_TZ
 from tests.conftest import run
 
 # Points distinctifs, assertions relatives uniquement (DB de test partagée).
@@ -46,7 +48,7 @@ def _make_match(number):
 
 
 def _snapshot(day_offset, rank_by_pid):
-    day = (date.fromisoformat(_local_today()) + timedelta(days=day_offset)).isoformat()
+    day = (date.fromisoformat(_snapshot_day()) + timedelta(days=day_offset)).isoformat()
 
     async def _create():
         async with get_db() as db:
@@ -107,14 +109,35 @@ def test_yesterday_evolution_survives_midnight_until_first_result(client):
 
         evolution = _evolution()
         # Après minuit, l'évolution d'hier reste visible : A a gagné une place.
-        assert evolution[a] == 1
-        assert evolution[b] == -1
+        assert evolution["deltas"][a] == 1
+        assert evolution["deltas"][b] == -1
+        # La référence annoncée est l'avant-hier (base du dernier mouvement).
+        expected_since = (date.fromisoformat(_snapshot_day()) - timedelta(days=2)).isoformat()
+        assert evolution["since"] == expected_since
 
         # Premier encodage du jour : un snapshot daté d'aujourd'hui apparaît.
         # La référence redevient « hier soir » → mouvements du jour (aucun ici).
         _snapshot(0, {a: 1, b: 2})
         evolution = _evolution()
-        assert evolution[a] == 0
-        assert evolution[b] == 0
+        assert evolution["deltas"][a] == 0
+        assert evolution["deltas"][b] == 0
     finally:
         run(_restore(backup))
+
+
+def test_snapshot_day_cutoff_at_5am(monkeypatch):
+    """Un encodage à 1 h du matin reste rattaché à la journée de la veille."""
+    def fake_now(local_dt):
+        return local_dt.replace(tzinfo=DISPLAY_TZ).astimezone(timezone.utc)
+
+    # 13 juin 01:30 heure locale → journée sportive du 12 juin.
+    monkeypatch.setattr(
+        scoring, "now_utc", lambda: fake_now(datetime(2026, 6, 13, 1, 30))
+    )
+    assert _snapshot_day() == "2026-06-12"
+
+    # 13 juin 06:00 heure locale → nouvelle journée sportive.
+    monkeypatch.setattr(
+        scoring, "now_utc", lambda: fake_now(datetime(2026, 6, 13, 6, 0))
+    )
+    assert _snapshot_day() == "2026-06-13"

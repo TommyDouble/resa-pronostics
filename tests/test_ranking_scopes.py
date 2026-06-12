@@ -105,6 +105,7 @@ def test_rank_evolution_uses_previous_day_snapshot(client):
             return await get_rank_evolution(db)
 
     evolution = run(_seed_snapshots())
-    assert carol["id"] in evolution
+    assert carol["id"] in evolution["deltas"]
     # Carol est forcément mieux ou pareil aujourd'hui qu'un rang 5 fictif très bas…
-    assert isinstance(evolution[carol["id"]], int)
+    assert isinstance(evolution["deltas"][carol["id"]], int)
+    assert evolution["since"] is not None

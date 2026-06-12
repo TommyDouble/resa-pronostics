@@ -72,6 +72,19 @@
 
   {% else %}
 
+  {% if view == 'general' and climbers %}
+  <div class="climber-hero">
+    <span class="ch-rocket">🚀</span>
+    <div class="ch-body">
+      <span class="ch-label">Grimpeur{{ 's' if climbers|length > 1 else '' }} du jour</span>
+      <span class="ch-name">
+        {% for c in climbers %}{{ c.name }}{% if not loop.last %} · {% endif %}{% endfor %}
+      </span>
+    </div>
+    <span class="ch-delta">▲{{ climber_delta }}<small>place{{ 's' if climber_delta > 1 else '' }}</small></span>
+  </div>
+  {% endif %}
+
   {% if rankings|length >= 3 %}
   <div class="podium">
     {% for pos in [1, 0, 2] %}
@@ -97,12 +110,18 @@
       </span>
       <span class="help-tip" tabindex="0" data-tip="Le rang dépend uniquement du total de points. À égalité, les participants gardent le même rang.">?</span>
     </div>
+    {% if view == 'general' and evolution_since_label %}
+    <div class="evo-ref">
+      <span class="evo-ref-ico">📈</span>
+      Évolution depuis la journée du <b>{{ evolution_since_label }}</b>
+    </div>
+    {% endif %}
     {% for r in rankings %}
-    <a class="rrow {{ 'me' if r.is_me else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}">
+    <a class="rrow {{ 'me' if r.is_me else '' }} {{ 'climber' if r.is_climber else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}">
       <span class="rk">{{ r.rank }}</span>
       {{ avatar(r.avatar_path, r.name, r.id) }}
       <div class="nm">
-        {{ r.name }}
+        {{ r.name }}{% if r.is_climber %} <span class="climber-mark" title="Grimpeur du jour">🚀</span>{% endif %}
         {% if r.full_name and r.full_name != r.name %}
           <small>{{ r.full_name }}{% if r.is_me %} · c'est toi{% endif %}</small>
         {% elif r.is_me %}
@@ -111,11 +130,11 @@
       </div>
       {% if view == 'general' and r.evolution is not none %}
         {% if r.evolution > 0 %}
-          <span class="chip up">▲ {{ r.evolution }}</span>
+          <span class="chip up evo-chip">▲ {{ r.evolution }}</span>
         {% elif r.evolution < 0 %}
-          <span class="chip dn">▼ {{ -r.evolution }}</span>
+          <span class="chip dn evo-chip">▼ {{ -r.evolution }}</span>
         {% else %}
-          <span class="chip fl">=</span>
+          <span class="chip fl evo-chip">=</span>
         {% endif %}
       {% endif %}
       <span class="sc">{{ r.total_points }}<small> pts</small></span>

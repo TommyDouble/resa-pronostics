@@ -1,5 +1,6 @@
 """Score calculation logic per spec."""
 import json
+from datetime import timedelta
 
 from app.database import get_db
 from app.timeutils import DISPLAY_TZ, now_utc
@@ -273,17 +274,24 @@ async def get_department_rankings(db) -> list:
     return rows
 
 
-def _local_today() -> str:
-    return now_utc().astimezone(DISPLAY_TZ).strftime("%Y-%m-%d")
+# Bascule de la « journée sportive » des snapshots : les matchs nord-américains
+# se terminent après minuit (heure d'affichage) — leur encodage tardif doit
+# rester rattaché à la journée du coup d'envoi, pas écraser la référence.
+SNAPSHOT_DAY_CUTOFF_HOURS = 5
+
+
+def _snapshot_day() -> str:
+    local = now_utc().astimezone(DISPLAY_TZ) - timedelta(hours=SNAPSHOT_DAY_CUTOFF_HOURS)
+    return local.strftime("%Y-%m-%d")
 
 
 async def record_ranking_snapshot(db):
-    """Photographie du classement général pour la date locale du jour.
+    """Photographie du classement général pour la journée sportive en cours.
 
     Appelée après chaque recalcul: les flèches d'évolution comparent le
     classement courant au dernier snapshot d'un jour précédent.
     """
-    today = _local_today()
+    today = _snapshot_day()
     rankings = await _rankings_from_db(db, "general")
     for r in rankings:
         await db.execute(
@@ -296,19 +304,21 @@ async def record_ranking_snapshot(db):
 
 
 async def get_rank_evolution(db) -> dict:
-    """participant_id → delta de rang du dernier mouvement réel du classement.
+    """{"deltas": {participant_id: delta de rang}, "since": "YYYY-MM-DD" | None}.
 
-    Positif = places gagnées. Tant qu'aucun résultat n'a été encodé
-    aujourd'hui (nuit, matinée, jours sans match), la référence reste
-    l'avant-dernière journée photographiée : l'évolution de la veille ne
-    s'efface pas à minuit, elle est remplacée par celle du jour en cours au
-    premier encodage. Vide tant qu'aucun snapshot antérieur n'existe.
+    Delta positif = places gagnées depuis la référence `since`. Tant qu'aucun
+    résultat n'a été encodé dans la journée sportive en cours (nuit, matinée,
+    jours sans match), la référence reste l'avant-dernière journée
+    photographiée : l'évolution de la veille ne s'efface pas à minuit, elle
+    est remplacée par celle du jour en cours au premier encodage. Deltas
+    vides tant qu'aucun snapshot antérieur n'existe.
     """
+    empty = {"deltas": {}, "since": None}
     latest_row = await db.execute("SELECT MAX(snapshot_date) AS d FROM ranking_snapshots")
     latest = (await latest_row.fetchone())["d"]
     if not latest:
-        return {}
-    today = _local_today()
+        return empty
+    today = _snapshot_day()
     pivot = today if latest == today else latest
     row = await db.execute(
         "SELECT MAX(snapshot_date) AS d FROM ranking_snapshots WHERE snapshot_date < ?",
@@ -316,14 +326,17 @@ async def get_rank_evolution(db) -> dict:
     )
     last = (await row.fetchone())["d"]
     if not last:
-        return {}
+        return empty
     rows = await db.execute(
         "SELECT participant_id, rank FROM ranking_snapshots WHERE snapshot_date=?",
         (last,),
     )
     old = {r["participant_id"]: r["rank"] for r in await rows.fetchall()}
     current = await _rankings_from_db(db, "general")
-    return {r["id"]: old[r["id"]] - r["rank"] for r in current if r["id"] in old}
+    return {
+        "deltas": {r["id"]: old[r["id"]] - r["rank"] for r in current if r["id"] in old},
+        "since": last,
+    }
 
 
 def answers_match(answer_type: str, given: str, correct: str) -> bool:
