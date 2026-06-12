@@ -1,5 +1,6 @@
 """Participant-facing HTML page routes."""
 from collections import defaultdict
+from datetime import date
 import io
 import logging
 import os
@@ -573,7 +574,7 @@ async def participant_home(request: Request, token: str):
             (p["id"], y_start, y_end)
         )
         yesterday = dict(await y_row.fetchone())
-        my_evolution = (await get_rank_evolution(db)).get(p["id"])
+        my_evolution = (await get_rank_evolution(db))["deltas"].get(p["id"])
         # Pre-tournament status
         pt_status = await _pt_status(db, p["id"])
         all_caught_up = (
@@ -822,6 +823,19 @@ RANKING_VIEWS = {
 }
 
 
+FR_WEEKDAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+FR_MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+             "août", "septembre", "octobre", "novembre", "décembre"]
+
+
+def _format_day_fr(value: str) -> str:
+    try:
+        d = date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return value or ""
+    return f"{FR_WEEKDAYS[d.weekday()]} {d.day} {FR_MONTHS[d.month - 1]}"
+
+
 @router.get("/p/{token}/classement", response_class=HTMLResponse)
 async def ranking_page(request: Request, token: str, view: str = "general"):
     if view not in RANKING_VIEWS:
@@ -832,6 +846,7 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
         rankings = []
         departments = []
         evolution = {}
+        evolution_since = None
         if view == "remontada":
             rankings = await get_remontada(db)
         elif view == "departments":
@@ -839,11 +854,22 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
         else:
             rankings = await get_rankings(db, scope=view)
             if view == "general":
-                evolution = await get_rank_evolution(db)
+                evo = await get_rank_evolution(db)
+                evolution = evo["deltas"]
+                evolution_since = evo["since"]
+        # Grimpeur du jour : plus forte montée de la dernière journée jouée
+        # (au moins 2 places pour mériter la fusée — les ex æquo la partagent).
+        climber_delta = max(evolution.values(), default=0)
+        climber_ids = (
+            {pid for pid, d in evolution.items() if d == climber_delta}
+            if climber_delta >= 2 else set()
+        )
         for r in rankings:
             r["is_me"] = (r["id"] == p["id"])
             r["color_class"] = f"c{((r['id'] - 1) % 8) + 1}"
             r["evolution"] = evolution.get(r["id"])
+            r["is_climber"] = r["id"] in climber_ids
+        climbers = [r for r in rankings if r.get("is_climber")]
         # La remontada n'a de sens qu'une fois la phase finale entamée.
         ko_row = await db.execute(
             "SELECT COUNT(*) AS cnt FROM matches WHERE phase != 'group' AND result IS NOT NULL"
@@ -857,6 +883,9 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
             "my_department": my_department,
             "view": view,
             "ranking_views": RANKING_VIEWS,
+            "evolution_since_label": _format_day_fr(evolution_since) if evolution_since else "",
+            "climbers": climbers,
+            "climber_delta": climber_delta,
             "knockout_started": knockout_started,
             "prize_info": prize_info,
         })
