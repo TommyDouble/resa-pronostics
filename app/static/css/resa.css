@@ -1715,3 +1715,35 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
   background: var(--n100); border-radius: 99px; overflow: hidden;
 }
 .dash-mini-bar span { display: block; height: 100%; background: var(--success); border-radius: inherit; }
+
+/* ---- Cartes compactes (matchs terminés des jours passés) ---- */
+.prediction-card.compact { padding: 0; gap: 0; }
+.compact-summary {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none; background: none;
+  font: inherit; text-align: left;
+  cursor: pointer;
+}
+.compact-summary .cs-line {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 12.5px;
+}
+.compact-summary .cs-line b { font-weight: 700; }
+.compact-summary .cs-score {
+  font-family: var(--display); font-weight: 800; font-size: 14px;
+  color: var(--primary);
+}
+.compact-summary .cs-chev {
+  color: var(--n400); font-size: 11px; flex: none;
+  transition: transform .15s ease;
+}
+.prediction-card.compact.open .cs-chev { transform: rotate(180deg); }
+.prediction-card.compact .compact-body {
+  display: none;
+  padding: 0 12px 12px;
+  flex-direction: column; gap: 11px;
+}
+.prediction-card.compact.open .compact-body { display: flex; }

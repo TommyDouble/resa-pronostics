@@ -51,6 +51,7 @@ from app.scoring import (
 )
 from app.templating import create_templates
 from app.timeutils import (
+    DISPLAY_TZ,
     is_match_locked,
     local_today,
     match_kickoff_utc,
@@ -75,9 +76,9 @@ PHASE_LABELS = {
 }
 
 GROUP_MATCH_LABELS = {
-    1: "Phase de groupes - Match 1",
-    2: "Phase de groupes - Match 2",
-    3: "Phase de groupes - Match 3",
+    1: "Phase de groupes - Journée 1",
+    2: "Phase de groupes - Journée 2",
+    3: "Phase de groupes - Journée 3",
 }
 
 PREDICTION_SECTION_ORDER = [
@@ -160,6 +161,14 @@ def _is_locked(match: dict) -> bool:
     return is_match_locked(match)
 
 
+def _is_past_day(match: dict) -> bool:
+    """Le match s'est joué un jour précédent (fuseau d'affichage)."""
+    try:
+        return match_kickoff_utc(match).astimezone(DISPLAY_TZ).date() < local_today()
+    except Exception:
+        return False
+
+
 def _live_state(match: dict) -> str:
     return match_live_state(match)
 
@@ -236,6 +245,7 @@ def _enrich_prediction_matches(matches: list[dict]) -> None:
         match["prediction_label"] = _prediction_label(match)
         match["qualifier_label"] = _qualifier_label(match)
         match["tier"] = _prediction_tier(match, match)
+        match["is_past_day"] = _is_past_day(match)
 
 
 def _prediction_sections(matches: list[dict]) -> list[dict]:

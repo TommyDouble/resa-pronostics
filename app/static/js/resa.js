@@ -372,6 +372,16 @@ function initLocalTimes() {
     if (mode === 'date') {
       return new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
     }
+    if (mode === 'day') {
+      // Séparateurs de journées : relatif quand c'est proche, sinon en toutes lettres.
+      var startOfDay = function(x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()); };
+      var diff = Math.round((startOfDay(d) - startOfDay(new Date())) / 86400000);
+      if (diff === 0) return "Aujourd'hui";
+      if (diff === -1) return 'Hier';
+      if (diff === 1) return 'Demain';
+      var label = new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(d);
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    }
     return new Intl.DateTimeFormat(locale, {
       day: '2-digit',
       month: '2-digit',
@@ -1116,6 +1126,18 @@ function initMatchLive() {
   }
 }
 
+/* ---- Cartes compactes des matchs des jours passés ---- */
+function initCompactCards() {
+  document.querySelectorAll('[data-compact-toggle]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var card = btn.closest('.prediction-card');
+      if (!card) return;
+      var open = card.classList.toggle('open');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  });
+}
+
 /* ---- Compteur animé pour les points gagnés ---- */
 function initCountUp() {
   var els = document.querySelectorAll('[data-countup]');
@@ -1190,4 +1212,5 @@ document.addEventListener('DOMContentLoaded', function() {
   initMatchLive();
   initCountUp();
   initStickyTop();
+  initCompactCards();
 });
