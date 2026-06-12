@@ -187,12 +187,13 @@
     <div class="lbl" style="margin-bottom:8px;">Mini classement</div>
     <div class="card p0">
       {% for r in mini_rank %}
-      <div class="rrow {% if r.id == participant.id %}me{% endif %}">
+      <a class="rrow {% if r.id == participant.id %}me{% endif %}"
+         href="/p/{{ token }}/profil{{ '' if r.id == participant.id else '/' ~ r.id }}">
         <span class="rk">{{ r.rank }}</span>
         {{ avatar(r.avatar_path, r.name, r.id) }}
         <div class="nm">{{ r.name }}{% if r.full_name and r.full_name != r.name %}<small>{{ r.full_name }}</small>{% elif r.id == participant.id %}<small>c'est toi</small>{% endif %}</div>
         <span class="sc">{{ r.total_points }}<small> pts</small></span>
-      </div>
+      </a>
       {% endfor %}
       {% if rival_ahead %}
       <div class="rival-line">🎯 Il te manque <b>{{ rival_ahead.gap }} pt{{ 's' if rival_ahead.gap > 1 else '' }}</b> pour rattraper {{ rival_ahead.name }}</div>

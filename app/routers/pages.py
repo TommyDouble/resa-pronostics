@@ -1261,24 +1261,30 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     )
     lead_hours_raw = (await lead_row.fetchone())["hours"]
     avg_lead_hours = round(lead_hours_raw, 1) if lead_hours_raw is not None else None
-    # Équipe la plus souvent donnée gagnante (équipes réelles uniquement)
+    # Équipe la plus souvent donnée gagnante (équipes réelles uniquement).
+    # Matchs verrouillés seulement : ne pas révéler les pronos encore modifiables.
     fav_rows = await db.execute(
         """SELECT CASE WHEN pr.prediction='team1' THEN m.team1_name
                        ELSE m.team2_name END AS team, COUNT(*) AS cnt
            FROM predictions pr
            JOIN matches m ON m.id = pr.match_id
            WHERE pr.participant_id=? AND pr.prediction != 'draw'
+             AND datetime(m.match_date || 'T' || m.kickoff_time) <= datetime(?)
            GROUP BY team ORDER BY cnt DESC LIMIT 8""",
-        (participant_id,)
+        (participant_id, _now_utc())
     )
     favorite_pick = next(
         ((r["team"], r["cnt"]) for r in await fav_rows.fetchall() if team_flag(r["team"])),
         None,
     )
-    # Nuls tentés / réussis
+    # Nuls tentés / réussis (matchs verrouillés seulement, même raison)
     draw_row = await db.execute(
-        "SELECT COUNT(*) AS cnt FROM predictions WHERE participant_id=? AND prediction='draw'",
-        (participant_id,)
+        """SELECT COUNT(*) AS cnt
+           FROM predictions pr
+           JOIN matches m ON m.id = pr.match_id
+           WHERE pr.participant_id=? AND pr.prediction='draw'
+             AND datetime(m.match_date || 'T' || m.kickoff_time) <= datetime(?)""",
+        (participant_id, _now_utc())
     )
     draw_attempts = (await draw_row.fetchone())["cnt"]
     draw_correct = sum(
