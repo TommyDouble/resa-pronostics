@@ -303,7 +303,9 @@ async def toggle_paid(request: Request, participant_id: int):
         new_val = 0 if p["has_paid"] else 1
         await db.execute("UPDATE participants SET has_paid=? WHERE id=?", (new_val, participant_id))
         await db.commit()
-    return RedirectResponse("/admin/participants", status_code=303)
+    # Appelé en fetch depuis la table participants : la ligne est mise à jour
+    # sur place, sans rechargement (préserve scroll, recherche et tri).
+    return JSONResponse({"has_paid": new_val})
 
 
 @router.post("/participants/{participant_id}/delete")
