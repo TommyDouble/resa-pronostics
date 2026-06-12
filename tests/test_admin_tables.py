@@ -54,7 +54,8 @@ def test_main_admin_tables_have_sorting_and_filtering_hooks(admin_client, partic
         "/admin/pronostics?view=bonus",
         "/admin/matches",
         "/admin/bonus",
-        "/admin/dashboard",
+        # Le tableau de bord n'a plus de table triable : il affiche des
+        # sections rafraîchies en arrière-plan (data-dash-swap).
     ]
 
     for endpoint in endpoints:

@@ -1,73 +1,204 @@
 {% extends "admin/base.html" %}
 {% block title %}Tableau de bord — Admin RESA{% endblock %}
-{% block main_class %} admin-dashboard{% endblock %}
 {% block admin_content %}
 
 <h1>Tableau de bord</h1>
 
-{% if late_matches > 0 %}
-<div class="admin-alert">
-  <span>⏱</span> {{ late_matches }} match{{ 's' if late_matches > 1 else '' }} joué{{ 's' if late_matches > 1 else '' }}
-  depuis &gt; 2h sans résultat encodé.
-  <a href="/admin/resultats" style="margin-left:8px;font-weight:700;color:var(--error);">Encoder →</a>
-</div>
-{% endif %}
+<section data-dash-swap="todo">
 
-<div class="kpis">
-  <div class="kpi">
-    <div class="big">{{ confirmed }}/{{ total_participants }}</div>
-    <div class="cap">Participants confirmés</div>
+  {% if late_matches > 0 %}
+  <div class="admin-alert">
+    <span>⏱</span> {{ late_matches }} match{{ 's' if late_matches > 1 else '' }} joué{{ 's' if late_matches > 1 else '' }}
+    depuis &gt; 2h sans résultat encodé.
+    <a href="/admin/resultats" style="margin-left:8px;font-weight:700;color:var(--error);">Encoder →</a>
   </div>
-  <div class="kpi">
-    <div class="big">{{ pt_submitted }}</div>
-    <div class="cap">Pré-tournoi soumis</div>
-  </div>
-  <div class="kpi">
-    <div class="big">{{ has_pred }}</div>
-    <div class="cap">≥ 1 pronostic</div>
-  </div>
-  <div class="kpi">
-    <div class="big">{% if next_match %}#{{ next_match.match_number }}{% else %}—{% endif %}</div>
-    <div class="cap">
-      {% if next_match %}
-        {{ next_match.team1_name[:8] }} – {{ next_match.team2_name[:8] }}
+  {% endif %}
+
+  <h2 class="dash-h2">À faire</h2>
+
+  <div class="card p0 dash-today">
+    <div class="dash-card-head">
+      <span class="lbl">Matchs du jour</span>
+      <span class="muted" style="font-size:11px;">{{ today_matches|length }} match{{ 's' if today_matches|length > 1 else '' }}</span>
+    </div>
+    {% for m in today_matches %}
+    <div class="dash-match">
+      <div class="dm-state">
+        {% if m.live_state == 'done' %}
+          <span class="dot g"></span>
+        {% elif m.live_state == 'live' %}
+          <span class="dot live"></span>
+        {% elif m.live_state == 'awaiting' %}
+          <span class="dot o"></span>
+        {% else %}
+          <span class="dot gr"></span>
+        {% endif %}
+      </div>
+      <div class="dm-info">
+        <b>#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</b>
+        <div class="muted" style="font-size:11px;">
+          <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
+          {% if m.group_name %} · {{ m.group_name }}{% endif %}
+          {% if m.is_top_match %} · ★ Top ×2{% endif %}
+          {% if m.live_state == 'live' %} · en cours{% elif m.live_state == 'awaiting' %} · attente du résultat{% endif %}
+        </div>
+      </div>
+      {% if m.live_state == 'done' %}
+      <span class="dash-score">{{ m.score_team1 }}–{{ m.score_team2 }}</span>
+      {% elif m.live_state in ('live', 'awaiting') %}
+      <form class="result-form dash-encode" method="post" action="/admin/resultats/{{ m.id }}" data-phase="{{ m.phase }}">
+        <input type="hidden" name="redirect_to" value="dashboard">
+        <input class="score-input" type="number" name="score_team1" min="0" max="30" placeholder="0" required>
+        <span class="score-sep">–</span>
+        <input class="score-input" type="number" name="score_team2" min="0" max="30" placeholder="0" required>
+        {% if m.phase != 'group' %}
+        <select name="qualifier_winner">
+          <option value="">Qualifié si nul...</option>
+          <option value="team1">{{ m.team1_name }}</option>
+          <option value="team2">{{ m.team2_name }}</option>
+        </select>
+        {% endif %}
+        <button type="submit" class="btn sm">OK</button>
+      </form>
       {% else %}
-        Prochain match sans résultat
+      <span class="muted" style="font-size:11px;">à venir</span>
       {% endif %}
     </div>
+    {% else %}
+    <p class="muted" style="font-size:13px;padding:12px;">Pas de match aujourd'hui — journée tranquille.</p>
+    {% endfor %}
   </div>
-</div>
 
-<div class="card">
-  <div class="lbl" style="margin-bottom:10px;">5 derniers résultats encodés</div>
-  {% if last_encoded %}
-  <table class="tbl" data-admin-table data-admin-search-placeholder="⌕ Filtrer résultats...">
-    <thead>
-      <tr>
-        <th data-sort="number">#</th>
-        <th data-sort="text">Match</th>
-        <th data-sort="text">Score</th>
-        <th data-sort="date">Encodé</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for m in last_encoded %}
-      <tr>
-        <td data-sort-value="{{ m.match_number }}">{{ m.match_number }}</td>
-        <td>{{ m.team1_name }} – {{ m.team2_name }}</td>
-        <td style="color:var(--primary);font-weight:700;font-family:var(--display);">{{ m.score_team1 }}–{{ m.score_team2 }}</td>
-        <td class="muted" style="font-size:11px;" data-sort-value="{{ m.created_at|utc_iso if m.created_at else '' }}">
-          {% if m.created_at %}<span data-local-utc="{{ m.created_at|utc_iso }}">{{ m.created_at|local_datetime }}</span>{% else %}—{% endif %}
-        </td>
-      </tr>
+  <div class="dash-grid">
+    <div class="card">
+      <div class="lbl" style="margin-bottom:8px;">Prochain match</div>
+      {% if next_match %}
+      <b style="font-size:13px;">#{{ next_match.match_number }} · {{ next_match.team1_name }} – {{ next_match.team2_name }}</b>
+      <div class="dash-big">{{ next_pred_count }}<small>/{{ confirmed }} pronos</small></div>
+      <div class="progress-line" style="margin:6px 0 8px;">
+        <span style="width:{{ (next_pred_count * 100 // confirmed) if confirmed else 0 }}%;"></span>
+      </div>
+      {% if missing_players %}
+      <details>
+        <summary class="dash-details-toggle">{{ missing_players|length }} retardataire{{ 's' if missing_players|length > 1 else '' }}</summary>
+        <div class="dash-names">{{ missing_players|join(' · ') }}</div>
+      </details>
+      <a class="dash-link" href="/admin/communications">✉ Envoyer un rappel →</a>
+      {% else %}
+      <span class="chip ok">Tout le monde a pronostiqué ✓</span>
+      {% endif %}
+      {% else %}
+      <p class="muted" style="font-size:13px;">Aucun match à venir.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="lbl" style="margin-bottom:8px;">Paiements</div>
+      <div class="dash-big">{{ unpaid|length }}<small> en attente</small></div>
+      {% if unpaid %}
+      <details>
+        <summary class="dash-details-toggle">Voir qui</summary>
+        <div class="dash-names">{{ unpaid|join(' · ') }}</div>
+      </details>
+      <a class="dash-link" href="/admin/participants">Gérer les paiements →</a>
+      {% else %}
+      <span class="chip ok">Tout le monde a payé ✓</span>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="lbl" style="margin-bottom:8px;">Bonus</div>
+      {% if bonus_to_close %}
+      <div class="dash-big" style="color:var(--error);">{{ bonus_to_close|length }}<small> réponse{{ 's' if bonus_to_close|length > 1 else '' }} à encoder</small></div>
+      <div class="dash-names">
+        {% for q in bonus_to_close %}{{ q.question_text[:50] }} ({{ q.answers }} rép.){% if not loop.last %} · {% endif %}{% endfor %}
+      </div>
+      {% elif bonus_closing_soon %}
+      <div class="dash-big">{{ bonus_closing_soon|length }}<small> deadline{{ 's' if bonus_closing_soon|length > 1 else '' }} &lt; 48h</small></div>
+      {% else %}
+      <span class="chip ok">Rien à gérer ✓</span>
+      {% endif %}
+      <a class="dash-link" href="/admin/bonus">Gérer les bonus →</a>
+    </div>
+  </div>
+
+</section>
+
+<section data-dash-swap="health">
+
+  <h2 class="dash-h2">Santé du jeu</h2>
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="big">{{ confirmed }}/{{ total_participants }}</div>
+      <div class="cap">Participants confirmés</div>
+    </div>
+    <div class="kpi">
+      <div class="big">{{ paid }}/{{ confirmed }}</div>
+      <div class="cap">Ont payé</div>
+    </div>
+    <div class="kpi">
+      <div class="big">{{ preds_today }}</div>
+      <div class="cap">Pronos aujourd'hui</div>
+    </div>
+    <div class="kpi">
+      <div class="big">{{ total_preds }}</div>
+      <div class="cap">Pronos au total</div>
+    </div>
+  </div>
+
+  <div class="dash-grid">
+    <div class="card">
+      <div class="lbl" style="margin-bottom:8px;">Activité · pronos par jour (7 j)</div>
+      <div class="bars" style="height:64px;">
+        {% for a in activity %}
+        <i class="{{ 'hi' if a.cnt and a.cnt == (activity|map(attribute='cnt')|max) else ('mid' if a.cnt else '') }}"
+           style="height:{{ a.height }}%;" title="{{ a.label }} : {{ a.cnt }} pronos"></i>
+        {% endfor %}
+      </div>
+      <div class="dash-bar-labels">
+        {% for a in activity %}<span>{{ a.label[:2] }}</span>{% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl" style="margin-bottom:8px;">Podium actuel</div>
+      {% for r in podium %}
+      <div class="dash-podium-row">
+        <span class="medal">{{ ['🥇','🥈','🥉'][loop.index0] }}</span>
+        <span class="nm">{{ r.name }}</span>
+        <span class="pts">{{ r.total_points }} pts</span>
+      </div>
+      {% else %}
+      <p class="muted" style="font-size:13px;">Pas encore de points.</p>
       {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted" style="font-size:13px;">Aucun résultat encodé pour l'instant.</p>
-  {% endif %}
-</div>
+      <a class="dash-link" href="/admin/export/rankings">Exporter le classement →</a>
+    </div>
+  </div>
 
-<p class="muted" style="font-size:11px;">Rafraîchissement auto toutes les 60s</p>
+  <div class="card p0">
+    <div class="dash-card-head">
+      <span class="lbl">5 derniers matchs joués</span>
+      <span class="muted" style="font-size:11px;">réussite de la communauté</span>
+    </div>
+    {% for m in last_encoded %}
+    <div class="dash-match">
+      <div class="dm-info">
+        <b>#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</b>
+        <div class="muted" style="font-size:11px;">
+          {{ m.pct_correct }}% de bons pronos · {{ m.avg_pts or 0 }} pt{{ 's' if (m.avg_pts or 0) >= 2 else '' }} en moyenne
+        </div>
+      </div>
+      <div class="dash-mini-bar"><span style="width:{{ m.pct_correct }}%;"></span></div>
+      <span class="dash-score">{{ m.score_team1 }}–{{ m.score_team2 }}</span>
+    </div>
+    {% else %}
+    <p class="muted" style="font-size:13px;padding:12px;">Aucun résultat encodé pour l'instant.</p>
+    {% endfor %}
+  </div>
+
+</section>
+
+<p class="muted" style="font-size:11px;">Mise à jour automatique en arrière-plan toutes les 60 s — sans rechargement.</p>
 
 {% endblock %}

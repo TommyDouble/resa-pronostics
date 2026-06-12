@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import uuid
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -38,7 +39,13 @@ from app.settings_store import (
 )
 from app.push import push_enabled, send_push_to_participant
 from app.templating import create_templates
-from app.timeutils import is_match_locked, local_input_to_utc_iso, now_utc_iso
+from app.timeutils import (
+    is_match_locked,
+    local_input_to_utc_iso,
+    match_live_state,
+    now_utc_iso,
+    utc_day_bounds_for_local_date,
+)
 
 router = APIRouter()
 templates = create_templates()
@@ -172,34 +179,20 @@ async def dashboard(request: Request):
     await require_admin(request)
     async with get_db() as db:
         now = _now_utc()
-        # KPIs
-        total_row = await db.execute("SELECT COUNT(*) as cnt FROM participants WHERE is_admin=0")
-        total_participants = (await total_row.fetchone())["cnt"]
-        confirmed_row = await db.execute("SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0")
-        confirmed = (await confirmed_row.fetchone())["cnt"]
-        pt_row = await db.execute("SELECT COUNT(*) as cnt FROM pre_tournament_predictions WHERE submitted=1")
-        pt_submitted = (await pt_row.fetchone())["cnt"]
-        has_pred_row = await db.execute(
-            "SELECT COUNT(DISTINCT participant_id) as cnt FROM predictions"
+
+        # ---- Section « À faire » ----
+        day_start, day_end = utc_day_bounds_for_local_date()
+        today_rows = await db.execute(
+            """SELECT * FROM matches
+               WHERE datetime(match_date || 'T' || kickoff_time) >= datetime(?)
+                 AND datetime(match_date || 'T' || kickoff_time) < datetime(?)
+               ORDER BY match_date, kickoff_time""",
+            (day_start, day_end),
         )
-        has_pred = (await has_pred_row.fetchone())["cnt"]
-        next_row = await db.execute(
-            """SELECT match_number, team1_name, team2_name
-               FROM matches
-               WHERE result IS NULL
-               AND datetime(match_date || 'T' || kickoff_time) >= datetime(?)
-               ORDER BY match_date, kickoff_time LIMIT 1""",
-            (now,)
-        )
-        next_match = await next_row.fetchone()
-        # 5 last encoded
-        last_enc = await db.execute(
-            """SELECT match_number, team1_name, team2_name, score_team1, score_team2, created_at
-               FROM matches WHERE result IS NOT NULL
-               ORDER BY created_at DESC LIMIT 5"""
-        )
-        last_encoded = [dict(r) for r in await last_enc.fetchall()]
-        # Alert: matches played >2h without result
+        today_matches = [dict(r) for r in await today_rows.fetchall()]
+        for m in today_matches:
+            m["live_state"] = match_live_state(m)
+
         alert_row = await db.execute(
             """SELECT COUNT(*) as cnt FROM matches
                WHERE result IS NULL
@@ -207,17 +200,136 @@ async def dashboard(request: Request):
             (now,)
         )
         late_matches = (await alert_row.fetchone())["cnt"]
+
+        confirmed_row = await db.execute(
+            "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0"
+        )
+        confirmed = (await confirmed_row.fetchone())["cnt"]
+
+        # Prochain match : taux de participation + retardataires.
+        next_row = await db.execute(
+            """SELECT * FROM matches
+               WHERE result IS NULL
+               AND datetime(match_date || 'T' || kickoff_time) >= datetime(?)
+               ORDER BY match_date, kickoff_time LIMIT 1""",
+            (now,)
+        )
+        next_match = await next_row.fetchone()
+        next_match = dict(next_match) if next_match else None
+        next_pred_count = 0
+        missing_players = []
+        if next_match:
+            cnt_row = await db.execute(
+                "SELECT COUNT(*) as cnt FROM predictions WHERE match_id=?",
+                (next_match["id"],),
+            )
+            next_pred_count = (await cnt_row.fetchone())["cnt"]
+            miss_rows = await db.execute(
+                """SELECT COALESCE(NULLIF(p.nickname, ''), p.name) AS name
+                   FROM participants p
+                   WHERE p.is_confirmed=1 AND p.is_admin=0
+                     AND NOT EXISTS (SELECT 1 FROM predictions pr
+                                     WHERE pr.participant_id=p.id AND pr.match_id=?)
+                   ORDER BY name""",
+                (next_match["id"],),
+            )
+            missing_players = [r["name"] for r in await miss_rows.fetchall()]
+
+        unpaid_rows = await db.execute(
+            """SELECT COALESCE(NULLIF(nickname, ''), name) AS name
+               FROM participants
+               WHERE is_confirmed=1 AND is_admin=0 AND has_paid=0
+               ORDER BY name"""
+        )
+        unpaid = [r["name"] for r in await unpaid_rows.fetchall()]
+
+        bonus_close_rows = await db.execute(
+            """SELECT id, question_text,
+                 (SELECT COUNT(*) FROM bonus_answers WHERE question_id=bonus_questions.id) AS answers
+               FROM bonus_questions
+               WHERE deadline <= ? AND correct_answer IS NULL
+               ORDER BY deadline""",
+            (now,),
+        )
+        bonus_to_close = [dict(r) for r in await bonus_close_rows.fetchall()]
+        bonus_soon_rows = await db.execute(
+            """SELECT id, question_text, deadline FROM bonus_questions
+               WHERE deadline > ? AND deadline <= datetime(?, '+48 hours')
+               ORDER BY deadline""",
+            (now, now),
+        )
+        bonus_closing_soon = [dict(r) for r in await bonus_soon_rows.fetchall()]
+
+        # ---- Section « Santé du jeu » ----
+        total_row = await db.execute("SELECT COUNT(*) as cnt FROM participants WHERE is_admin=0")
+        total_participants = (await total_row.fetchone())["cnt"]
+        paid_row = await db.execute(
+            "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0 AND has_paid=1"
+        )
+        paid = (await paid_row.fetchone())["cnt"]
+        preds_today_row = await db.execute(
+            "SELECT COUNT(*) as cnt FROM predictions WHERE submitted_at >= ? AND submitted_at < ?",
+            (day_start, day_end),
+        )
+        preds_today = (await preds_today_row.fetchone())["cnt"]
+        total_preds_row = await db.execute("SELECT COUNT(*) as cnt FROM predictions")
+        total_preds = (await total_preds_row.fetchone())["cnt"]
+
+        # Activité : pronos soumis par jour sur les 7 derniers jours.
+        act_rows = await db.execute(
+            """SELECT date(submitted_at) AS day, COUNT(*) AS cnt
+               FROM predictions
+               WHERE submitted_at >= datetime(?, '-6 days', 'start of day')
+               GROUP BY day""",
+            (now,),
+        )
+        act_by_day = {r["day"]: r["cnt"] for r in await act_rows.fetchall()}
+        activity = []
+        today = datetime.fromisoformat(now).date()
+        for offset in range(6, -1, -1):
+            day = today - timedelta(days=offset)
+            cnt = act_by_day.get(day.isoformat(), 0)
+            activity.append({"label": day.strftime("%d/%m"), "cnt": cnt})
+        act_max = max((a["cnt"] for a in activity), default=0) or 1
+        for a in activity:
+            a["height"] = max(8, round(a["cnt"] / act_max * 100))
+
+        podium = (await get_rankings(db))[:3]
+
+        # 5 derniers matchs joués : score + réussite de la communauté.
+        last_enc = await db.execute(
+            """SELECT m.match_number, m.team1_name, m.team2_name,
+                      m.score_team1, m.score_team2, m.match_date, m.kickoff_time,
+                      (SELECT COUNT(*) FROM scores s WHERE s.match_id=m.id) AS scored,
+                      (SELECT COUNT(*) FROM scores s WHERE s.match_id=m.id AND s.points > 0) AS correct,
+                      (SELECT ROUND(AVG(s.points), 1) FROM scores s WHERE s.match_id=m.id) AS avg_pts
+               FROM matches m WHERE m.result IS NOT NULL
+               ORDER BY m.match_date DESC, m.kickoff_time DESC LIMIT 5"""
+        )
+        last_encoded = [dict(r) for r in await last_enc.fetchall()]
+        for m in last_encoded:
+            m["pct_correct"] = round(m["correct"] / m["scored"] * 100) if m["scored"] else 0
+
     return templates.TemplateResponse(request, "admin/dashboard.html", {
         "request": request,
         "active": "dashboard",
         "flashes": _get_flashes(request),
-        "total_participants": total_participants,
-        "confirmed": confirmed,
-        "pt_submitted": pt_submitted,
-        "has_pred": has_pred,
-        "next_match": dict(next_match) if next_match else None,
-        "last_encoded": last_encoded,
+        "today_matches": today_matches,
         "late_matches": late_matches,
+        "next_match": next_match,
+        "next_pred_count": next_pred_count,
+        "missing_players": missing_players,
+        "confirmed": confirmed,
+        "unpaid": unpaid,
+        "bonus_to_close": bonus_to_close,
+        "bonus_closing_soon": bonus_closing_soon,
+        "total_participants": total_participants,
+        "paid": paid,
+        "preds_today": preds_today,
+        "total_preds": total_preds,
+        "activity": activity,
+        "podium": podium,
+        "last_encoded": last_encoded,
     })
 
 
@@ -1019,8 +1131,11 @@ async def results_page(request: Request):
 @router.post("/resultats/{match_id}")
 async def encode_result(request: Request, match_id: int,
                         score_team1: int = Form(...), score_team2: int = Form(...),
-                        qualifier_winner: str = Form(default="")):
+                        qualifier_winner: str = Form(default=""),
+                        redirect_to: str = Form(default="")):
     await require_admin(request)
+    # L'encodage inline du tableau de bord renvoie vers le tableau de bord.
+    back = "/admin/dashboard" if redirect_to == "dashboard" else "/admin/resultats"
     async with get_db() as db:
         row = await db.execute("SELECT * FROM matches WHERE id=?", (match_id,))
         match = await row.fetchone()
@@ -1033,7 +1148,7 @@ async def encode_result(request: Request, match_id: int,
         )
         if error:
             _flash(request, error, "err")
-            return RedirectResponse("/admin/resultats", status_code=303)
+            return RedirectResponse(back, status_code=303)
         await db.execute(
             "UPDATE matches SET score_team1=?, score_team2=?, result=?, qualifier_winner=? WHERE id=?",
             (score_team1, score_team2, result, qualifier, match_id)
@@ -1041,7 +1156,7 @@ async def encode_result(request: Request, match_id: int,
         await db.commit()
     await recalculate_match_scores(match_id)
     _flash(request, f"Résultat encodé. Scores recalculés.")
-    return RedirectResponse("/admin/resultats", status_code=303)
+    return RedirectResponse(back, status_code=303)
 
 
 @router.post("/resultats/{match_id}/correct")
