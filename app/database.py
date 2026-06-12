@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS participants (
   email_opt_in INTEGER NOT NULL DEFAULT 1,
   password_hash TEXT,
   department TEXT,
+  is_favorite INTEGER NOT NULL DEFAULT 0,
   created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -226,6 +227,7 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
             "password_hash TEXT",
             "department TEXT",
             "avatar_path TEXT",
+            "is_favorite INTEGER NOT NULL DEFAULT 0",
         ]
         for column in participant_columns:
             try:

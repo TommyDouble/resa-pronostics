@@ -728,6 +728,31 @@ function initPaidToggles() {
   });
 }
 
+/* ---- Admin: toggle favori (départage des ex æquo) sans recharger ---- */
+function initFavoriteToggles() {
+  document.querySelectorAll('[data-toggle-favorite]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      btn.disabled = true;
+      fetch('/admin/participants/' + btn.dataset.toggleFavorite + '/toggle-favorite', { method: 'POST' })
+        .then(function(r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function(data) {
+          var on = !!data.is_favorite;
+          btn.textContent = on ? '★' : '☆';
+          btn.classList.toggle('on', on);
+          var cell = btn.closest('td');
+          if (cell) cell.setAttribute('data-sort-value', on ? '1' : '0');
+        })
+        .catch(function() {
+          alert('Mise à jour du favori impossible, réessaie.');
+        })
+        .then(function() { btn.disabled = false; });
+    });
+  });
+}
+
 /* ---- Admin: score validation warning ---- */
 function initResultForms() {
   document.querySelectorAll('.result-form').forEach(function(form) {
@@ -1132,6 +1157,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initFlash();
   initTopMatchToggles();
   initPaidToggles();
+  initFavoriteToggles();
   initResultForms();
   initAdminTables();
   initAdminPushTarget();

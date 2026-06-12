@@ -1636,3 +1636,16 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
   ::view-transition-old(*),
   ::view-transition-new(*) { animation: none !important; }
 }
+
+/* ---- Bouton favori (admin participants) ---- */
+.fav-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--n300);
+  padding: 2px 4px;
+}
+.fav-btn.on { color: var(--warning); }
+.fav-btn:disabled { opacity: .5; cursor: wait; }

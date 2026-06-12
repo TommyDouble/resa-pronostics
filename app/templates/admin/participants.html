@@ -19,6 +19,7 @@
         <th data-sort="text">Département</th>
         <th data-sort="number">Statut</th>
         <th data-sort="number">Payé</th>
+        <th data-sort="number" title="Favori : passe devant en cas d'égalité au classement">★</th>
         <th data-sort="number">Pré-t.</th>
         <th data-sort="number">≥1 prono</th>
         <th>Actions</th>
@@ -44,6 +45,13 @@
             {{ '✓ payé' if p.has_paid else '— en att.' }}
           </button>
         </td>
+        <td data-sort-value="{{ 1 if p.is_favorite else 0 }}">
+          <button type="button" data-toggle-favorite="{{ p.id }}"
+                  class="fav-btn {% if p.is_favorite %}on{% endif %}"
+                  title="Favori : passe devant en cas d'égalité au classement">
+            {{ '★' if p.is_favorite else '☆' }}
+          </button>
+        </td>
         <td data-sort-value="{{ 1 if p.pt_submitted else 0 }}">{{ '✓' if p.pt_submitted else '—' }}</td>
         <td data-sort-value="{{ p.pred_count }}">{{ '✓' if p.pred_count > 0 else '—' }}</td>
         <td>
@@ -60,7 +68,7 @@
         </td>
       </tr>
       {% else %}
-      <tr data-empty-row><td colspan="8" style="text-align:center;padding:24px;color:var(--n400);">Aucun participant.</td></tr>
+      <tr data-empty-row><td colspan="9" style="text-align:center;padding:24px;color:var(--n400);">Aucun participant.</td></tr>
       {% endfor %}
     </tbody>
   </table>
