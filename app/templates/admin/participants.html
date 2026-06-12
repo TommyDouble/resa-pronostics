@@ -38,12 +38,11 @@
           {% endif %}
         </td>
         <td data-sort-value="{{ 1 if p.has_paid else 0 }}">
-          <form method="post" action="/admin/participants/{{ p.id }}/toggle-paid" style="display:inline;">
-            <button type="submit" class="chip {% if p.has_paid %}ok{% else %}gr{% endif %}"
-                    style="cursor:pointer;border:none;background:none;padding:4px 9px;font-size:11px;">
-              {{ '✓ payé' if p.has_paid else '— en att.' }}
-            </button>
-          </form>
+          <button type="button" data-toggle-paid="{{ p.id }}"
+                  class="chip {% if p.has_paid %}ok{% else %}gr{% endif %}"
+                  style="cursor:pointer;border:none;padding:4px 9px;font-size:11px;">
+            {{ '✓ payé' if p.has_paid else '— en att.' }}
+          </button>
         </td>
         <td data-sort-value="{{ 1 if p.pt_submitted else 0 }}">{{ '✓' if p.pt_submitted else '—' }}</td>
         <td data-sort-value="{{ p.pred_count }}">{{ '✓' if p.pred_count > 0 else '—' }}</td>

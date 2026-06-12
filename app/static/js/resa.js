@@ -701,6 +701,33 @@ function initTopMatchToggles() {
   });
 }
 
+/* ---- Admin: toggle paiement sans recharger ---- */
+function initPaidToggles() {
+  document.querySelectorAll('[data-toggle-paid]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      btn.disabled = true;
+      fetch('/admin/participants/' + btn.dataset.togglePaid + '/toggle-paid', { method: 'POST' })
+        .then(function(r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function(data) {
+          var paid = !!data.has_paid;
+          btn.textContent = paid ? '✓ payé' : '— en att.';
+          btn.classList.toggle('ok', paid);
+          btn.classList.toggle('gr', !paid);
+          // Garde le tri par colonne cohérent au prochain clic d'en-tête.
+          var cell = btn.closest('td');
+          if (cell) cell.setAttribute('data-sort-value', paid ? '1' : '0');
+        })
+        .catch(function() {
+          alert('Mise à jour du paiement impossible, réessaie.');
+        })
+        .then(function() { btn.disabled = false; });
+    });
+  });
+}
+
 /* ---- Admin: score validation warning ---- */
 function initResultForms() {
   document.querySelectorAll('.result-form').forEach(function(form) {
@@ -1091,6 +1118,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initOutsiderChips();
   initFlash();
   initTopMatchToggles();
+  initPaidToggles();
   initResultForms();
   initAdminTables();
   initAdminPushTarget();
