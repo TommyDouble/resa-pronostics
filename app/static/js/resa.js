@@ -881,7 +881,20 @@ function initAdminPushTarget() {
 /* ---- Admin: auto-refresh dashboard ---- */
 function initAutoRefresh(seconds) {
   if (!document.querySelector('.admin-dashboard')) return;
-  setTimeout(function() { window.location.reload(); }, seconds * 1000);
+  function busy() {
+    // Ne pas recharger pendant une saisie ou un formulaire déplié.
+    var el = document.activeElement;
+    if (el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return true;
+    return !!document.querySelector('details[open]');
+  }
+  function tick() {
+    if (busy()) {
+      setTimeout(tick, seconds * 1000);
+      return;
+    }
+    window.location.reload();
+  }
+  setTimeout(tick, seconds * 1000);
 }
 
 /* ---- CSV import validation ---- */
