@@ -1728,13 +1728,17 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 }
 .compact-summary .cs-line {
   flex: 1; min-width: 0;
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
+  align-items: center; gap: 6px;
   font-size: 12.5px;
 }
-.compact-summary .cs-line b { font-weight: 700; }
+.compact-summary .cs-line b { font-weight: 700; overflow-wrap: break-word; }
+.compact-summary .cs-line b:first-child { text-align: right; }
 .compact-summary .cs-score {
   font-family: var(--display); font-weight: 800; font-size: 14px;
   color: var(--primary);
+  text-align: center;
 }
 .compact-summary .cs-chev {
   color: var(--n400); font-size: 11px; flex: none;
@@ -1743,7 +1747,25 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 .prediction-card.compact.open .cs-chev { transform: rotate(180deg); }
 .prediction-card.compact .compact-body {
   display: none;
-  padding: 0 12px 12px;
+  padding: 12px;
   flex-direction: column; gap: 11px;
 }
 .prediction-card.compact.open .compact-body { display: flex; }
+/* Ouvert : le résumé s'efface, la carte complète reprend le dessus. */
+.prediction-card.compact.open .compact-summary { display: none; }
+.compact-collapse {
+  width: 100%;
+  border: none; border-top: 1px dashed var(--n300);
+  background: none;
+  padding: 8px 0 0;
+  font-family: var(--display); font-weight: 800; font-size: 11px;
+  color: var(--n600);
+  cursor: pointer;
+}
+.compact-collapse:hover { color: var(--primary); }
+
+/* La barre de navigation et les en-têtes fixes ne doivent pas glisser
+   pendant les view transitions : groupe d'instantané dédié. */
+.bnav { view-transition-name: bottom-nav; }
+.page-head { view-transition-name: page-head; }
+.top-nav { view-transition-name: top-nav; }

@@ -1133,7 +1133,9 @@ function initCompactCards() {
       var card = btn.closest('.prediction-card');
       if (!card) return;
       var open = card.classList.toggle('open');
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      card.querySelectorAll('[data-compact-toggle]').forEach(function(toggle) {
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
     });
   });
 }
