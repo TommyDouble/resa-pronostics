@@ -72,7 +72,11 @@ def test_home_shows_reveal_entry_and_promo(client, participant):
     # Point d'entrée Reveal présent tant que la journée n'a pas été vue.
     assert "reveal-entry" in html
     assert "Le Reveal du jour est prêt" in html
-    # La story promo (template_key reveal_promo, seedée par défaut) est rendue.
+    # La story promo (template_key reveal_promo, seedée par défaut) est rendue
+    # en parcours multi-écrans : une "feature" titrée + au moins 3 écrans.
+    assert 'data-story-feature' in html
+    assert 'data-title="Le Reveal du jour"' in html
+    assert html.count("data-story-screen") >= 3
     assert "rp-demo" in html
 
 

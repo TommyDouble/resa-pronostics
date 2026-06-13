@@ -1053,6 +1053,7 @@ def _slugify(text: str) -> str:
 @router.get("/nouveautes", response_class=HTMLResponse)
 async def news_admin(request: Request):
     await require_admin(request)
+    from app.news import STORY_TEMPLATES
     async with get_db() as db:
         rows = await db.execute(
             "SELECT * FROM news_items ORDER BY sort_order, id"
@@ -1063,15 +1064,14 @@ async def news_admin(request: Request):
         "active": "nouveautes",
         "flashes": _get_flashes(request),
         "items": items,
+        "story_templates": STORY_TEMPLATES,
     })
 
 
-NEWS_TEMPLATE_KEYS = {"reveal_promo"}
-
-
 def _clean_template_key(value: str) -> str | None:
+    from app.news import is_valid_template_key
     value = (value or "").strip()
-    return value if value in NEWS_TEMPLATE_KEYS else None
+    return value if is_valid_template_key(value) else None
 
 
 @router.post("/nouveautes")
@@ -1137,6 +1137,29 @@ async def news_update(
         await db.commit()
     _flash(request, "Nouveauté mise à jour.")
     return RedirectResponse("/admin/nouveautes", status_code=303)
+
+
+@router.get("/nouveautes/{news_id}/preview", response_class=HTMLResponse)
+async def news_preview(request: Request, news_id: int):
+    """Aperçu du rendu réel de la story (player + écrans), brouillons inclus."""
+    await require_admin(request)
+    from app.news import STORY_TEMPLATES
+    async with get_db() as db:
+        row = await db.execute(
+            "SELECT id, slug, title, body, icon, media_path, template_key FROM news_items WHERE id=?",
+            (news_id,),
+        )
+        item = await row.fetchone()
+    if not item:
+        raise HTTPException(404)
+    item = dict(item)
+    if item.get("template_key") not in STORY_TEMPLATES:
+        item["template_key"] = None
+    return templates.TemplateResponse(request, "admin/news_preview.html", {
+        "request": request,
+        "news_story": [item],
+        "story_autoopen": "1",
+    })
 
 
 @router.post("/nouveautes/{news_id}/delete")

@@ -19,24 +19,7 @@
 
 <div class="page-content">
 
-  {% if news_story %}
-  <div class="news-story" data-story
-       data-story-maxid="{{ news_story[-1].id }}"
-       data-story-autoopen="{{ '0' if urgency else '1' }}">
-    {% for item in news_story %}
-    <article class="story-card" data-story-card>
-      {% if item.template_key %}
-        {% include "partials/news/" ~ item.template_key ~ ".html" %}
-      {% else %}
-        {% if item.media_path %}<img class="story-media" src="{{ item.media_path }}" alt="">{% endif %}
-        <div class="story-icon">{{ item.icon or '✨' }}</div>
-        <h2 class="story-title">{{ item.title }}</h2>
-        {% if item.body %}<div class="story-body">{{ item.body }}</div>{% endif %}
-      {% endif %}
-    </article>
-    {% endfor %}
-  </div>
-  {% endif %}
+  {% include "partials/_story.html" %}
 
   {% if not participant.has_paid %}
   <div class="banner" style="background:#FFF8E1;border-left:3px solid #F59E0B;color:#92400E;">

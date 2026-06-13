@@ -1191,21 +1191,33 @@ function initStickyTop() {
 function initStoryPlayer() {
   var root = document.querySelector('[data-story]');
   if (!root) return;
-  var cards = Array.prototype.slice.call(root.querySelectorAll('[data-story-card]'));
-  if (!cards.length) return;
+  var features = Array.prototype.slice.call(root.querySelectorAll('[data-story-feature]'));
+  if (!features.length) return;
+  var screensOf = features.map(function(f) {
+    return Array.prototype.slice.call(f.querySelectorAll('[data-story-screen]'));
+  });
   var token = document.body.dataset.token;
   var maxId = parseInt(root.dataset.storyMaxid, 10) || 0;
-  var idx = 0;
+  var fi = 0;   // index de la fonctionnalité courante
+  var si = 0;   // index de l'écran courant dans la fonctionnalité
   var seenSent = false;
 
+  // Barre du haut : segments de progression + (titre · compteur 1/N) + fermer.
+  var topbar = document.createElement('div');
+  topbar.className = 'story-topbar';
   var prog = document.createElement('div');
   prog.className = 'story-progress';
-  cards.forEach(function() {
-    var seg = document.createElement('span');
-    seg.className = 'story-seg';
-    prog.appendChild(seg);
-  });
-  root.insertBefore(prog, root.firstChild);
+  var titleRow = document.createElement('div');
+  titleRow.className = 'story-titlerow';
+  var titleEl = document.createElement('span');
+  titleEl.className = 'story-title-top';
+  var counterEl = document.createElement('span');
+  counterEl.className = 'story-counter';
+  titleRow.appendChild(titleEl);
+  titleRow.appendChild(counterEl);
+  topbar.appendChild(prog);
+  topbar.appendChild(titleRow);
+  root.insertBefore(topbar, root.firstChild);
 
   var closeBtn = document.createElement('button');
   closeBtn.type = 'button';
@@ -1226,15 +1238,27 @@ function initStoryPlayer() {
   root.appendChild(navNext);
 
   function render() {
-    cards.forEach(function(c, i) { c.classList.toggle('is-active', i === idx); });
-    var segs = prog.children;
-    for (var i = 0; i < segs.length; i++) {
-      segs[i].classList.toggle('done', i < idx);
-      segs[i].classList.toggle('current', i === idx);
+    features.forEach(function(f, i) { f.classList.toggle('is-active', i === fi); });
+    var screens = screensOf[fi];
+    screens.forEach(function(s, i) { s.classList.toggle('is-active', i === si); });
+    // Segments = nombre d'écrans de la fonctionnalité courante (réinitialisés).
+    if (prog.children.length !== screens.length) {
+      prog.innerHTML = '';
+      for (var k = 0; k < screens.length; k++) {
+        var seg = document.createElement('span');
+        seg.className = 'story-seg';
+        prog.appendChild(seg);
+      }
     }
+    for (var i = 0; i < prog.children.length; i++) {
+      prog.children[i].classList.toggle('done', i < si);
+      prog.children[i].classList.toggle('current', i === si);
+    }
+    titleEl.textContent = features[fi].dataset.title || '';
+    counterEl.textContent = (si + 1) + '/' + screens.length;
   }
   function open() {
-    idx = 0;
+    fi = 0; si = 0;
     root.classList.add('open');
     document.body.classList.add('story-locked');
     render();
@@ -1253,8 +1277,18 @@ function initStoryPlayer() {
     document.body.classList.remove('story-locked');
     markSeen();  // vu OU passé : dans les deux cas on ne le remontre pas.
   }
-  function next() { if (idx < cards.length - 1) { idx++; render(); } else { close(); } }
-  function prev() { if (idx > 0) { idx--; render(); } }
+  function next() {
+    if (si < screensOf[fi].length - 1) { si++; }
+    else if (fi < features.length - 1) { fi++; si = 0; }
+    else { close(); return; }
+    render();
+  }
+  function prev() {
+    if (si > 0) { si--; }
+    else if (fi > 0) { fi--; si = screensOf[fi].length - 1; }
+    else { return; }
+    render();
+  }
 
   navNext.addEventListener('click', next);
   navPrev.addEventListener('click', prev);
