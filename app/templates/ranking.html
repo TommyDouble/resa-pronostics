@@ -110,10 +110,10 @@
       </span>
       <span class="help-tip" tabindex="0" data-tip="Le rang dépend uniquement du total de points. À égalité, les participants gardent le même rang.">?</span>
     </div>
-    {% if view == 'general' and evolution_since_label %}
+    {% if view == 'general' and evolution_day_label %}
     <div class="evo-ref">
       <span class="evo-ref-ico">📈</span>
-      Évolution depuis la journée du <b>{{ evolution_since_label }}</b>
+      Évolution sur la journée du <b>{{ evolution_day_label }}</b>
     </div>
     {% endif %}
     {% for r in rankings %}

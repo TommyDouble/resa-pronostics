@@ -1,9 +1,8 @@
 """Score calculation logic per spec."""
 import json
-from datetime import timedelta
 
 from app.database import get_db
-from app.timeutils import DISPLAY_TZ, now_utc
+from app.timeutils import format_match_local_date
 
 
 def parse_revelation_winners(correct_answer) -> set:
@@ -129,7 +128,6 @@ async def recalculate_match_scores(match_id: int):
                 (pred_dict["participant_id"], match_id, points),
             )
 
-        await record_ranking_snapshot(db)
         await db.commit()
 
 
@@ -274,69 +272,59 @@ async def get_department_rankings(db) -> list:
     return rows
 
 
-# Bascule de la « journée sportive » des snapshots : les matchs nord-américains
-# se terminent après minuit (heure d'affichage) — leur encodage tardif doit
-# rester rattaché à la journée du coup d'envoi, pas écraser la référence.
-SNAPSHOT_DAY_CUTOFF_HOURS = 5
-
-
-def _snapshot_day() -> str:
-    local = now_utc().astimezone(DISPLAY_TZ) - timedelta(hours=SNAPSHOT_DAY_CUTOFF_HOURS)
-    return local.strftime("%Y-%m-%d")
-
-
-async def record_ranking_snapshot(db):
-    """Photographie du classement général pour la journée sportive en cours.
-
-    Appelée après chaque recalcul: les flèches d'évolution comparent le
-    classement courant au dernier snapshot d'un jour précédent.
-    """
-    today = _snapshot_day()
-    rankings = await _rankings_from_db(db, "general")
-    for r in rankings:
-        await db.execute(
-            """INSERT INTO ranking_snapshots (snapshot_date, participant_id, rank, total_points)
-               VALUES (?,?,?,?)
-               ON CONFLICT(snapshot_date, participant_id)
-               DO UPDATE SET rank=excluded.rank, total_points=excluded.total_points""",
-            (today, r["id"], r["rank"], r["total_points"]),
-        )
-
-
 async def get_rank_evolution(db) -> dict:
-    """{"deltas": {participant_id: delta de rang}, "since": "YYYY-MM-DD" | None}.
+    """{"deltas": {participant_id: delta de rang}, "day": "YYYY-MM-DD" | None}.
 
-    Delta positif = places gagnées depuis la référence `since`. Tant qu'aucun
-    résultat n'a été encodé dans la journée sportive en cours (nuit, matinée,
-    jours sans match), la référence reste l'avant-dernière journée
-    photographiée : l'évolution de la veille ne s'efface pas à minuit, elle
-    est remplacée par celle du jour en cours au premier encodage. Deltas
-    vides tant qu'aucun snapshot antérieur n'existe.
+    Évolution déterministe et indépendante du moment d'encodage. La « journée »
+    d'un match est la date locale (fuseau d'affichage) de son coup d'envoi —
+    exactement le même découpage que la page Pronos.
+
+    D = dernière journée comportant au moins un résultat. La baseline est le
+    classement actuel privé des points gagnés sur les matchs de la journée D :
+    la flèche raconte donc le mouvement provoqué par les matchs de cette
+    journée (delta positif = places gagnées). Les points bonus et pré-tournoi
+    (sans date de match) restent identiques entre baseline et actuel : ils
+    n'influencent jamais la flèche, qui ne reflète que les matchs joués.
+
+    Le calcul ne dépend d'aucun état stocké : il se reconstruit à chaque
+    affichage et absorbe donc les encodages tardifs, groupés ou corrigés.
     """
-    empty = {"deltas": {}, "since": None}
-    latest_row = await db.execute("SELECT MAX(snapshot_date) AS d FROM ranking_snapshots")
-    latest = (await latest_row.fetchone())["d"]
-    if not latest:
-        return empty
-    today = _snapshot_day()
-    pivot = today if latest == today else latest
-    row = await db.execute(
-        "SELECT MAX(snapshot_date) AS d FROM ranking_snapshots WHERE snapshot_date < ?",
-        (pivot,),
-    )
-    last = (await row.fetchone())["d"]
-    if not last:
-        return empty
+    empty = {"deltas": {}, "day": None}
     rows = await db.execute(
-        "SELECT participant_id, rank FROM ranking_snapshots WHERE snapshot_date=?",
-        (last,),
+        "SELECT id, match_date, kickoff_time FROM matches WHERE result IS NOT NULL"
     )
-    old = {r["participant_id"]: r["rank"] for r in await rows.fetchall()}
+    matches = [dict(r) for r in await rows.fetchall()]
+    if not matches:
+        return empty
+    day_of = {m["id"]: format_match_local_date(m) for m in matches}
+    day_d = max(day_of.values())
+    # Pas de journée antérieure avec résultat → pas de référence (1re journée).
+    if not any(d < day_d for d in day_of.values()):
+        return empty
+    day_d_ids = [mid for mid, d in day_of.items() if d == day_d]
+
+    placeholders = ",".join("?" for _ in day_d_ids)
+    pts_rows = await db.execute(
+        f"""SELECT participant_id, COALESCE(SUM(points), 0) AS pts
+            FROM scores WHERE match_id IN ({placeholders})
+            GROUP BY participant_id""",
+        day_d_ids,
+    )
+    day_d_points = {r["participant_id"]: r["pts"] for r in await pts_rows.fetchall()}
+
     current = await _rankings_from_db(db, "general")
-    return {
-        "deltas": {r["id"]: old[r["id"]] - r["rank"] for r in current if r["id"] in old},
-        "since": last,
+    # Baseline = points actuels moins ceux gagnés sur la journée D.
+    baseline_points = {
+        r["id"]: r["total_points"] - day_d_points.get(r["id"], 0) for r in current
     }
+    # Rang ex æquo identique au classement : 1 + nombre de joueurs au-dessus.
+    all_points = sorted(baseline_points.values(), reverse=True)
+    baseline_rank = {
+        pid: 1 + sum(1 for p in all_points if p > bp)
+        for pid, bp in baseline_points.items()
+    }
+    deltas = {r["id"]: baseline_rank[r["id"]] - r["rank"] for r in current}
+    return {"deltas": deltas, "day": day_d}
 
 
 def answers_match(answer_type: str, given: str, correct: str) -> bool:
@@ -385,7 +373,6 @@ async def calculate_bonus_scores(question_id: int):
                     (ans["participant_id"], question_id, points),
                 )
 
-        await record_ranking_snapshot(db)
         await db.commit()
 
 
@@ -482,5 +469,4 @@ async def recalculate_pre_tournament_scores():
                     (pred["participant_id"], question["key"], points),
                 )
 
-        await record_ranking_snapshot(db)
         await db.commit()

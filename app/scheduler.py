@@ -188,7 +188,7 @@ async def _job_daily_recap(db, now_local: datetime):
     if encoded < total and now_local.hour < RECAP_FORCE_HOUR:
         return  # attendre l'encodage complet jusqu'en début d'après-midi
     rankings = await get_rankings(db)
-    evolution = await get_rank_evolution(db)
+    evolution = (await get_rank_evolution(db))["deltas"]
     rank_by_id = {r["id"]: r for r in rankings}
     top3 = [(r["name"], r["total_points"]) for r in rankings[:3]]
     pts_rows = await db.execute(

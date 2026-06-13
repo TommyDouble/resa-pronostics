@@ -846,7 +846,7 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
         rankings = []
         departments = []
         evolution = {}
-        evolution_since = None
+        evolution_day = None
         if view == "remontada":
             rankings = await get_remontada(db)
         elif view == "departments":
@@ -856,7 +856,7 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
             if view == "general":
                 evo = await get_rank_evolution(db)
                 evolution = evo["deltas"]
-                evolution_since = evo["since"]
+                evolution_day = evo["day"]
         # Grimpeur du jour : plus forte montée de la dernière journée jouée
         # (au moins 2 places pour mériter la fusée — les ex æquo la partagent).
         climber_delta = max(evolution.values(), default=0)
@@ -883,7 +883,7 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
             "my_department": my_department,
             "view": view,
             "ranking_views": RANKING_VIEWS,
-            "evolution_since_label": _format_day_fr(evolution_since) if evolution_since else "",
+            "evolution_day_label": _format_day_fr(evolution_day) if evolution_day else "",
             "climbers": climbers,
             "climber_delta": climber_delta,
             "knockout_started": knockout_started,

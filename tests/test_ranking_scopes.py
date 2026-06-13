@@ -4,7 +4,6 @@ import uuid
 from app.database import get_db
 from app.scoring import (
     get_department_rankings,
-    get_rank_evolution,
     get_rankings,
     get_remontada,
 )
@@ -90,22 +89,5 @@ def test_scoped_rankings_and_remontada_and_departments(client):
     assert dep["Finances"]["average"] >= 0
 
 
-def test_rank_evolution_uses_previous_day_snapshot(client):
-    carol = make_participant("Carol Evo")
-
-    async def _seed_snapshots():
-        async with get_db() as db:
-            # Snapshot d'hier: Carol était 5e.
-            await db.execute(
-                """INSERT INTO ranking_snapshots (snapshot_date, participant_id, rank, total_points)
-                   VALUES ('2000-01-01', ?, 5, 0)""",
-                (carol["id"],),
-            )
-            await db.commit()
-            return await get_rank_evolution(db)
-
-    evolution = run(_seed_snapshots())
-    assert carol["id"] in evolution["deltas"]
-    # Carol est forcément mieux ou pareil aujourd'hui qu'un rang 5 fictif très bas…
-    assert isinstance(evolution["deltas"][carol["id"]], int)
-    assert evolution["since"] is not None
+# L'évolution du classement (piste B, déterministe par journée de kickoff) est
+# couverte de façon isolée dans tests/test_rank_evolution_baseline.py.
