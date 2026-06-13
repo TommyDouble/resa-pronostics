@@ -126,7 +126,11 @@ async def send_pre_tournament_reminder(participant: dict):
 
 
 async def send_match_day_reminder(participant: dict, matches: list, date_label: str):
-    """Rappel J-1: liste des matchs du lendemain non encore pronostiqués."""
+    """Rappel J-1: liste des matchs du lendemain non encore pronostiqués.
+
+    OBSOLÈTE depuis la refonte des rappels d'encodage (push only) : plus
+    appelé par le scheduler. Conservé pour réutilisation éventuelle.
+    """
     link = f"{settings.BASE_URL}/p/{participant['token']}/pronos"
     count = len(matches)
     subject = f"RESA Pronostics — {count} match{'s' if count > 1 else ''} demain, à toi de jouer"
@@ -153,7 +157,10 @@ async def send_match_day_reminder(participant: dict, matches: list, date_label: 
 
 
 async def send_bonus_reminder(participant: dict, question: dict, deadline_label: str):
-    """Rappel: question bonus sans réponse, deadline sous 24h."""
+    """Rappel: question bonus sans réponse, deadline sous 24h.
+
+    OBSOLÈTE : le rappel bonus est désormais push only (plus de repli email).
+    """
     link = f"{settings.BASE_URL}/p/{participant['token']}/bonus"
     subject = f"RESA Pronostics — Question bonus à {question['points_value']} pts, deadline demain"
     html = f"""
@@ -177,6 +184,9 @@ async def send_bonus_reminder(participant: dict, question: dict, deadline_label:
 
 async def send_daily_recap(participant: dict, recap: dict):
     """Récap de la veille: points gagnés, rang, top 3.
+
+    OBSOLÈTE : le récap quotidien est désormais push only (plus de repli
+    email). Le récap *hebdomadaire* (W2) gardera, lui, un repli email.
 
     recap = {date_label, points, match_count, rank, evolution, top3: [(name, pts)]}
     """

@@ -199,6 +199,20 @@ CREATE TABLE IF NOT EXISTS ranking_snapshots (
   UNIQUE(snapshot_date, participant_id)
 );
 
+CREATE TABLE IF NOT EXISTS news_items (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug         TEXT    NOT NULL UNIQUE,
+  title        TEXT    NOT NULL,
+  body         TEXT    NOT NULL DEFAULT '',
+  icon         TEXT,
+  media_path   TEXT,
+  template_key TEXT,
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  is_published INTEGER NOT NULL DEFAULT 0,
+  published_at TEXT    NOT NULL DEFAULT (datetime('now')),
+  created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS pre_tournament_scores (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
@@ -228,10 +242,18 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
             "department TEXT",
             "avatar_path TEXT",
             "is_favorite INTEGER NOT NULL DEFAULT 0",
+            "last_seen_news_id INTEGER NOT NULL DEFAULT 0",
+            "last_revealed_date TEXT",
         ]
         for column in participant_columns:
             try:
                 await db.execute(f"ALTER TABLE participants ADD COLUMN {column}")
+            except Exception:
+                pass
+
+        for column in ["template_key TEXT"]:
+            try:
+                await db.execute(f"ALTER TABLE news_items ADD COLUMN {column}")
             except Exception:
                 pass
 
@@ -311,4 +333,29 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await _normalize_existing_participant_names(db)
         await ensure_pre_tournament_defaults(db)
         await ensure_default_settings(db)
+        await ensure_news_defaults(db)
         await db.commit()
+
+
+# Nouveautés livrées avec leur feature (idempotent : insert si le slug manque).
+NEWS_DEFAULTS = [
+    {
+        "slug": "reveal-du-jour",
+        "title": "Le Reveal du jour",
+        "body": "Chaque matin, tes points de la veille se dévoilent carte par carte — "
+                "et c'est la fête sur tes scores exacts. 🎉",
+        "icon": "🎬",
+        "template_key": "reveal_promo",
+        "sort_order": 10,
+    },
+]
+
+
+async def ensure_news_defaults(db):
+    for item in NEWS_DEFAULTS:
+        await db.execute(
+            """INSERT INTO news_items (slug, title, body, icon, template_key, sort_order, is_published)
+               VALUES (:slug, :title, :body, :icon, :template_key, :sort_order, 1)
+               ON CONFLICT(slug) DO NOTHING""",
+            item,
+        )
