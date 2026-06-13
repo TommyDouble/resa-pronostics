@@ -1,0 +1,20 @@
+{# Promo illustrée du "Reveal du jour" — HTML/CSS pur, lisible figé,
+   animation purement décorative (reduced-motion safe), volontairement
+   stylisée (pas une copie exacte de l'écran) pour ne pas mentir si l'UI évolue. #}
+<div class="story-icon">{{ item.icon or '🎬' }}</div>
+<h2 class="story-title">{{ item.title }}</h2>
+
+<div class="rp-demo" aria-hidden="true">
+  <div class="rp-card rp-before">
+    <div class="rp-teams">🇫🇷 <b>?–?</b> 🇧🇷</div>
+    <div class="rp-tag rp-tag-hidden">résultat caché</div>
+  </div>
+  <div class="rp-arrow">→</div>
+  <div class="rp-card rp-after">
+    <span class="rp-confetti"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+    <div class="rp-teams">🇫🇷 <b>2–0</b> 🇧🇷</div>
+    <div class="rp-tag rp-tag-exact">🎯 Score exact · +5 pts</div>
+  </div>
+</div>
+
+{% if item.body %}<div class="story-body">{{ item.body }}</div>{% endif %}

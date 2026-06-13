@@ -53,6 +53,7 @@ from app.scoring import (
 from app.templating import create_templates
 from app.timeutils import (
     DISPLAY_TZ,
+    format_match_local_date,
     is_match_locked,
     local_today,
     match_kickoff_utc,
@@ -61,6 +62,10 @@ from app.timeutils import (
     now_utc_iso,
     utc_day_bounds_for_local_date,
 )
+
+# Clés de "template_key" autorisées pour le rendu enrichi d'une carte de story.
+# Whitelist stricte : empêche tout include de chemin arbitraire depuis la BDD.
+NEWS_TEMPLATE_WHITELIST = {"reveal_promo"}
 
 router = APIRouter()
 templates = create_templates()
@@ -309,6 +314,22 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
         (_now_utc(), p["id"])
     )
     pending_bonus = (await bonus_row.fetchone())["cnt"]
+    # Story des nouveautés : items publiés non encore vus (home uniquement).
+    news_story = []
+    if active_nav == "home":
+        last_seen = dict(p).get("last_seen_news_id", 0) or 0
+        news_rows = await db.execute(
+            """SELECT id, slug, title, body, icon, media_path, template_key FROM news_items
+               WHERE is_published=1 AND id > ? ORDER BY sort_order, id""",
+            (last_seen,),
+        )
+        news_story = []
+        for r in await news_rows.fetchall():
+            item = dict(r)
+            # Whitelist : on ne garde un template_key que s'il est reconnu.
+            if item.get("template_key") not in NEWS_TEMPLATE_WHITELIST:
+                item["template_key"] = None
+            news_story.append(item)
     return {
         "participant": dict(p),
         "display_name": _display_name(dict(p)),
@@ -320,7 +341,71 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
         "active_nav": active_nav,
         "page_wide": True,
         "token": token,
+        "news_story": news_story,
     }
+
+
+async def _reveal_day_data(db, participant_id: int) -> dict | None:
+    """« Reveal du jour » : dernière journée sportive comportant des résultats.
+
+    Retourne {day, day_label, matches[], total_points, exact_count} avec, par
+    match, le prono du participant, ses points et son palier (exact/correct/wrong).
+    None s'il n'y a aucun résultat encodé.
+    """
+    rows = await db.execute(
+        "SELECT id, match_date, kickoff_time FROM matches WHERE result IS NOT NULL"
+    )
+    settled = [dict(r) for r in await rows.fetchall()]
+    if not settled:
+        return None
+    day_of = {m["id"]: format_match_local_date(m) for m in settled}
+    reveal_day = max(day_of.values())
+    day_ids = [mid for mid, d in day_of.items() if d == reveal_day]
+    placeholders = ",".join("?" for _ in day_ids)
+    mrows = await db.execute(
+        f"""SELECT m.*, pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
+                   pr.qualifier_prediction, s.points
+            FROM matches m
+            LEFT JOIN predictions pr ON pr.match_id = m.id AND pr.participant_id = ?
+            LEFT JOIN scores s ON s.match_id = m.id AND s.participant_id = ?
+            WHERE m.id IN ({placeholders})
+            ORDER BY m.kickoff_time, m.match_number""",
+        (participant_id, participant_id, *day_ids),
+    )
+    matches = [dict(r) for r in await mrows.fetchall()]
+    total = 0
+    exact_count = 0
+    for m in matches:
+        m["tier"] = _prediction_tier(m, m)
+        m["points"] = m.get("points") or 0
+        m["prediction_label"] = _prediction_label(m)
+        total += m["points"]
+        if m["tier"] == "exact":
+            exact_count += 1
+    return {
+        "day": reveal_day,
+        "day_label": _format_day_fr(reveal_day),
+        "matches": matches,
+        "total_points": total,
+        "exact_count": exact_count,
+    }
+
+
+@router.get("/p/{token}/reveal", response_class=HTMLResponse)
+async def reveal_page(request: Request, token: str):
+    async with get_db() as db:
+        ctx = await _get_participant_context(token, db, "home")
+        p = ctx["participant"]
+        reveal = await _reveal_day_data(db, p["id"])
+        # Marque la journée comme vue : le point d'entrée disparaît de l'accueil.
+        if reveal:
+            await db.execute(
+                "UPDATE participants SET last_revealed_date=? WHERE id=?",
+                (reveal["day"], p["id"]),
+            )
+            await db.commit()
+        ctx["reveal"] = reveal
+    return templates.TemplateResponse(request, "reveal.html", {"request": request, **ctx})
 
 
 # ---- Login / registration ----
@@ -501,6 +586,12 @@ async def participant_home(request: Request, token: str):
         })
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "home")
+        # Reveal du jour : proposé tant que la dernière journée jouée n'a pas été vue.
+        reveal = await _reveal_day_data(db, p["id"])
+        last_revealed = dict(p).get("last_revealed_date") or ""
+        ctx["reveal_available"] = bool(reveal and reveal["day"] > last_revealed)
+        ctx["reveal_points"] = reveal["total_points"] if reveal else 0
+        ctx["reveal_day_label"] = reveal["day_label"] if reveal else ""
         # Upcoming/today matches
         today_start_utc, today_end_utc = utc_day_bounds_for_local_date()
         rows = await db.execute(

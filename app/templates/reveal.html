@@ -1,0 +1,65 @@
+{% extends "participant_base.html" %}
+{% block title %}Reveal du jour — RESA Pronostics{% endblock %}
+{% block page_content %}
+
+<div class="page-head">
+  <div class="row1">
+    <div>
+      <h1 style="font-family:var(--sketch);font-size:26px;font-weight:700;">🎬 Le Reveal du jour</h1>
+      <div class="sub1">{% if reveal %}Journée du {{ reveal.day_label }}{% else %}Rien à révéler{% endif %}</div>
+    </div>
+  </div>
+</div>
+
+<div class="page-content">
+
+  {% if not reveal or not reveal.matches %}
+  <div class="card all-good">
+    <p class="muted" style="text-align:center;margin:6px 0;">
+      Aucun résultat à révéler pour l'instant. Reviens après la prochaine journée jouée ! ⚽
+    </p>
+  </div>
+  {% else %}
+
+  <div class="reveal-deck" data-reveal data-has-exact="{{ '1' if reveal.exact_count else '0' }}">
+    {% for m in reveal.matches %}
+    <div class="reveal-card tier-{{ m.tier or 'none' }}" data-reveal-card>
+      <div class="rc-inner">
+        <div class="rc-face rc-front">
+          <div class="rc-teams">{{ m.team1_name|team }} <b>?–?</b> {{ m.team2_name|team }}</div>
+          <div class="rc-hint">touche pour révéler</div>
+        </div>
+        <div class="rc-face rc-back">
+          <div class="rc-score">
+            {{ m.team1_name|team }}
+            <b>{% if m.score_team1 is not none %}{{ m.score_team1 }}–{{ m.score_team2 }}{% else %}?–?{% endif %}</b>
+            {{ m.team2_name|team }}
+          </div>
+          <div class="rc-meta">
+            <span class="rc-pred">Ton prono : {{ m.prediction_label }}</span>
+            {% if m.tier == 'exact' %}
+              <span class="chip up">+{{ m.points }} pts · exact 🎯</span>
+            {% elif m.tier == 'correct' %}
+              <span class="chip up">+{{ m.points }} pts ✓</span>
+            {% else %}
+              <span class="chip fl">+{{ m.points }} pts</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="reveal-total">
+    <span class="rt-lbl">Total de la journée</span>
+    <span class="rt-pts">+{{ reveal.total_points }} <small>pts</small></span>
+  </div>
+
+  <a href="/p/{{ token }}/classement" class="btn full" style="margin-top:14px;">Voir le classement →</a>
+  <a href="/p/{{ token }}" class="btn ghost full" style="margin-top:8px;">Retour à l'accueil</a>
+
+  {% endif %}
+
+</div>
+{% endblock %}

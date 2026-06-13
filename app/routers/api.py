@@ -110,6 +110,29 @@ async def match_status(match_id: int, token: str = Query(...)):
     }
 
 
+# ---- Story des nouveautés ----
+
+class NewsSeenIn(BaseModel):
+    id: int
+
+
+@router.post("/news/seen")
+async def news_seen(body: NewsSeenIn, token: str = Query(...)):
+    """Marque les nouveautés vues jusqu'à l'id donné (monotone, jamais en arrière)."""
+    p = await get_participant_by_token(token)
+    if not p:
+        raise HTTPException(403, "Token invalide")
+    async with get_db() as db:
+        await db.execute(
+            """UPDATE participants
+               SET last_seen_news_id = MAX(COALESCE(last_seen_news_id, 0), ?)
+               WHERE id = ?""",
+            (body.id, p["id"]),
+        )
+        await db.commit()
+    return {"success": True}
+
+
 # ---- Notifications push (volet B) ----
 
 class PushSubscriptionIn(BaseModel):

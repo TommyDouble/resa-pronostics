@@ -19,6 +19,25 @@
 
 <div class="page-content">
 
+  {% if news_story %}
+  <div class="news-story" data-story
+       data-story-maxid="{{ news_story[-1].id }}"
+       data-story-autoopen="{{ '0' if urgency else '1' }}">
+    {% for item in news_story %}
+    <article class="story-card" data-story-card>
+      {% if item.template_key %}
+        {% include "partials/news/" ~ item.template_key ~ ".html" %}
+      {% else %}
+        {% if item.media_path %}<img class="story-media" src="{{ item.media_path }}" alt="">{% endif %}
+        <div class="story-icon">{{ item.icon or '✨' }}</div>
+        <h2 class="story-title">{{ item.title }}</h2>
+        {% if item.body %}<div class="story-body">{{ item.body }}</div>{% endif %}
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if not participant.has_paid %}
   <div class="banner" style="background:#FFF8E1;border-left:3px solid #F59E0B;color:#92400E;">
     <span>💳</span> Participation 10 € à remettre à l'organisateur — indispensable pour toucher tes gains.
@@ -89,6 +108,17 @@
     <p class="muted" style="margin:6px 0 0;font-size:13px;">Plus aucun match au calendrier — merci d'avoir joué !</p>
     {% endif %}
   </div>
+  {% endif %}
+
+  {% if reveal_available %}
+  <a href="/p/{{ token }}/reveal" class="reveal-entry">
+    <span class="re-ico">🎬</span>
+    <div class="re-body">
+      <span class="re-title">Le Reveal du jour est prêt</span>
+      <span class="re-sub">{{ reveal_day_label }} · découvre tes <b>+{{ reveal_points }} pts</b></span>
+    </div>
+    <span class="re-go">▶</span>
+  </a>
   {% endif %}
 
   <div class="card" data-push-card data-push-promo style="display:none;">

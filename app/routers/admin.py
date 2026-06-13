@@ -1035,6 +1035,120 @@ async def update_pre_tournament_question(
     return RedirectResponse("/admin/pre-tournoi", status_code=303)
 
 
+# ---- Nouveautés (story) ----
+
+def _slugify(text: str) -> str:
+    out = []
+    for ch in (text or "").lower():
+        if ch.isalnum():
+            out.append(ch)
+        elif ch in " -_":
+            out.append("-")
+    slug = "".join(out).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug[:40] or "news"
+
+
+@router.get("/nouveautes", response_class=HTMLResponse)
+async def news_admin(request: Request):
+    await require_admin(request)
+    async with get_db() as db:
+        rows = await db.execute(
+            "SELECT * FROM news_items ORDER BY sort_order, id"
+        )
+        items = [dict(r) for r in await rows.fetchall()]
+    return templates.TemplateResponse(request, "admin/news.html", {
+        "request": request,
+        "active": "nouveautes",
+        "flashes": _get_flashes(request),
+        "items": items,
+    })
+
+
+NEWS_TEMPLATE_KEYS = {"reveal_promo"}
+
+
+def _clean_template_key(value: str) -> str | None:
+    value = (value or "").strip()
+    return value if value in NEWS_TEMPLATE_KEYS else None
+
+
+@router.post("/nouveautes")
+async def news_create(
+    request: Request,
+    title: str = Form(...),
+    body: str = Form(default=""),
+    icon: str = Form(default=""),
+    media_path: str = Form(default=""),
+    template_key: str = Form(default=""),
+    sort_order: int = Form(default=0),
+    is_published: str = Form(default="0"),
+):
+    await require_admin(request)
+    title = title.strip()
+    if not title:
+        _flash(request, "Le titre est obligatoire.", "err")
+        return RedirectResponse("/admin/nouveautes", status_code=303)
+    slug = f"{_slugify(title)}-{uuid.uuid4().hex[:4]}"
+    async with get_db() as db:
+        await db.execute(
+            """INSERT INTO news_items (slug, title, body, icon, media_path, template_key, sort_order, is_published)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                slug, title[:120], body.strip(), icon.strip()[:8],
+                media_path.strip()[:300], _clean_template_key(template_key), sort_order,
+                1 if is_published == "1" else 0,
+            ),
+        )
+        await db.commit()
+    _flash(request, "Nouveauté créée.")
+    return RedirectResponse("/admin/nouveautes", status_code=303)
+
+
+@router.post("/nouveautes/{news_id}")
+async def news_update(
+    request: Request,
+    news_id: int,
+    title: str = Form(...),
+    body: str = Form(default=""),
+    icon: str = Form(default=""),
+    media_path: str = Form(default=""),
+    template_key: str = Form(default=""),
+    sort_order: int = Form(default=0),
+    is_published: str = Form(default="0"),
+):
+    await require_admin(request)
+    title = title.strip()
+    if not title:
+        _flash(request, "Le titre est obligatoire.", "err")
+        return RedirectResponse("/admin/nouveautes", status_code=303)
+    async with get_db() as db:
+        await db.execute(
+            """UPDATE news_items
+               SET title=?, body=?, icon=?, media_path=?, template_key=?, sort_order=?, is_published=?
+               WHERE id=?""",
+            (
+                title[:120], body.strip(), icon.strip()[:8],
+                media_path.strip()[:300], _clean_template_key(template_key), sort_order,
+                1 if is_published == "1" else 0, news_id,
+            ),
+        )
+        await db.commit()
+    _flash(request, "Nouveauté mise à jour.")
+    return RedirectResponse("/admin/nouveautes", status_code=303)
+
+
+@router.post("/nouveautes/{news_id}/delete")
+async def news_delete(request: Request, news_id: int):
+    await require_admin(request)
+    async with get_db() as db:
+        await db.execute("DELETE FROM news_items WHERE id=?", (news_id,))
+        await db.commit()
+    _flash(request, "Nouveauté supprimée.")
+    return RedirectResponse("/admin/nouveautes", status_code=303)
+
+
 # ---- Matches ----
 
 @router.get("/matches", response_class=HTMLResponse)

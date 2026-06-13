@@ -1187,6 +1187,191 @@ function initStickyTop() {
   window.addEventListener('resize', apply);
 }
 
+/* ---- Story des nouveautés ---- */
+function initStoryPlayer() {
+  var root = document.querySelector('[data-story]');
+  if (!root) return;
+  var cards = Array.prototype.slice.call(root.querySelectorAll('[data-story-card]'));
+  if (!cards.length) return;
+  var token = document.body.dataset.token;
+  var maxId = parseInt(root.dataset.storyMaxid, 10) || 0;
+  var idx = 0;
+  var seenSent = false;
+
+  var prog = document.createElement('div');
+  prog.className = 'story-progress';
+  cards.forEach(function() {
+    var seg = document.createElement('span');
+    seg.className = 'story-seg';
+    prog.appendChild(seg);
+  });
+  root.insertBefore(prog, root.firstChild);
+
+  var closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'story-close';
+  closeBtn.setAttribute('aria-label', 'Fermer les nouveautés');
+  closeBtn.textContent = '✕';
+  root.insertBefore(closeBtn, root.firstChild);
+
+  var navPrev = document.createElement('button');
+  navPrev.type = 'button';
+  navPrev.className = 'story-nav prev';
+  navPrev.setAttribute('aria-label', 'Précédent');
+  var navNext = document.createElement('button');
+  navNext.type = 'button';
+  navNext.className = 'story-nav next';
+  navNext.setAttribute('aria-label', 'Suivant');
+  root.appendChild(navPrev);
+  root.appendChild(navNext);
+
+  function render() {
+    cards.forEach(function(c, i) { c.classList.toggle('is-active', i === idx); });
+    var segs = prog.children;
+    for (var i = 0; i < segs.length; i++) {
+      segs[i].classList.toggle('done', i < idx);
+      segs[i].classList.toggle('current', i === idx);
+    }
+  }
+  function open() {
+    idx = 0;
+    root.classList.add('open');
+    document.body.classList.add('story-locked');
+    render();
+  }
+  function markSeen() {
+    if (seenSent || !token || !maxId) return;
+    seenSent = true;
+    fetch('/api/news/seen?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: maxId })
+    }).catch(function() {});
+  }
+  function close() {
+    root.classList.remove('open');
+    document.body.classList.remove('story-locked');
+    markSeen();  // vu OU passé : dans les deux cas on ne le remontre pas.
+  }
+  function next() { if (idx < cards.length - 1) { idx++; render(); } else { close(); } }
+  function prev() { if (idx > 0) { idx--; render(); } }
+
+  navNext.addEventListener('click', next);
+  navPrev.addEventListener('click', prev);
+  closeBtn.addEventListener('click', close);
+  document.addEventListener('keydown', function(e) {
+    if (!root.classList.contains('open')) return;
+    if (e.key === 'ArrowRight') next();
+    else if (e.key === 'ArrowLeft') prev();
+    else if (e.key === 'Escape') close();
+  });
+
+  // Auto-ouverture seulement si aucune action prioritaire ne l'exige.
+  if (root.dataset.storyAutoopen === '1') {
+    open();
+  } else {
+    var chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'story-chip';
+    chip.textContent = '✨ Nouveautés';
+    chip.addEventListener('click', open);
+    var anchor = document.querySelector('.page-content') || document.body;
+    anchor.insertBefore(chip, anchor.firstChild);
+  }
+  render();
+}
+
+/* ---- Confetti (canvas, sans dépendance) ---- */
+function resaConfetti(opts) {
+  opts = opts || {};
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var count = opts.count || 90;
+  var canvas = document.createElement('canvas');
+  canvas.className = 'resa-confetti';
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  document.body.appendChild(canvas);
+  var ctx = canvas.getContext('2d');
+  var colors = ['#D3450D', '#F59E0B', '#2E7D32', '#A33308', '#FBBF24'];
+  var parts = [];
+  for (var i = 0; i < count; i++) {
+    parts.push({
+      x: canvas.width / 2 + (Math.random() - 0.5) * 140,
+      y: canvas.height / 3,
+      vx: (Math.random() - 0.5) * 11,
+      vy: Math.random() * -12 - 4,
+      size: Math.random() * 7 + 4,
+      color: colors[(Math.random() * colors.length) | 0],
+      rot: Math.random() * Math.PI,
+      vr: (Math.random() - 0.5) * 0.3
+    });
+  }
+  var start = null;
+  var duration = 1500;
+  function frame(ts) {
+    if (start === null) start = ts;
+    var elapsed = ts - start;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    parts.forEach(function(p) {
+      p.vy += 0.35;  // gravité
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - elapsed / duration);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      ctx.restore();
+    });
+    if (elapsed < duration) requestAnimationFrame(frame);
+    else if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+  }
+  requestAnimationFrame(frame);
+}
+window.resaConfetti = resaConfetti;
+
+/* ---- Reveal du jour : flip séquentiel + confetti sur score exact ---- */
+function initReveal() {
+  var deck = document.querySelector('[data-reveal]');
+  if (!deck) return;
+  var cards = Array.prototype.slice.call(deck.querySelectorAll('[data-reveal-card]'));
+  if (!cards.length) return;
+  var hasExact = deck.dataset.hasExact === '1';
+  // Tap sur une carte : on la retourne tout de suite.
+  cards.forEach(function(c) {
+    c.addEventListener('click', function() { c.classList.add('flipped'); });
+  });
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    cards.forEach(function(c) { c.classList.add('flipped'); });
+    return;  // pas d'animation ; le confetti se retient aussi de lui-même.
+  }
+  var i = 0;
+  function flipNext() {
+    if (i >= cards.length) {
+      if (hasExact && window.resaConfetti) window.resaConfetti({ count: 120 });
+      return;
+    }
+    cards[i].classList.add('flipped');
+    i++;
+    setTimeout(flipNext, 600);
+  }
+  setTimeout(flipNext, 350);
+}
+
+function initConfettiTriggers() {
+  var els = document.querySelectorAll('[data-confetti]');
+  if (!els.length) return;
+  if (!('IntersectionObserver' in window)) { resaConfetti(); return; }
+  var obs = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      if (!e.isIntersecting) return;
+      obs.unobserve(e.target);
+      resaConfetti();
+    });
+  }, { threshold: 0.6 });
+  els.forEach(function(el) { obs.observe(el); });
+}
+
 /* ---- Init all on DOM ready ---- */
 document.addEventListener('DOMContentLoaded', function() {
   initLocalTimes();
@@ -1215,4 +1400,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initCountUp();
   initStickyTop();
   initCompactCards();
+  initStoryPlayer();
+  initConfettiTriggers();
+  initReveal();
 });
