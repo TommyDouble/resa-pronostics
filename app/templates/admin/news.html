@@ -2,107 +2,138 @@
 {% block title %}Nouveautés — Admin RESA{% endblock %}
 {% block admin_content %}
 
+<style>
+  .news-sum { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 13px 15px; list-style: none; }
+  .news-sum::-webkit-details-marker { display: none; }
+  .news-sum::after { content: "▸"; color: var(--n400); margin-left: 4px; transition: transform .15s; }
+  details[open] > .news-sum::after { transform: rotate(90deg); }
+  .news-item { padding: 0; }
+  .news-item .news-body { padding: 0 15px 15px; display: flex; flex-direction: column; gap: 10px; }
+  .news-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 12px; }
+  .news-form { display: flex; flex-direction: column; gap: 10px; }
+  .news-form .textarea { min-height: 78px; }
+</style>
+
 <h1>Nouveautés</h1>
 <p class="muted" style="font-size:13px;margin-bottom:16px;">
-  Les nouveautés publiées s'affichent en story à la connexion, une seule fois par participant
-  (tout ce qui est publié depuis sa dernière story vue). Ordonnées par « ordre » croissant.
+  Les nouveautés publiées s'affichent en story à la connexion (tout ce qui est publié depuis
+  la dernière story vue), par « ordre » croissant. Les parcours riches (maquettes multi-écrans)
+  sont fournis par le code de chaque feature ; ici tu gères le contenu et tu <b>prévisualises</b>.
 </p>
 
-<div class="card" style="background:var(--primary-l);border:1px solid var(--line);">
-  <div class="lbl" style="margin-bottom:10px;font-weight:700;">➕ Nouvelle entrée</div>
-  <form method="post" action="/admin/nouveautes" style="display:flex;flex-direction:column;gap:10px;">
-    <div class="grid2">
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">Titre</div>
-        <div class="field"><input type="text" name="title" maxlength="120" required></div>
+<details class="card" style="background:var(--primary-l);border:1px solid var(--line);">
+  <summary class="news-sum"><b>➕ Créer une nouveauté</b></summary>
+  <div class="news-body">
+    <form method="post" action="/admin/nouveautes" class="news-form">
+      <div class="grid2">
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Titre</div>
+          <div class="field"><input type="text" name="title" maxlength="120" required></div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Icône (emoji)</div>
+          <div class="field"><input type="text" name="icon" maxlength="8" placeholder="✨"></div>
+        </div>
       </div>
       <div>
-        <div class="lbl" style="margin-bottom:5px;">Icône (emoji)</div>
-        <div class="field"><input type="text" name="icon" maxlength="8" placeholder="✨"></div>
+        <div class="lbl" style="margin-bottom:5px;">Texte</div>
+        <textarea class="textarea" name="body" rows="3" placeholder="Le message de l'annonce…"></textarea>
       </div>
-    </div>
-    <div>
-      <div class="lbl" style="margin-bottom:5px;">Texte</div>
-      <div class="field"><textarea name="body" rows="3"></textarea></div>
-    </div>
-    <div class="grid2">
+      <div class="grid2">
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Visuel enrichi</div>
+          <div class="field">
+            <select name="template_key">
+              <option value="">— Carte standard (annonce simple) —</option>
+              {% for key, label in story_templates.items() %}
+              <option value="{{ key }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Ordre</div>
+          <div class="field"><input type="number" name="sort_order" value="0"></div>
+        </div>
+      </div>
       <div>
         <div class="lbl" style="margin-bottom:5px;">Image (URL, optionnel)</div>
         <div class="field"><input type="text" name="media_path" maxlength="300" placeholder="/static/… ou https://…"></div>
       </div>
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">Ordre</div>
-        <div class="field"><input type="number" name="sort_order" value="0"></div>
-      </div>
-    </div>
-    <div>
-      <div class="lbl" style="margin-bottom:5px;">Visuel enrichi (optionnel)</div>
-      <div class="field">
-        <select name="template_key">
-          <option value="">— Carte standard —</option>
-          <option value="reveal_promo">Promo « Reveal du jour »</option>
-        </select>
-      </div>
-    </div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
-      <input type="checkbox" name="is_published" value="1"> Publier tout de suite
-    </label>
-    <button type="submit" class="btn sm" style="align-self:flex-start;">Créer</button>
-  </form>
-</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
+        <input type="checkbox" name="is_published" value="1"> Publier tout de suite
+      </label>
+      <p class="muted" style="font-size:12px;margin:0;">
+        Astuce : crée d'abord (en brouillon), puis déplie l'entrée ci-dessous pour la <b>prévisualiser</b> avant de publier.
+      </p>
+      <button type="submit" class="btn sm" style="align-self:flex-start;">Créer</button>
+    </form>
+  </div>
+</details>
+
+<div class="lbl" style="margin:20px 0 8px;font-weight:700;">Nouveautés existantes ({{ items|length }})</div>
 
 {% for item in items %}
-<div class="card">
-  <form method="post" action="/admin/nouveautes/{{ item.id }}" style="display:flex;flex-direction:column;gap:10px;">
-    <div style="display:flex;align-items:center;gap:8px;">
-      <span class="chip {{ 'ok' if item.is_published else 'gr' }}">{{ 'Publié' if item.is_published else 'Brouillon' }}</span>
-      <span class="muted" style="font-size:11px;">#{{ item.id }} · {{ item.slug }}</span>
+<details class="card news-item">
+  <summary class="news-sum">
+    <span style="font-size:20px;">{{ item.icon or '✨' }}</span>
+    <b style="flex:1;">{{ item.title }}</b>
+    <span class="chip {{ 'ok' if item.is_published else 'gr' }}">{{ 'Publié' if item.is_published else 'Brouillon' }}</span>
+  </summary>
+  <div class="news-body">
+    <div class="muted" style="font-size:11px;">
+      #{{ item.id }} · {{ story_templates.get(item.template_key, 'Parcours') if item.template_key else 'Annonce simple' }} · ordre {{ item.sort_order }}
     </div>
-    <div class="grid2">
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">Titre</div>
-        <div class="field"><input type="text" name="title" maxlength="120" value="{{ item.title }}" required></div>
+    <form method="post" action="/admin/nouveautes/{{ item.id }}" class="news-form">
+      <div class="grid2">
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Titre</div>
+          <div class="field"><input type="text" name="title" maxlength="120" value="{{ item.title }}" required></div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Icône</div>
+          <div class="field"><input type="text" name="icon" maxlength="8" value="{{ item.icon or '' }}"></div>
+        </div>
       </div>
       <div>
-        <div class="lbl" style="margin-bottom:5px;">Icône</div>
-        <div class="field"><input type="text" name="icon" maxlength="8" value="{{ item.icon or '' }}"></div>
+        <div class="lbl" style="margin-bottom:5px;">Texte</div>
+        <textarea class="textarea" name="body" rows="3">{{ item.body }}</textarea>
       </div>
-    </div>
-    <div>
-      <div class="lbl" style="margin-bottom:5px;">Texte</div>
-      <div class="field"><textarea name="body" rows="3">{{ item.body }}</textarea></div>
-    </div>
-    <div class="grid2">
+      <div class="grid2">
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Visuel enrichi</div>
+          <div class="field">
+            <select name="template_key">
+              <option value="" {{ 'selected' if not item.template_key else '' }}>— Carte standard —</option>
+              {% for key, label in story_templates.items() %}
+              <option value="{{ key }}" {{ 'selected' if item.template_key == key else '' }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Ordre</div>
+          <div class="field"><input type="number" name="sort_order" value="{{ item.sort_order }}"></div>
+        </div>
+      </div>
       <div>
         <div class="lbl" style="margin-bottom:5px;">Image (URL)</div>
         <div class="field"><input type="text" name="media_path" maxlength="300" value="{{ item.media_path or '' }}"></div>
       </div>
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">Ordre</div>
-        <div class="field"><input type="number" name="sort_order" value="{{ item.sort_order }}"></div>
-      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
+        <input type="checkbox" name="is_published" value="1" {{ 'checked' if item.is_published else '' }}> Publié
+      </label>
+      <button type="submit" class="btn sm" style="align-self:flex-start;">Enregistrer</button>
+    </form>
+    <div class="news-actions">
+      <a class="btn ghost sm" href="/admin/nouveautes/{{ item.id }}/preview" target="_blank" rel="noopener">👁 Prévisualiser</a>
+      <form method="post" action="/admin/nouveautes/{{ item.id }}/delete" style="margin-left:auto;"
+            onsubmit="return confirm('Supprimer cette nouveauté ?');">
+        <button type="submit" class="btn ghost sm">Supprimer</button>
+      </form>
     </div>
-    <div>
-      <div class="lbl" style="margin-bottom:5px;">Visuel enrichi</div>
-      <div class="field">
-        <select name="template_key">
-          <option value="" {{ 'selected' if not item.template_key else '' }}>— Carte standard —</option>
-          <option value="reveal_promo" {{ 'selected' if item.template_key == 'reveal_promo' else '' }}>Promo « Reveal du jour »</option>
-        </select>
-      </div>
-    </div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
-      <input type="checkbox" name="is_published" value="1" {{ 'checked' if item.is_published else '' }}> Publié
-    </label>
-    <div style="display:flex;gap:8px;">
-      <button type="submit" class="btn sm">Enregistrer</button>
-    </div>
-  </form>
-  <form method="post" action="/admin/nouveautes/{{ item.id }}/delete" style="margin-top:8px;"
-        onsubmit="return confirm('Supprimer cette nouveauté ?');">
-    <button type="submit" class="btn ghost sm">Supprimer</button>
-  </form>
-</div>
+  </div>
+</details>
 {% else %}
 <div class="card"><p class="muted" style="text-align:center;">Aucune nouveauté pour l'instant.</p></div>
 {% endfor %}

@@ -1,0 +1,23 @@
+{# Conteneur de la story des nouveautés, partagé entre l'accueil et la
+   prévisualisation admin. Attend `news_story` (liste d'items déjà filtrés +
+   template_key whitelisté). `story_autoopen` optionnel ('1' par défaut). #}
+{% if news_story %}
+<div class="news-story" data-story
+     data-story-maxid="{{ news_story[-1].id }}"
+     data-story-autoopen="{{ story_autoopen if story_autoopen is defined else ('0' if urgency else '1') }}">
+  {% for item in news_story %}
+  <section class="story-feature" data-story-feature data-title="{{ item.title }}">
+    {% if item.template_key %}
+      {% include "partials/news/" ~ item.template_key ~ ".html" %}
+    {% else %}
+      {# Annonce simple : un seul écran (le titre est porté par la barre du haut). #}
+      <div class="story-screen" data-story-screen>
+        {% if item.media_path %}<img class="story-media" src="{{ item.media_path }}" alt="">{% endif %}
+        <div class="story-icon">{{ item.icon or '✨' }}</div>
+        {% if item.body %}<p class="story-body">{{ item.body }}</p>{% endif %}
+      </div>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+{% endif %}

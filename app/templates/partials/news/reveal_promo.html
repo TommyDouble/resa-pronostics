@@ -1,20 +1,45 @@
-{# Promo illustrée du "Reveal du jour" — HTML/CSS pur, lisible figé,
-   animation purement décorative (reduced-motion safe), volontairement
-   stylisée (pas une copie exacte de l'écran) pour ne pas mentir si l'UI évolue. #}
-<div class="story-icon">{{ item.icon or '🎬' }}</div>
-<h2 class="story-title">{{ item.title }}</h2>
+{# Parcours "Le Reveal du jour" en 3 écrans. Le titre est porté par la barre
+   du haut du player ; chaque écran = une maquette HTML/CSS + une légende.
+   Maquettes volontairement stylisées (pas une copie exacte), reduced-motion safe. #}
 
-<div class="rp-demo" aria-hidden="true">
-  <div class="rp-card rp-before">
-    <div class="rp-teams">🇫🇷 <b>?–?</b> 🇧🇷</div>
-    <div class="rp-tag rp-tag-hidden">résultat caché</div>
-  </div>
-  <div class="rp-arrow">→</div>
-  <div class="rp-card rp-after">
-    <span class="rp-confetti"><i></i><i></i><i></i><i></i><i></i><i></i></span>
-    <div class="rp-teams">🇫🇷 <b>2–0</b> 🇧🇷</div>
-    <div class="rp-tag rp-tag-exact">🎯 Score exact · +5 pts</div>
-  </div>
+{# ① Accroche #}
+<div class="story-screen" data-story-screen>
+  <div class="story-hero-ico">🎬</div>
+  <p class="story-lead">Tes points de la veille, en spectacle.</p>
+  <p class="story-cap">Chaque matin, le Reveal dévoile tes scores — carte après carte.</p>
 </div>
 
-{% if item.body %}<div class="story-body">{{ item.body }}</div>{% endif %}
+{# ② Le nouveau call-to-action sur l'accueil #}
+<div class="story-screen" data-story-screen>
+  <div class="sm-frame" aria-hidden="true">
+    <div class="sm-head"><b>Salut 👋</b><span>1er · 18 pts</span></div>
+    <div class="sm-cta">
+      <span class="sm-cta-ico">🎬</span>
+      <div class="sm-cta-body">
+        <b>Le Reveal du jour est prêt</b>
+        <small>découvre tes +6 pts</small>
+      </div>
+      <span class="sm-cta-go">▶</span>
+    </div>
+    <div class="sm-row"></div>
+    <div class="sm-row short"></div>
+  </div>
+  <p class="story-cap">① Un nouveau bouton t'attend sur ton accueil.</p>
+</div>
+
+{# ③ Le nouvel écran Reveal #}
+<div class="story-screen" data-story-screen>
+  <div class="rp-demo" aria-hidden="true">
+    <div class="rp-card rp-before">
+      <div class="rp-teams">🇫🇷 <b>?–?</b> 🇧🇷</div>
+      <div class="rp-tag rp-tag-hidden">caché</div>
+    </div>
+    <div class="rp-arrow">→</div>
+    <div class="rp-card rp-after">
+      <span class="rp-confetti"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      <div class="rp-teams">🇫🇷 <b>2–0</b> 🇧🇷</div>
+      <div class="rp-tag rp-tag-exact">🎯 +5 pts</div>
+    </div>
+  </div>
+  <p class="story-cap">② Tes points se dévoilent, carte après carte. 🎉</p>
+</div>

@@ -337,21 +337,9 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await db.commit()
 
 
-# Nouveautés livrées avec leur feature (idempotent : insert si le slug manque).
-NEWS_DEFAULTS = [
-    {
-        "slug": "reveal-du-jour",
-        "title": "Le Reveal du jour",
-        "body": "Chaque matin, tes points de la veille se dévoilent carte par carte — "
-                "et c'est la fête sur tes scores exacts. 🎉",
-        "icon": "🎬",
-        "template_key": "reveal_promo",
-        "sort_order": 10,
-    },
-]
-
-
 async def ensure_news_defaults(db):
+    """Seed des nouveautés livrées avec leur feature (registre app.news)."""
+    from app.news import NEWS_DEFAULTS
     for item in NEWS_DEFAULTS:
         await db.execute(
             """INSERT INTO news_items (slug, title, body, icon, template_key, sort_order, is_published)

@@ -63,9 +63,9 @@ from app.timeutils import (
     utc_day_bounds_for_local_date,
 )
 
-# Clés de "template_key" autorisées pour le rendu enrichi d'une carte de story.
-# Whitelist stricte : empêche tout include de chemin arbitraire depuis la BDD.
-NEWS_TEMPLATE_WHITELIST = {"reveal_promo"}
+# Whitelist stricte des templates de story (registre central app.news) :
+# empêche tout include de chemin arbitraire depuis la BDD.
+from app.news import STORY_TEMPLATES
 
 router = APIRouter()
 templates = create_templates()
@@ -327,7 +327,7 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
         for r in await news_rows.fetchall():
             item = dict(r)
             # Whitelist : on ne garde un template_key que s'il est reconnu.
-            if item.get("template_key") not in NEWS_TEMPLATE_WHITELIST:
+            if item.get("template_key") not in STORY_TEMPLATES:
                 item["template_key"] = None
             news_story.append(item)
     return {

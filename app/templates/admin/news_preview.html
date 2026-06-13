@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aperçu — {{ news_story[0].title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/resa.css?v={{ static_version }}">
+<style>
+  /* Cadre façon téléphone pour juger le rendu mobile réel. */
+  body { margin: 0; background: var(--board); display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .preview-phone { position: relative; width: 390px; max-width: 100vw; height: 800px; max-height: 100vh; overflow: hidden; background: var(--paper); box-shadow: var(--sh2); border-radius: 22px; }
+  /* Contraindre l'overlay fixed au cadre. */
+  .preview-phone .news-story.open { position: absolute; }
+  .preview-hint { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 1200; background: var(--n900); color: #fff; font-size: 12px; padding: 6px 12px; border-radius: 999px; opacity: .85; }
+</style>
+</head>
+<body data-token="">
+  <div class="preview-phone">
+    {% include "partials/_story.html" %}
+  </div>
+  <div class="preview-hint">Aperçu · tape à droite/gauche pour parcourir · recharge pour rejouer</div>
+  <script src="/static/js/resa.js?v={{ static_version }}"></script>
+</body>
+</html>
