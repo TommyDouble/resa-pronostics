@@ -2027,6 +2027,19 @@ body.story-locked { overflow: hidden; }
 .sm-cta-go { font-size: 13px; opacity: .9; }
 .sm-row { height: 11px; border-radius: 6px; background: var(--board); }
 .sm-row.short { width: 55%; }
+
+/* Maquette mini-classement (écran évolution de la story). */
+.sm-rank { gap: 6px; transform: rotate(-1.2deg); }
+.sm-rrow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 9px; border-radius: 10px;
+  background: var(--paper); border: 1px solid var(--line); font-size: 13px;
+}
+.sm-rrow .sm-rk { min-width: 18px; text-align: center; font-family: var(--display); font-weight: 800; }
+.sm-rrow .sm-nm { flex: 1; text-align: left; font-weight: 600; }
+.sm-rrow b { font-family: var(--display); }
+.sm-rrow.me { background: var(--primary-l); border-color: var(--primary); }
+.sm-rank-delta { margin-top: 2px; }
 @keyframes sm-cta-pulse {
   0%, 100% { box-shadow: 0 0 0 3px var(--primary-l); }
   50% { box-shadow: 0 0 0 7px var(--primary-l); }
@@ -2136,62 +2149,104 @@ body.story-locked { overflow: hidden; }
 .reveal-entry .re-sub { font-size: 12.5px; opacity: .92; }
 .reveal-entry .re-go { font-size: 16px; opacity: .9; }
 
-/* ---- Page Reveal : cartes qui se retournent ---- */
-.reveal-deck { display: flex; flex-direction: column; gap: 12px; }
-.reveal-card { perspective: 1000px; }
-.reveal-card .rc-inner {
-  position: relative;
-  transform-style: preserve-3d;
-  transition: transform .6s cubic-bezier(.2,.7,.2,1);
-  min-height: 92px;
+/* ---- Page Reveal v2 : parcours immersif ---- */
+.rv-root { position: fixed; inset: 0; background: var(--paper); color: var(--n900); overflow: hidden; }
+.rv-close {
+  position: fixed; top: 14px; right: 14px; z-index: 5;
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--board); color: var(--n700); text-decoration: none; font-size: 17px;
 }
-.reveal-card.flipped .rc-inner { transform: rotateY(180deg); }
-.reveal-card .rc-face {
-  position: absolute;
-  inset: 0;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 14px;
-  border-radius: var(--r-card);
-  border: 1px solid var(--line);
-  background: var(--paper);
-  box-shadow: var(--sh);
-}
-.reveal-card .rc-front { background: var(--board); }
-.reveal-card .rc-front .rc-teams { font-weight: 700; font-size: 15px; }
-.reveal-card .rc-front .rc-teams b { font-family: var(--display); font-size: 20px; opacity: .55; }
-.reveal-card .rc-hint { font-size: 11px; color: var(--n600); }
-.reveal-card .rc-back { transform: rotateY(180deg); }
-.reveal-card .rc-score { font-weight: 700; font-size: 15px; }
-.reveal-card .rc-score b { font-family: var(--display); font-size: 20px; }
-.reveal-card .rc-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
-.reveal-card .rc-pred { font-size: 12px; color: var(--n600); }
-/* Liseré coloré selon le palier, visible une fois retournée. */
-.reveal-card.tier-exact .rc-back { border-color: var(--success); box-shadow: 0 0 0 2px rgba(46,125,50,.25), var(--sh); }
-.reveal-card.tier-correct .rc-back { border-color: var(--success); }
-.reveal-card.tier-wrong .rc-back { border-color: var(--line); }
+.rv-progress { position: absolute; top: 14px; left: 14px; right: 60px; z-index: 4; display: flex; gap: 5px; }
+.rv-seg { flex: 1; height: 3px; border-radius: 999px; background: var(--board); }
+.rv-seg.done, .rv-seg.current { background: var(--primary); }
 
-.reveal-total {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 14px;
-  padding: 16px 18px;
-  border-radius: var(--r-card);
-  background: linear-gradient(135deg, var(--primary), var(--primary-d));
-  color: #fff;
-  box-shadow: var(--sh2);
+.rv-stage {
+  position: absolute; inset: 0;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 70px 26px 48px; gap: 16px;
 }
-.reveal-total .rt-lbl { font-weight: 600; }
-.reveal-total .rt-pts { font-family: var(--display); font-size: 28px; font-weight: 800; }
-.reveal-total .rt-pts small { font-size: 14px; font-weight: 600; }
+.rv-stage.is-active { display: flex; }
+/* Aspect manuscrit cohérent avec la story (classes scopées à .news-story ailleurs). */
+.rv-root .story-hero-ico, .rv-empty .story-hero-ico { font-size: 60px; line-height: 1; }
+.rv-root .story-lead, .rv-empty .story-lead {
+  font-family: var(--sketch); font-weight: 700; font-size: 30px; line-height: 1.05; margin: 0; color: var(--n900);
+}
+.rv-root .story-cap, .rv-empty .story-cap {
+  font-family: var(--sketch); font-size: 18px; color: var(--n600); margin: 0; max-width: 30ch;
+}
+.rv-tap-hint { font-family: var(--sketch); font-size: 18px; color: var(--n600); margin-top: 6px; }
+.rv-empty {
+  position: fixed; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center; padding: 30px; gap: 10px;
+}
+
+/* Match : prono puis résultat */
+.rv-match-head { font-weight: 700; font-size: 15px; color: var(--n700); }
+.rv-match-head span { color: var(--n400); margin: 0 4px; }
+.rv-phase { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.rv-plabel { font-family: var(--sketch); font-size: 18px; color: var(--n600); }
+.rv-scoreline { display: flex; align-items: center; gap: 12px; }
+.rv-team { font-size: 14px; font-weight: 600; color: var(--n500); max-width: 30vw; transition: color .3s, opacity .3s; }
+.rv-team.win { color: var(--primary-d); font-weight: 800; }
+.rv-team.dim { opacity: .5; }
+.rv-score { font-family: var(--display); font-size: 30px; font-weight: 800; }
+.rv-pwinner { font-size: 13px; color: var(--n600); }
+.rv-nopred { font-family: var(--sketch); font-size: 20px; color: var(--n500); }
+.rv-points { margin-top: 6px; font-weight: 800; font-size: 15px; padding: 6px 14px; border-radius: var(--pill); }
+.rv-points.exact { background: #FBBF24; color: #5b3d00; }
+.rv-points.ok { background: #DCFCE7; color: #15803D; }
+.rv-points.miss { background: var(--board); color: var(--n600); }
+
+.rv-match .rv-result {
+  opacity: 0; transform: translateY(14px); max-height: 0; overflow: hidden;
+  transition: opacity .4s, transform .4s;
+}
+.rv-match.show-result .rv-result { opacity: 1; transform: none; max-height: 240px; }
+.rv-match.show-result .rv-pred {
+  opacity: .5; transform: scale(.9); transition: opacity .4s, transform .4s;
+}
+
+/* Évolution du classement (focus participant) */
+.rv-rank { gap: 14px; }
+
+/* Tranche animée : le joueur grimpe/descend en doublant les autres (FLIP). */
+.rv-climb { position: relative; width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 8px; }
+.rv-crow {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: var(--r-card); background: var(--paper2); border: 1px solid var(--line);
+  will-change: transform;
+}
+.rv-crow.me { background: var(--primary-l); border-color: var(--primary); position: relative; z-index: 2; }
+/* Pendant la montée, la ligne du joueur "flotte" au-dessus des autres. */
+.rv-rank.climbing .rv-crow.me {
+  box-shadow: 0 8px 22px rgba(211,69,13,.28), 0 0 0 2px var(--primary);
+  transform-origin: center;
+}
+.rv-crow .rk { font-family: var(--display); font-weight: 800; min-width: 26px; text-align: center; }
+.rv-crow.me .rk { color: var(--primary-d); }
+.rv-crow .nm { flex: 1; text-align: left; font-weight: 600; font-size: 14px; }
+.rv-crow .sc { font-weight: 700; }
+.rv-crow .sc small { font-weight: 600; color: var(--n600); }
+
+/* Extrait statique (rang inchangé) */
+.rv-rank-static { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 360px; }
+.rv-rrow {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: var(--r-card); background: var(--paper2); border: 1px solid var(--line);
+}
+.rv-rrow.me { background: var(--primary-l); border-color: var(--primary); }
+.rv-rrow.empty { background: transparent; border: none; }
+.rv-rrow .rk { font-family: var(--display); font-weight: 800; min-width: 26px; text-align: center; }
+.rv-rrow .nm { flex: 1; text-align: left; font-weight: 600; font-size: 14px; }
+.rv-rrow .sc { font-weight: 700; }
+.rv-rrow .sc small { font-weight: 600; color: var(--n600); }
+.rv-rank-delta { margin-top: 2px; }
+
+/* Final */
+.rv-final .rv-cta { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 300px; margin-top: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
   .rp-confetti i { animation: none; display: none; }
-  .reveal-card .rc-inner { transition: none; }
+  .rv-match .rv-result, .rv-match.show-result .rv-pred, .rv-rank-block { transition: none; }
 }

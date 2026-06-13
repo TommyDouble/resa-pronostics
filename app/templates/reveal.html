@@ -1,65 +1,142 @@
-{% extends "participant_base.html" %}
-{% block title %}Reveal du jour — RESA Pronostics{% endblock %}
-{% block page_content %}
+<!DOCTYPE html>
+<html lang="fr">
+{% from "_macros.html" import avatar %}
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reveal du jour — RESA Pronostics</title>
+<meta name="theme-color" content="#D3450D">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/resa.css?v={{ static_version }}">
+</head>
+<body data-token="{{ token }}">
 
-<div class="page-head">
-  <div class="row1">
-    <div>
-      <h1 style="font-family:var(--sketch);font-size:26px;font-weight:700;">🎬 Le Reveal du jour</h1>
-      <div class="sub1">{% if reveal %}Journée du {{ reveal.day_label }}{% else %}Rien à révéler{% endif %}</div>
-    </div>
-  </div>
-</div>
-
-<div class="page-content">
-
-  {% if not reveal or not reveal.matches %}
-  <div class="card all-good">
-    <p class="muted" style="text-align:center;margin:6px 0;">
-      Aucun résultat à révéler pour l'instant. Reviens après la prochaine journée jouée ! ⚽
-    </p>
+{% macro rv_rankrow(pl) %}
+  {% if pl %}
+  <div class="rv-rrow {{ 'me' if pl.is_me else '' }}">
+    <span class="rk">{% if pl.rank == 1 %}🥇{% else %}{{ pl.rank }}{% endif %}</span>
+    {{ avatar(pl.avatar_path, pl.name, pl.id) }}
+    <span class="nm">{{ pl.name }}</span>
+    <span class="sc">{{ pl.points }}<small> pts</small></span>
   </div>
   {% else %}
+  <div class="rv-rrow empty"></div>
+  {% endif %}
+{% endmacro %}
 
-  <div class="reveal-deck" data-reveal data-has-exact="{{ '1' if reveal.exact_count else '0' }}">
-    {% for m in reveal.matches %}
-    <div class="reveal-card tier-{{ m.tier or 'none' }}" data-reveal-card>
-      <div class="rc-inner">
-        <div class="rc-face rc-front">
-          <div class="rc-teams">{{ m.team1_name|team }} <b>?–?</b> {{ m.team2_name|team }}</div>
-          <div class="rc-hint">touche pour révéler</div>
-        </div>
-        <div class="rc-face rc-back">
-          <div class="rc-score">
-            {{ m.team1_name|team }}
-            <b>{% if m.score_team1 is not none %}{{ m.score_team1 }}–{{ m.score_team2 }}{% else %}?–?{% endif %}</b>
-            {{ m.team2_name|team }}
-          </div>
-          <div class="rc-meta">
-            <span class="rc-pred">Ton prono : {{ m.prediction_label }}</span>
-            {% if m.tier == 'exact' %}
-              <span class="chip up">+{{ m.points }} pts · exact 🎯</span>
-            {% elif m.tier == 'correct' %}
-              <span class="chip up">+{{ m.points }} pts ✓</span>
-            {% else %}
-              <span class="chip fl">+{{ m.points }} pts</span>
-            {% endif %}
-          </div>
-        </div>
+<a class="rv-close" href="/p/{{ token }}" aria-label="Fermer">✕</a>
+
+{% if not reveal or not reveal.matches %}
+<div class="rv-empty">
+  <div class="story-hero-ico">🎬</div>
+  <p class="story-lead">Rien à révéler pour l'instant.</p>
+  <p class="story-cap">Reviens quand les résultats de la prochaine nuit seront encodés. ⚽</p>
+  <a class="btn full" href="/p/{{ token }}" style="margin-top:16px;max-width:280px;">Retour à l'accueil</a>
+</div>
+{% else %}
+
+<div class="rv-root" data-reveal data-match-count="{{ reveal.match_count }}">
+
+  {# Intro #}
+  <section class="rv-stage rv-intro" data-reveal-stage>
+    <div class="story-hero-ico">🎬</div>
+    <h1 class="story-lead">Le Reveal du jour</h1>
+    <p class="story-cap">Nuit du {{ reveal.day_label }} · {{ reveal.match_count }} match{{ 's' if reveal.match_count > 1 else '' }}</p>
+    <p class="rv-tap-hint">tape pour démarrer ▶</p>
+  </section>
+
+  {# Un écran par match : prono puis résultat + points #}
+  {% for m in reveal.matches %}
+  <section class="rv-stage rv-match" data-reveal-stage data-reveal-match data-exact="{{ '1' if m.tier == 'exact' else '0' }}">
+    <div class="rv-match-head">{{ m.team1_name|team }} <span>—</span> {{ m.team2_name|team }}</div>
+
+    <div class="rv-phase rv-pred">
+      <div class="rv-plabel">Ton prono</div>
+      {% if m.has_prediction %}
+      <div class="rv-scoreline">
+        <span class="rv-team {{ 'win' if m.prediction == 'team1' else ('dim' if m.prediction == 'team2' else '') }}">{{ m.team1_name|team }}</span>
+        <b class="rv-score">{{ m.exact_score_team1 }}–{{ m.exact_score_team2 }}</b>
+        <span class="rv-team {{ 'win' if m.prediction == 'team2' else ('dim' if m.prediction == 'team1' else '') }}">{{ m.team2_name|team }}</span>
       </div>
+      {% if m.prediction == 'draw' %}<div class="rv-pwinner">Tu voyais un nul</div>
+      {% else %}<div class="rv-pwinner">Vainqueur : <b>{{ m.pred_label }}</b></div>{% endif %}
+      {% else %}
+      <div class="rv-nopred">Pas de prono</div>
+      {% endif %}
     </div>
-    {% endfor %}
-  </div>
 
-  <div class="reveal-total">
-    <span class="rt-lbl">Total de la journée</span>
-    <span class="rt-pts">+{{ reveal.total_points }} <small>pts</small></span>
-  </div>
+    <div class="rv-phase rv-result">
+      <div class="rv-plabel">Résultat</div>
+      <div class="rv-scoreline">
+        <span class="rv-team {{ 'win' if m.result == 'team1' else ('dim' if m.result == 'team2' else '') }}">{{ m.team1_name|team }}</span>
+        <b class="rv-score">{{ m.score_team1 }}–{{ m.score_team2 }}</b>
+        <span class="rv-team {{ 'win' if m.result == 'team2' else ('dim' if m.result == 'team1' else '') }}">{{ m.team2_name|team }}</span>
+      </div>
+      {% if m.tier == 'exact' %}
+        <div class="rv-points exact">+{{ m.points }} pts · score exact 🎯</div>
+      {% elif m.tier == 'correct' %}
+        <div class="rv-points ok">+{{ m.points }} pts · bien vu ✓</div>
+      {% else %}
+        <div class="rv-points miss">+{{ m.points }} pts</div>
+      {% endif %}
+    </div>
+  </section>
+  {% endfor %}
 
-  <a href="/p/{{ token }}/classement" class="btn full" style="margin-top:14px;">Voir le classement →</a>
-  <a href="/p/{{ token }}" class="btn ghost full" style="margin-top:8px;">Retour à l'accueil</a>
+  {# Évolution du classement, focus participant #}
+  {% set evo = reveal.evolution %}
+  {% if evo and evo.after %}
+  <section class="rv-stage rv-rank" data-reveal-stage data-reveal-rank
+           data-delta="{{ evo.delta }}" data-moved="{{ '1' if evo.moved else '0' }}">
+    <div class="rv-plabel">{% if evo.delta > 0 %}Ton ascension 🚀{% elif evo.delta < 0 %}Ton classement{% else %}Ton classement{% endif %}</div>
 
+    {% if evo.moved %}
+    {# Tranche du classement traversée : chaque ligne est placée à son rang d'arrivée
+       (DOM) mais part de son rang d'avant via un FLIP géré par le JS. #}
+    <div class="rv-climb" data-rv-climb>
+      {% for r in evo.segment %}
+      <div class="rv-crow {{ 'me' if r.is_me else '' }}"
+           data-before="{{ r.before_rank }}" data-after="{{ r.after_rank }}">
+        <span class="rk" data-from="{{ r.before_rank }}" data-to="{{ r.after_rank }}">{{ r.before_rank }}</span>
+        {{ avatar(r.avatar_path, r.name, r.id) }}
+        <span class="nm">{{ r.name }}</span>
+        <span class="sc" data-from-pts="{{ r.before_points }}" data-to-pts="{{ r.after_points }}"><b class="pts-val">{{ r.before_points }}</b><small> pts</small></span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="rv-rank-delta">
+      {% if evo.delta > 0 %}<span class="chip up">▲ +{{ evo.delta }} place{{ 's' if evo.delta > 1 else '' }} · {{ evo.before_rank }}e → {{ evo.after_rank }}e</span>
+      {% else %}<span class="chip dn">▼ {{ -evo.delta }} place{{ 's' if evo.delta < -1 else '' }} · {{ evo.before_rank }}e → {{ evo.after_rank }}e</span>{% endif %}
+    </div>
+
+    {% else %}
+    <div class="rv-rank-stack rv-rank-static">
+      {{ rv_rankrow(evo.after.above) }}
+      {{ rv_rankrow(evo.after.me) }}
+      {{ rv_rankrow(evo.after.below) }}
+    </div>
+    <div class="rv-rank-delta"><span class="chip fl">= tu restes {{ evo.after_rank }}e</span></div>
+    {% endif %}
+  </section>
   {% endif %}
 
+  {# Écran final : total + CTA #}
+  <section class="rv-stage rv-final" data-reveal-stage data-reveal-final>
+    <div class="story-hero-ico">{{ '🎉' if reveal.exact_count else '✅' }}</div>
+    <h2 class="story-lead">+{{ reveal.total_points }} pts</h2>
+    <p class="story-cap">sur {{ reveal.match_count }} match{{ 's' if reveal.match_count > 1 else '' }}{% if reveal.exact_count %} · {{ reveal.exact_count }} score{{ 's' if reveal.exact_count > 1 else '' }} exact{{ 's' if reveal.exact_count > 1 else '' }} 🎯{% endif %}</p>
+    <div class="rv-cta">
+      <a class="btn full" href="/p/{{ token }}/classement">Voir le classement</a>
+      <a class="btn ghost full" href="/p/{{ token }}/pronos">Voir mes pronos</a>
+    </div>
+  </section>
+
+  {# Barre de progression globale + zones de navigation (injectées/MAJ par le JS) #}
 </div>
-{% endblock %}
+{% endif %}
+
+<script src="/static/js/resa.js?v={{ static_version }}"></script>
+</body>
+</html>

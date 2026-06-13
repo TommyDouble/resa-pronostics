@@ -78,6 +78,25 @@ def local_today(offset_days: int = 0) -> date:
     return (now_utc().astimezone(DISPLAY_TZ) + timedelta(days=offset_days)).date()
 
 
+# Frontière de "journée sportive" : la soirée + sa nuit jusqu'au lendemain matin
+# forment un même lot. Un match à 0h–8h59 (locale) est rattaché à la veille.
+SPORTING_DAY_CUTOFF_HOUR = 9
+
+
+def sporting_day(match: dict) -> str:
+    """Label de journée sportive (YYYY-MM-DD) du coup d'envoi d'un match.
+
+    On recule l'heure locale de SPORTING_DAY_CUTOFF_HOUR avant de prendre la
+    date : ainsi un match à 2h ou 6h reste rattaché à la soirée de la veille,
+    et tous les matchs d'une même "nuit" partagent le même label.
+    """
+    try:
+        local = match_kickoff_utc(match).astimezone(DISPLAY_TZ)
+        return (local - timedelta(hours=SPORTING_DAY_CUTOFF_HOUR)).strftime("%Y-%m-%d")
+    except Exception:
+        return match.get("match_date") or ""
+
+
 def utc_day_bounds_for_local_date(day: date | None = None) -> tuple[str, str]:
     local_day = day or now_utc().astimezone(DISPLAY_TZ).date()
     local_start = datetime.combine(local_day, time.min, tzinfo=DISPLAY_TZ)
