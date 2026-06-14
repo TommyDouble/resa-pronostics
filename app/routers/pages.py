@@ -60,6 +60,7 @@ from app.timeutils import (
     match_live_state,
     minutes_until_match,
     now_utc_iso,
+    sporting_day,
     utc_day_bounds_for_local_date,
 )
 
@@ -345,49 +346,160 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
     }
 
 
-async def _reveal_day_data(db, participant_id: int) -> dict | None:
-    """« Reveal du jour » : dernière journée sportive comportant des résultats.
+async def _reveal_rank_evolution(db, participant_id: int, window_ids: list) -> dict:
+    """Évolution de rang provoquée par les matchs du périmètre, focus participant.
 
-    Retourne {day, day_label, matches[], total_points, exact_count} avec, par
-    match, le prono du participant, ses points et son palier (exact/correct/wrong).
-    None s'il n'y a aucun résultat encodé.
+    Avant = classement actuel privé des points gagnés sur ces matchs (déterministe,
+    sans état stocké). Renvoie les extraits 3 lignes (dessus/toi/dessous) avant/après.
     """
-    rows = await db.execute(
-        "SELECT id, match_date, kickoff_time FROM matches WHERE result IS NOT NULL"
+    current = await get_rankings(db)
+    if not current or not window_ids:
+        return {}
+    placeholders = ",".join("?" for _ in window_ids)
+    pts_rows = await db.execute(
+        f"""SELECT participant_id, COALESCE(SUM(points), 0) AS pts
+            FROM scores WHERE match_id IN ({placeholders}) GROUP BY participant_id""",
+        window_ids,
     )
-    settled = [dict(r) for r in await rows.fetchall()]
-    if not settled:
+    win_pts = {r["participant_id"]: r["pts"] for r in await pts_rows.fetchall()}
+    baseline_points = {r["id"]: r["total_points"] - win_pts.get(r["id"], 0) for r in current}
+    all_bp = sorted(baseline_points.values(), reverse=True)
+    before_rank = {pid: 1 + sum(1 for p in all_bp if p > bp) for pid, bp in baseline_points.items()}
+
+    pos = {r["id"]: i for i, r in enumerate(current)}
+    before_order = sorted(current, key=lambda r: (-baseline_points[r["id"]], pos[r["id"]]))
+
+    def extract(order, rank_of, points_of):
+        idx = next((k for k, r in enumerate(order) if r["id"] == participant_id), None)
+        if idx is None:
+            return None
+
+        def mk(r):
+            return {
+                "id": r["id"], "name": r["name"], "avatar_path": r["avatar_path"],
+                "rank": rank_of(r), "points": points_of(r), "is_me": r["id"] == participant_id,
+            }
+        return {
+            "above": mk(order[idx - 1]) if idx > 0 else None,
+            "me": mk(order[idx]),
+            "below": mk(order[idx + 1]) if idx + 1 < len(order) else None,
+        }
+
+    before = extract(before_order, lambda r: before_rank[r["id"]], lambda r: baseline_points[r["id"]])
+    after = extract(current, lambda r: r["rank"], lambda r: r["total_points"])
+    me_before = before_rank.get(participant_id)
+    me_after = next((r["rank"] for r in current if r["id"] == participant_id), None)
+    moved = me_before is not None and me_after is not None and me_before != me_after
+
+    # Contexte 5 slots (2 dessus + MOI + 2 dessous) avant et après le mouvement.
+    # MOI reste au centre ; les 4 slots autour glissent vers leurs nouveaux voisins.
+    def get_ctx(order, rank_of, points_of):
+        idx = next((k for k, r in enumerate(order) if r["id"] == participant_id), None)
+        if idx is None:
+            return [None] * 5
+        result = []
+        for offset in (-2, -1, 0, 1, 2):
+            j = idx + offset
+            if 0 <= j < len(order):
+                r = order[j]
+                result.append({
+                    "id": r["id"], "name": r["name"], "avatar_path": r["avatar_path"],
+                    "rank": rank_of(r), "points": points_of(r),
+                    "is_me": r["id"] == participant_id,
+                })
+            else:
+                result.append(None)
+        return result
+
+    current_rank_map = {r["id"]: r["rank"] for r in current}
+    current_pts_map  = {r["id"]: r["total_points"] for r in current}
+    before_ctx = get_ctx(before_order, lambda r: before_rank[r["id"]], lambda r: baseline_points[r["id"]])
+    after_ctx  = get_ctx(current,      lambda r: current_rank_map[r["id"]], lambda r: current_pts_map[r["id"]])
+    me_before_points = baseline_points.get(participant_id, 0)
+    me_after_points  = current_pts_map.get(participant_id, 0)
+
+    return {
+        "before": before, "after": after,
+        "before_rank": me_before, "after_rank": me_after,
+        "moved": moved,
+        "delta": (me_before - me_after) if (me_before and me_after) else 0,
+        "before_ctx": before_ctx, "after_ctx": after_ctx,
+        "me_before_points": me_before_points, "me_after_points": me_after_points,
+    }
+
+
+async def _reveal_window_data(db, participant_id: int) -> dict | None:
+    """« Reveal du jour » v2 : périmètre = matchs encodés depuis le dernier reveal.
+
+    Regroupe par journée sportive (cf. sporting_day). Disponible seulement quand la
+    nuit la plus récente est terminée ET que tous ses matchs joués sont encodés.
+    None sinon (rien à révéler / on attend l'encodage).
+    """
+    prow = await (await db.execute(
+        "SELECT last_revealed_date FROM participants WHERE id=?", (participant_id,)
+    )).fetchone()
+    last_revealed = (prow["last_revealed_date"] if prow else None) or ""
+
+    rows = await db.execute("SELECT * FROM matches ORDER BY match_date, kickoff_time")
+    all_matches = [dict(m) for m in await rows.fetchall()]
+    for m in all_matches:
+        m["sd"] = sporting_day(m)
+        m["kicked_off"] = is_match_locked(m)
+
+    # Périmètre : journées sportives strictement postérieures au dernier reveal.
+    pending = [m for m in all_matches if m["sd"] > last_revealed]
+    encoded = [m for m in pending if m["result"] is not None]
+    if not encoded:
         return None
-    day_of = {m["id"]: format_match_local_date(m) for m in settled}
-    reveal_day = max(day_of.values())
-    day_ids = [mid for mid, d in day_of.items() if d == reveal_day]
-    placeholders = ",".join("?" for _ in day_ids)
+    # Aucun match déjà joué du périmètre ne doit rester en attente de résultat.
+    if any(m["kicked_off"] and m["result"] is None for m in pending):
+        return None
+    started = [m for m in pending if m["kicked_off"]]
+    if not started:
+        return None
+    # La nuit la plus récente doit être terminée (aucun de ses matchs encore à jouer).
+    latest_sd = max(m["sd"] for m in started)
+    if any(m["sd"] == latest_sd and not m["kicked_off"] for m in pending):
+        return None
+
+    window = sorted(encoded, key=lambda m: (m["match_date"], m["kickoff_time"], m["match_number"]))
+    window_ids = [m["id"] for m in window]
+    placeholders = ",".join("?" for _ in window_ids)
     mrows = await db.execute(
-        f"""SELECT m.*, pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
+        f"""SELECT m.id AS mid, pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
                    pr.qualifier_prediction, s.points
             FROM matches m
             LEFT JOIN predictions pr ON pr.match_id = m.id AND pr.participant_id = ?
             LEFT JOIN scores s ON s.match_id = m.id AND s.participant_id = ?
-            WHERE m.id IN ({placeholders})
-            ORDER BY m.kickoff_time, m.match_number""",
-        (participant_id, participant_id, *day_ids),
+            WHERE m.id IN ({placeholders})""",
+        (participant_id, participant_id, *window_ids),
     )
-    matches = [dict(r) for r in await mrows.fetchall()]
+    extra = {r["mid"]: dict(r) for r in await mrows.fetchall()}
+    matches = []
     total = 0
     exact_count = 0
-    for m in matches:
-        m["tier"] = _prediction_tier(m, m)
-        m["points"] = m.get("points") or 0
-        m["prediction_label"] = _prediction_label(m)
-        total += m["points"]
-        if m["tier"] == "exact":
+    for m in window:
+        e = extra.get(m["id"], {})
+        row = {**m, **e}
+        row["points"] = e.get("points") or 0
+        row["has_prediction"] = (
+            e.get("prediction") is not None or e.get("exact_score_team1") is not None
+        )
+        row["tier"] = _prediction_tier(row, row)
+        matches.append(row)
+        total += row["points"]
+        if row["tier"] == "exact":
             exact_count += 1
+
+    reveal_sd = max(m["sd"] for m in window)
     return {
-        "day": reveal_day,
-        "day_label": _format_day_fr(reveal_day),
+        "sporting_day": reveal_sd,
+        "day_label": _format_day_fr(reveal_sd),
         "matches": matches,
         "total_points": total,
         "exact_count": exact_count,
+        "match_count": len(matches),
+        "evolution": await _reveal_rank_evolution(db, participant_id, window_ids),
     }
 
 
@@ -396,15 +508,8 @@ async def reveal_page(request: Request, token: str):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "home")
         p = ctx["participant"]
-        reveal = await _reveal_day_data(db, p["id"])
-        # Marque la journée comme vue : le point d'entrée disparaît de l'accueil.
-        if reveal:
-            await db.execute(
-                "UPDATE participants SET last_revealed_date=? WHERE id=?",
-                (reveal["day"], p["id"]),
-            )
-            await db.commit()
-        ctx["reveal"] = reveal
+        # Le « vu » est marqué en fin de séquence via POST /api/reveal/seen, pas au load.
+        ctx["reveal"] = await _reveal_window_data(db, p["id"])
     return templates.TemplateResponse(request, "reveal.html", {"request": request, **ctx})
 
 
@@ -586,10 +691,10 @@ async def participant_home(request: Request, token: str):
         })
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "home")
-        # Reveal du jour : proposé tant que la dernière journée jouée n'a pas été vue.
-        reveal = await _reveal_day_data(db, p["id"])
-        last_revealed = dict(p).get("last_revealed_date") or ""
-        ctx["reveal_available"] = bool(reveal and reveal["day"] > last_revealed)
+        # Reveal du jour : proposé seulement quand le lot/nuit est complet (cf.
+        # _reveal_window_data, qui renvoie None tant qu'on attend l'encodage).
+        reveal = await _reveal_window_data(db, p["id"])
+        ctx["reveal_available"] = reveal is not None
         ctx["reveal_points"] = reveal["total_points"] if reveal else 0
         ctx["reveal_day_label"] = reveal["day_label"] if reveal else ""
         # Upcoming/today matches

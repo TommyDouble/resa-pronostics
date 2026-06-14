@@ -1364,32 +1364,200 @@ function resaConfetti(opts) {
 }
 window.resaConfetti = resaConfetti;
 
-/* ---- Reveal du jour : flip séquentiel + confetti sur score exact ---- */
+/* ---- Reveal du jour v2 : parcours choreographié (matchs -> classement -> CTA) ---- */
 function initReveal() {
-  var deck = document.querySelector('[data-reveal]');
-  if (!deck) return;
-  var cards = Array.prototype.slice.call(deck.querySelectorAll('[data-reveal-card]'));
-  if (!cards.length) return;
-  var hasExact = deck.dataset.hasExact === '1';
-  // Tap sur une carte : on la retourne tout de suite.
-  cards.forEach(function(c) {
-    c.addEventListener('click', function() { c.classList.add('flipped'); });
-  });
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    cards.forEach(function(c) { c.classList.add('flipped'); });
-    return;  // pas d'animation ; le confetti se retient aussi de lui-même.
+  var root = document.querySelector('[data-reveal]');
+  if (!root) return;
+  var stages = Array.prototype.slice.call(root.querySelectorAll('[data-reveal-stage]'));
+  if (!stages.length) return;
+  var token = document.body.dataset.token;
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var idx = -1;
+  var timers = [];
+  var seenSent = false;
+
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+  function after(ms, fn) { timers.push(setTimeout(fn, ms)); }
+
+  function markSeen() {
+    if (seenSent || !token) return;
+    seenSent = true;
+    fetch('/api/reveal/seen?token=' + encodeURIComponent(token), { method: 'POST' }).catch(function() {});
   }
-  var i = 0;
-  function flipNext() {
-    if (i >= cards.length) {
-      if (hasExact && window.resaConfetti) window.resaConfetti({ count: 120 });
+
+  // Barre de progression (un segment par étape).
+  var prog = document.createElement('div');
+  prog.className = 'rv-progress';
+  stages.forEach(function() {
+    var s = document.createElement('span');
+    s.className = 'rv-seg';
+    prog.appendChild(s);
+  });
+  root.appendChild(prog);
+  function updateProgress() {
+    for (var i = 0; i < prog.children.length; i++) {
+      prog.children[i].classList.toggle('done', i < idx);
+      prog.children[i].classList.toggle('current', i === idx);
+    }
+  }
+
+  function advance() { if (idx < stages.length - 1) enter(idx + 1); }
+
+  // Verdict en deux temps : le point (info reine) "tombe" après le résultat.
+  // Confetti calé sur l'apparition du point (pas du score), une seule fois.
+  function revealPoints(stage) {
+    stage.classList.add('show-points');
+    if (stage.dataset.exact === '1' && !stage.dataset.celebrated && window.resaConfetti) {
+      stage.dataset.celebrated = '1';
+      window.resaConfetti({ count: 90 });
+    }
+  }
+
+  function enterMatch(stage) {
+    stage.classList.remove('show-result', 'show-points');
+    if (reduce) { stage.classList.add('show-result', 'show-points'); return; }
+    // 1) Court temps de lecture du prono (~1s), puis le résultat monte.
+    after(1000, function() {
+      stage.classList.add('show-result');
+      // 2) Le point tombe ~350ms plus tard. Pas d'auto-avance : on attend le tap.
+      after(350, function() { revealPoints(stage); });
+    });
+  }
+
+  function setRankText(rk, val) {
+    rk.textContent = (val === +rk.dataset.to && val === 1) ? '🥇' : val;
+  }
+
+  function animateRanks(rows, dur) {
+    var start = null;
+    function frame(ts) {
+      if (start === null) start = ts;
+      var p = Math.min((ts - start) / dur, 1);
+      var e = 1 - Math.pow(1 - p, 3);  // ease-out
+      rows.forEach(function(r) {
+        var rk = r.querySelector('.rk');
+        var from = +rk.dataset.from, to = +rk.dataset.to;
+        setRankText(rk, Math.round(from + (to - from) * e));
+        var sc = r.querySelector('.sc');
+        var ptsEl = r.querySelector('.pts-val');
+        if (sc && ptsEl) {
+          var fp = +sc.dataset.fromPts, tp = +sc.dataset.toPts;
+          ptsEl.textContent = Math.round(fp + (tp - fp) * e);
+        }
+      });
+      if (p < 1) requestAnimationFrame(frame);
+      else rows.forEach(function(r) {  // micro-pulse du rang à l'arrivée
+        var rk = r.querySelector('.rk');
+        if (rk) { rk.classList.remove('pulse'); void rk.offsetWidth; rk.classList.add('pulse'); }
+      });
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // Animation ascenseur : MOI centré fixe, les slots voisins glissent via CSS.
+  function finishClimb(stage) {
+    var climb = stage.querySelector('[data-rv-climb]');
+    if (climb) {
+      // Supprime les transitions pour un saut instantané
+      Array.prototype.forEach.call(climb.querySelectorAll('.rv-face'), function(f) {
+        f.style.transition = 'none';
+      });
+      void climb.offsetHeight;
+      climb.classList.add('animating');
+    }
+    var meRow = climb ? climb.querySelector('.rv-crow.me') : null;
+    if (meRow) {
+      meRow.style.animation = 'none';  // coupe rv-rev / rv-lift / rv-drop en cours
+      var rk = meRow.querySelector('.rk');
+      if (rk) setRankText(rk, +rk.dataset.to);
+      var sc = meRow.querySelector('.sc');
+      var ptsEl = meRow.querySelector('.pts-val');
+      if (sc && ptsEl) ptsEl.textContent = +sc.dataset.toPts;
+    }
+    stage.classList.remove('revving', 'lifting', 'dropping');
+    stage.classList.add('climbing', 'rv-done');  // garde le halo sur la position d'arrivée
+  }
+
+  function playClimb(stage) {
+    var climb = stage.querySelector('[data-rv-climb]');
+    var meRow = climb ? climb.querySelector('.rv-crow.me') : null;
+    if (!climb || !meRow || reduce) {
+      finishClimb(stage);
+      if (!reduce) after(2600, advance);
       return;
     }
-    cards[i].classList.add('flipped');
-    i++;
-    setTimeout(flipNext, 600);
+    var down = (+stage.dataset.delta) < 0;
+    var moveDur = down ? 1000 : 900;
+    // 1) Vibration de décollage (le halo s'allume, MOI monte en puissance / se crispe).
+    stage.classList.add('climbing', 'revving');
+    after(360, function() {
+      // 2) Tout démarre ensemble : voisins, count-up et poussée/chute → fins alignées.
+      stage.classList.remove('revving');
+      stage.classList.add(down ? 'dropping' : 'lifting');
+      climb.classList.add('animating');
+      animateRanks([meRow], 900);
+      after(moveDur + 60, function() { stage.classList.remove('lifting', 'dropping'); stage.classList.add('rv-done'); });
+      after(moveDur + 900, advance);
+    });
   }
-  setTimeout(flipNext, 350);
+
+  function enterRank(stage) {
+    if (stage.dataset.moved !== '1') {  // pas de mouvement : extrait statique
+      stage.classList.add('rv-done');
+      if (!reduce) after(2600, advance);
+      return;
+    }
+    playClimb(stage);
+  }
+
+  function enter(i) {
+    clearTimers();
+    idx = i;
+    stages.forEach(function(s, k) { s.classList.toggle('is-active', k === i); });
+    updateProgress();
+    var stage = stages[i];
+    if (stage.hasAttribute('data-reveal-match')) enterMatch(stage);
+    else if (stage.hasAttribute('data-reveal-rank')) enterRank(stage);
+    else if (stage.hasAttribute('data-reveal-final')) markSeen();
+    // intro : on attend le tap.
+  }
+
+  // Tap : accélère la phase en cours, sinon avance.
+  function onTap() {
+    var stage = stages[idx];
+    if (!stage || stage.hasAttribute('data-reveal-final')) return;  // CTA : liens cliquables
+    if (stage.hasAttribute('data-reveal-match')) {
+      clearTimers();
+      if (!stage.classList.contains('show-result')) {       // 1er tap : révèle le résultat
+        stage.classList.add('show-result');
+        after(280, function() { revealPoints(stage); });
+        return;
+      }
+      if (!stage.classList.contains('show-points')) {        // 2e tap : fait tomber le point
+        revealPoints(stage);
+        return;
+      }
+      advance();                                             // 3e tap : match suivant
+      return;
+    }
+    if (stage.hasAttribute('data-reveal-rank') && !stage.classList.contains('rv-done')) {
+      clearTimers();
+      finishClimb(stage);  // saute directement aux positions finales
+      return;
+    }
+    clearTimers();
+    advance();
+  }
+
+  root.addEventListener('click', function(e) {
+    if (e.target.closest('a, button')) return;  // ne pas voler les clics des CTA
+    onTap();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTap(); }
+  });
+
+  enter(0);
 }
 
 function initConfettiTriggers() {

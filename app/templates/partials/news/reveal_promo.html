@@ -1,18 +1,19 @@
-{# Parcours "Le Reveal du jour" en 3 écrans. Le titre est porté par la barre
-   du haut du player ; chaque écran = une maquette HTML/CSS + une légende.
-   Maquettes volontairement stylisées (pas une copie exacte), reduced-motion safe. #}
+{# Parcours "Le Reveal du jour" — une vue par écran réel du trajet utilisateur :
+   accroche → CTA accueil → reveal match par match → évolution du classement.
+   Titre porté par la barre du haut ; chaque écran = une maquette HTML/CSS + légende.
+   Maquettes stylisées, données d'exemple, reduced-motion safe. #}
 
 {# ① Accroche #}
 <div class="story-screen" data-story-screen>
   <div class="story-hero-ico">🎬</div>
-  <p class="story-lead">Tes points de la veille, en spectacle.</p>
-  <p class="story-cap">Chaque matin, le Reveal dévoile tes scores — carte après carte.</p>
+  <p class="story-lead">Ta nuit de foot, en spectacle.</p>
+  <p class="story-cap">Chaque matin, le Reveal déroule tes résultats — match après match.</p>
 </div>
 
 {# ② Le nouveau call-to-action sur l'accueil #}
 <div class="story-screen" data-story-screen>
   <div class="sm-frame" aria-hidden="true">
-    <div class="sm-head"><b>Salut 👋</b><span>1er · 18 pts</span></div>
+    <div class="sm-head"><b>Salut 👋</b><span>4e · 10 pts</span></div>
     <div class="sm-cta">
       <span class="sm-cta-ico">🎬</span>
       <div class="sm-cta-body">
@@ -22,17 +23,16 @@
       <span class="sm-cta-go">▶</span>
     </div>
     <div class="sm-row"></div>
-    <div class="sm-row short"></div>
   </div>
-  <p class="story-cap">① Un nouveau bouton t'attend sur ton accueil.</p>
+  <p class="story-cap">① Quand la nuit est complète, un bouton apparaît sur ton accueil.</p>
 </div>
 
-{# ③ Le nouvel écran Reveal #}
+{# ③ Le reveal, match par match : ton prono puis le résultat #}
 <div class="story-screen" data-story-screen>
   <div class="rp-demo" aria-hidden="true">
     <div class="rp-card rp-before">
-      <div class="rp-teams">🇫🇷 <b>?–?</b> 🇧🇷</div>
-      <div class="rp-tag rp-tag-hidden">caché</div>
+      <div class="rp-teams">🇫🇷 <b>2–0</b> 🇧🇷</div>
+      <div class="rp-tag rp-tag-hidden">ton prono</div>
     </div>
     <div class="rp-arrow">→</div>
     <div class="rp-card rp-after">
@@ -41,5 +41,16 @@
       <div class="rp-tag rp-tag-exact">🎯 +5 pts</div>
     </div>
   </div>
-  <p class="story-cap">② Tes points se dévoilent, carte après carte. 🎉</p>
+  <p class="story-cap">② Match par match : ton prono, puis le résultat et tes points. 🎉</p>
+</div>
+
+{# ④ L'évolution du classement (focus sur toi) #}
+<div class="story-screen" data-story-screen>
+  <div class="sm-frame sm-rank" aria-hidden="true">
+    <div class="sm-rrow"><span class="sm-rk">🥇</span> <span class="sm-nm">Alice</span> <b>20</b></div>
+    <div class="sm-rrow me"><span class="sm-rk">2</span> <span class="sm-nm">Toi</span> <b>16</b></div>
+    <div class="sm-rrow"><span class="sm-rk">3</span> <span class="sm-nm">Bob</span> <b>15</b></div>
+  </div>
+  <span class="chip up sm-rank-delta">▲ +2 places</span>
+  <p class="story-cap">③ Puis ton classement s'anime : tu vois ta place bouger. 🚀</p>
 </div>

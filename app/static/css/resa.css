@@ -2027,6 +2027,19 @@ body.story-locked { overflow: hidden; }
 .sm-cta-go { font-size: 13px; opacity: .9; }
 .sm-row { height: 11px; border-radius: 6px; background: var(--board); }
 .sm-row.short { width: 55%; }
+
+/* Maquette mini-classement (écran évolution de la story). */
+.sm-rank { gap: 6px; transform: rotate(-1.2deg); }
+.sm-rrow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 9px; border-radius: 10px;
+  background: var(--paper); border: 1px solid var(--line); font-size: 13px;
+}
+.sm-rrow .sm-rk { min-width: 18px; text-align: center; font-family: var(--display); font-weight: 800; }
+.sm-rrow .sm-nm { flex: 1; text-align: left; font-weight: 600; }
+.sm-rrow b { font-family: var(--display); }
+.sm-rrow.me { background: var(--primary-l); border-color: var(--primary); }
+.sm-rank-delta { margin-top: 2px; }
 @keyframes sm-cta-pulse {
   0%, 100% { box-shadow: 0 0 0 3px var(--primary-l); }
   50% { box-shadow: 0 0 0 7px var(--primary-l); }
@@ -2136,62 +2149,174 @@ body.story-locked { overflow: hidden; }
 .reveal-entry .re-sub { font-size: 12.5px; opacity: .92; }
 .reveal-entry .re-go { font-size: 16px; opacity: .9; }
 
-/* ---- Page Reveal : cartes qui se retournent ---- */
-.reveal-deck { display: flex; flex-direction: column; gap: 12px; }
-.reveal-card { perspective: 1000px; }
-.reveal-card .rc-inner {
-  position: relative;
-  transform-style: preserve-3d;
-  transition: transform .6s cubic-bezier(.2,.7,.2,1);
-  min-height: 92px;
+/* ---- Page Reveal v2 : parcours immersif ---- */
+.rv-root { position: fixed; inset: 0; background: var(--paper); color: var(--n900); overflow: hidden; }
+.rv-close {
+  position: fixed; top: 14px; right: 14px; z-index: 5;
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--board); color: var(--n700); text-decoration: none; font-size: 17px;
 }
-.reveal-card.flipped .rc-inner { transform: rotateY(180deg); }
-.reveal-card .rc-face {
-  position: absolute;
-  inset: 0;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 14px;
-  border-radius: var(--r-card);
-  border: 1px solid var(--line);
-  background: var(--paper);
-  box-shadow: var(--sh);
-}
-.reveal-card .rc-front { background: var(--board); }
-.reveal-card .rc-front .rc-teams { font-weight: 700; font-size: 15px; }
-.reveal-card .rc-front .rc-teams b { font-family: var(--display); font-size: 20px; opacity: .55; }
-.reveal-card .rc-hint { font-size: 11px; color: var(--n600); }
-.reveal-card .rc-back { transform: rotateY(180deg); }
-.reveal-card .rc-score { font-weight: 700; font-size: 15px; }
-.reveal-card .rc-score b { font-family: var(--display); font-size: 20px; }
-.reveal-card .rc-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
-.reveal-card .rc-pred { font-size: 12px; color: var(--n600); }
-/* Liseré coloré selon le palier, visible une fois retournée. */
-.reveal-card.tier-exact .rc-back { border-color: var(--success); box-shadow: 0 0 0 2px rgba(46,125,50,.25), var(--sh); }
-.reveal-card.tier-correct .rc-back { border-color: var(--success); }
-.reveal-card.tier-wrong .rc-back { border-color: var(--line); }
+.rv-progress { position: absolute; top: 14px; left: 14px; right: 60px; z-index: 4; display: flex; gap: 5px; }
+.rv-seg { flex: 1; height: 3px; border-radius: 999px; background: var(--board); }
+.rv-seg.done, .rv-seg.current { background: var(--primary); }
 
-.reveal-total {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 14px;
-  padding: 16px 18px;
-  border-radius: var(--r-card);
-  background: linear-gradient(135deg, var(--primary), var(--primary-d));
-  color: #fff;
-  box-shadow: var(--sh2);
+.rv-stage {
+  position: absolute; inset: 0;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 70px 26px 48px; gap: 16px;
 }
-.reveal-total .rt-lbl { font-weight: 600; }
-.reveal-total .rt-pts { font-family: var(--display); font-size: 28px; font-weight: 800; }
-.reveal-total .rt-pts small { font-size: 14px; font-weight: 600; }
+.rv-stage.is-active { display: flex; }
+/* Aspect manuscrit cohérent avec la story (classes scopées à .news-story ailleurs). */
+.rv-root .story-hero-ico, .rv-empty .story-hero-ico { font-size: 60px; line-height: 1; }
+.rv-root .story-lead, .rv-empty .story-lead {
+  font-family: var(--sketch); font-weight: 700; font-size: 30px; line-height: 1.05; margin: 0; color: var(--n900);
+}
+.rv-root .story-cap, .rv-empty .story-cap {
+  font-family: var(--sketch); font-size: 18px; color: var(--n600); margin: 0; max-width: 30ch;
+}
+.rv-tap-hint { font-family: var(--sketch); font-size: 18px; color: var(--n600); margin-top: 6px; }
+.rv-empty {
+  position: fixed; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center; padding: 30px; gap: 10px;
+}
+
+/* Match : l'affiche (identité) est portée UNE seule fois par l'en-tête ;
+   les phases prono/résultat ne montrent que le score (sans noms d'équipe). */
+.rv-match-head { font-weight: 800; font-size: 18px; color: var(--n900); margin-bottom: 4px; }
+.rv-match-head span { color: var(--n400); margin: 0 6px; font-weight: 600; }
+.rv-phase { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.rv-plabel { font-family: var(--sketch); font-size: 18px; color: var(--n600); }
+/* Score nu : vainqueur en couleur primaire, perdant atténué, nul = neutre. */
+.rv-score { font-family: var(--display); font-size: 40px; font-weight: 800; line-height: 1; }
+.rv-score .sd { color: var(--n700); transition: color .3s; }
+.rv-score .sd.win { color: var(--primary-d); }
+.rv-score .sd.dim { color: var(--n400); }
+.rv-score .sep { color: var(--n400); margin: 0 6px; }
+.rv-nopred { font-family: var(--sketch); font-size: 20px; color: var(--n500); }
+/* La pastille points = info reine : plus grosse, entrée propre en back-out. */
+.rv-points {
+  margin-top: 10px; font-weight: 800; font-size: 20px; padding: 8px 18px; border-radius: var(--pill);
+  opacity: 0; transform: scale(.8);
+  transition: opacity .22s ease, transform .38s cubic-bezier(.34,1.56,.64,1);
+}
+.rv-match.show-points .rv-points { opacity: 1; transform: scale(1); }
+.rv-points.exact { background: #FBBF24; color: #5b3d00; }
+.rv-points.ok { background: #DCFCE7; color: #15803D; }
+.rv-points.miss { background: var(--board); color: var(--n600); }
+
+/* Résultat : révélation à hauteur réelle via grid-template-rows (pas de max-height
+   arbitraire qui saccade). Le résultat monte ~120ms APRÈS que le prono ait reculé,
+   pour qu'un seul élément bouge à la fois. */
+.rv-match .rv-result {
+  display: grid; grid-template-rows: 0fr; opacity: 0;
+  transition: grid-template-rows .38s cubic-bezier(.4,0,.2,1), opacity .3s ease;
+}
+.rv-match .rv-result-inner {
+  overflow: hidden; min-height: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.rv-match.show-result .rv-result { grid-template-rows: 1fr; opacity: 1; transition-delay: .06s; }
+.rv-match.show-result .rv-pred {
+  opacity: .45; transform: scale(.9); transition: opacity .35s, transform .35s;
+}
+/* Indice « tape pour continuer » : apparaît une fois le verdict livré. */
+.rv-cont-hint {
+  font-family: var(--sketch); font-size: 16px; color: var(--n500); margin-top: 12px;
+  opacity: 0; transition: opacity .4s ease;
+}
+.rv-match.show-points .rv-cont-hint { opacity: 1; }
+
+/* Évolution du classement (focus participant) */
+.rv-rank { gap: 14px; }
+
+/* Animation ascenseur : MOI centré, les 4 voisins glissent vers leurs nouvelles positions. */
+.rv-climb { position: relative; width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 8px; }
+.rv-slot { position: relative; overflow: hidden; border-radius: var(--r-card); }
+.rv-crow {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: var(--r-card); background: var(--paper2); border: 1px solid var(--line);
+}
+.rv-crow.me { background: var(--primary-l); border-color: var(--primary); transition: box-shadow .45s ease; }
+.rv-rank.climbing .rv-crow.me {
+  box-shadow: 0 10px 26px rgba(211,69,13,.32), 0 0 0 2px var(--primary);
+}
+/* 1) Vibration de décollage : amplitude visible (pas de sub-pixel), courte et nerveuse. */
+.rv-rank.revving .rv-crow.me { animation: rv-rev .35s ease-in both; }
+@keyframes rv-rev {
+  0%   { transform: translate3d(0,0,0); }
+  20%  { transform: translate3d(-1px, .5px, 0); }
+  40%  { transform: translate3d(1.5px, -.5px, 0); }
+  60%  { transform: translate3d(-2px, .5px, 0); }
+  80%  { transform: translate3d(2.5px, -.5px, 0); }
+  100% { transform: translate3d(0,0,0); }
+}
+/* 2) Montée : poussée nette + settle élastique. Timing piloté par les keyframes
+   (animation linear) pour un rebond prévisible, easing par segment. ~900ms. */
+.rv-rank.lifting .rv-crow.me { animation: rv-lift .9s linear both; }
+@keyframes rv-lift {
+  0%   { transform: translateY(0) scale(1);        animation-timing-function: cubic-bezier(.2,.7,.3,1); }
+  16%  { transform: translateY(-12px) scale(1.07); animation-timing-function: cubic-bezier(.4,0,.4,1); }  /* décollage marqué */
+  56%  { transform: translateY(3px) scale(.984);   animation-timing-function: ease-in-out; }
+  78%  { transform: translateY(-3px) scale(1.014);  animation-timing-function: ease-in-out; }              /* rebond */
+  100% { transform: translateY(0) scale(1); }
+}
+/* 5) Descente : anticipation (petit sursaut), chute accélérée + écrasement,
+   puis rebond FORT et lesté (2 oscillations amorties). ~1s. */
+.rv-rank.dropping .rv-crow.me { animation: rv-drop 1s linear both; }
+@keyframes rv-drop {
+  0%   { transform: translateY(0) scale(1);        animation-timing-function: cubic-bezier(.3,0,.6,1); }
+  12%  { transform: translateY(-4px) scale(1.02);  animation-timing-function: cubic-bezier(.6,0,.9,.2); }  /* anticipation : il résiste */
+  40%  { transform: translateY(14px) scale(.93);   animation-timing-function: cubic-bezier(.2,.6,.35,1); } /* chute + écrasement */
+  60%  { transform: translateY(-7px) scale(1.035); animation-timing-function: ease-in-out; }               /* rebond 1 (fort) */
+  76%  { transform: translateY(5px) scale(.975);   animation-timing-function: ease-in-out; }               /* rebond 2 */
+  89%  { transform: translateY(-2px) scale(1.008); animation-timing-function: ease-in-out; }
+  100% { transform: translateY(0) scale(1); }
+}
+/* Faces des slots voisins : "avant" visible, "après" attend hors-champ (effet ascenseur). */
+.rv-face { transition: transform .9s cubic-bezier(.22,.7,.3,1), opacity .5s ease; }
+.rv-face-before { transform: translateY(0); opacity: 1; }
+.rv-face-after { position: absolute; inset: 0; transform: translateY(-110%); opacity: 0; }
+/* Montée : l'entourage "défile vers le bas" pendant que MOI monte. */
+.rv-climb.animating .rv-face-before { transform: translateY(110%); opacity: 0; }
+.rv-climb.animating .rv-face-after  { transform: translateY(0);    opacity: 1; }
+/* Descente : direction inversée → l'entourage remonte, je m'enfonce. */
+.rv-climb.rv-desc .rv-face-after { transform: translateY(110%); }
+.rv-climb.rv-desc.animating .rv-face-before { transform: translateY(-110%); opacity: 0; }
+.rv-climb.rv-desc.animating .rv-face-after  { transform: translateY(0);     opacity: 1; }
+/* Micro-pulse du rang à l'arrivée (déclenché par le JS en fin de count-up). */
+@keyframes rv-pulse { 0% { transform: scale(1); } 42% { transform: scale(1.28); } 100% { transform: scale(1); } }
+.rv-crow .rk.pulse { animation: rv-pulse .42s ease-out; }
+.rv-crow .rk { font-family: var(--display); font-weight: 800; min-width: 26px; text-align: center; display: inline-block; }
+.rv-crow.me .rk { color: var(--primary-d); }
+.rv-crow .nm { flex: 1; text-align: left; font-weight: 600; font-size: 14px; }
+.rv-crow .sc { font-weight: 700; }
+.rv-crow .sc small { font-weight: 600; color: var(--n600); }
+
+/* Extrait statique (rang inchangé) */
+.rv-rank-static { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 360px; }
+.rv-rrow {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: var(--r-card); background: var(--paper2); border: 1px solid var(--line);
+}
+.rv-rrow.me { background: var(--primary-l); border-color: var(--primary); }
+.rv-rrow.empty { background: transparent; border: none; }
+.rv-rrow .rk { font-family: var(--display); font-weight: 800; min-width: 26px; text-align: center; }
+.rv-rrow .nm { flex: 1; text-align: left; font-weight: 600; font-size: 14px; }
+.rv-rrow .sc { font-weight: 700; }
+.rv-rrow .sc small { font-weight: 600; color: var(--n600); }
+.rv-rank-delta { margin-top: 2px; }
+.rv-desc-note { font-family: var(--sketch); font-size: 17px; color: var(--n600); margin: 4px 0 0; max-width: 28ch; }
+
+/* Final */
+.rv-final .rv-cta { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 300px; margin-top: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
   .rp-confetti i { animation: none; display: none; }
-  .reveal-card .rc-inner { transition: none; }
+  .rv-match .rv-result, .rv-match.show-result .rv-pred, .rv-rank-block { transition: none; }
+  .rv-rank.revving .rv-crow.me, .rv-rank.lifting .rv-crow.me,
+  .rv-rank.dropping .rv-crow.me { animation: none; }
+  .rv-crow .rk.pulse { animation: none; }
+  .rv-points { transition: none; }
+  .rv-face { transition: none; }
 }

@@ -133,6 +133,25 @@ async def news_seen(body: NewsSeenIn, token: str = Query(...)):
     return {"success": True}
 
 
+@router.post("/reveal/seen")
+async def reveal_seen(token: str = Query(...)):
+    """Marque le reveal comme vu : avance last_revealed_date à la journée
+    sportive la plus récente du périmètre (recalculé serveur, pas de valeur client)."""
+    p = await get_participant_by_token(token)
+    if not p:
+        raise HTTPException(403, "Token invalide")
+    from app.routers.pages import _reveal_window_data
+    async with get_db() as db:
+        reveal = await _reveal_window_data(db, p["id"])
+        if reveal:
+            await db.execute(
+                "UPDATE participants SET last_revealed_date=? WHERE id=?",
+                (reveal["sporting_day"], p["id"]),
+            )
+            await db.commit()
+    return {"success": True}
+
+
 # ---- Notifications push (volet B) ----
 
 class PushSubscriptionIn(BaseModel):
