@@ -1416,11 +1416,11 @@ function initReveal() {
   function enterMatch(stage) {
     stage.classList.remove('show-result', 'show-points');
     if (reduce) { stage.classList.add('show-result', 'show-points'); return; }
-    // 1) Suspense prono allongé, puis le résultat monte.
-    after(2000, function() {
+    // 1) Court temps de lecture du prono (~1s), puis le résultat monte.
+    after(1000, function() {
       stage.classList.add('show-result');
-      // 2) Le point tombe ~420ms plus tard. Pas d'auto-avance : on attend le tap.
-      after(420, function() { revealPoints(stage); });
+      // 2) Le point tombe ~350ms plus tard. Pas d'auto-avance : on attend le tap.
+      after(350, function() { revealPoints(stage); });
     });
   }
 
