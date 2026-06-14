@@ -26,6 +26,12 @@
   {% endif %}
 {% endmacro %}
 
+{# Score nu : pas de noms d'équipe (l'affiche est en en-tête). Le vainqueur est
+   signalé par la couleur du chiffre (gauche = team1, droite = team2). #}
+{% macro rv_score(s1, s2, winner) %}
+<div class="rv-score"><span class="sd {{ 'win' if winner == 'team1' else ('dim' if winner == 'team2' else '') }}">{{ s1 }}</span><span class="sep">–</span><span class="sd {{ 'win' if winner == 'team2' else ('dim' if winner == 'team1' else '') }}">{{ s2 }}</span></div>
+{% endmacro %}
+
 <a class="rv-close" href="/p/{{ token }}" aria-label="Fermer">✕</a>
 
 {% if not reveal or not reveal.matches %}
@@ -55,13 +61,7 @@
     <div class="rv-phase rv-pred">
       <div class="rv-plabel">Ton prono</div>
       {% if m.has_prediction %}
-      <div class="rv-scoreline">
-        <span class="rv-team {{ 'win' if m.prediction == 'team1' else ('dim' if m.prediction == 'team2' else '') }}">{{ m.team1_name|team }}</span>
-        <b class="rv-score">{{ m.exact_score_team1 }}–{{ m.exact_score_team2 }}</b>
-        <span class="rv-team {{ 'win' if m.prediction == 'team2' else ('dim' if m.prediction == 'team1' else '') }}">{{ m.team2_name|team }}</span>
-      </div>
-      {% if m.prediction == 'draw' %}<div class="rv-pwinner">Tu voyais un nul</div>
-      {% else %}<div class="rv-pwinner">Vainqueur : <b>{{ m.pred_label }}</b></div>{% endif %}
+      {{ rv_score(m.exact_score_team1, m.exact_score_team2, m.prediction) }}
       {% else %}
       <div class="rv-nopred">Pas de prono</div>
       {% endif %}
@@ -70,11 +70,7 @@
     <div class="rv-phase rv-result">
       <div class="rv-result-inner">
         <div class="rv-plabel">Résultat</div>
-        <div class="rv-scoreline">
-          <span class="rv-team {{ 'win' if m.result == 'team1' else ('dim' if m.result == 'team2' else '') }}">{{ m.team1_name|team }}</span>
-          <b class="rv-score">{{ m.score_team1 }}–{{ m.score_team2 }}</b>
-          <span class="rv-team {{ 'win' if m.result == 'team2' else ('dim' if m.result == 'team1' else '') }}">{{ m.team2_name|team }}</span>
-        </div>
+        {{ rv_score(m.score_team1, m.score_team2, m.result) }}
         {% if m.tier == 'exact' %}
           <div class="rv-points exact">+{{ m.points }} pts · score exact 🎯</div>
         {% elif m.tier == 'correct' %}

@@ -486,7 +486,6 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
             e.get("prediction") is not None or e.get("exact_score_team1") is not None
         )
         row["tier"] = _prediction_tier(row, row)
-        row["pred_label"] = _prediction_label(row)
         matches.append(row)
         total += row["points"]
         if row["tier"] == "exact":

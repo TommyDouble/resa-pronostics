@@ -2181,17 +2181,18 @@ body.story-locked { overflow: hidden; }
   align-items: center; justify-content: center; text-align: center; padding: 30px; gap: 10px;
 }
 
-/* Match : prono puis résultat */
-.rv-match-head { font-weight: 700; font-size: 15px; color: var(--n700); }
-.rv-match-head span { color: var(--n400); margin: 0 4px; }
+/* Match : l'affiche (identité) est portée UNE seule fois par l'en-tête ;
+   les phases prono/résultat ne montrent que le score (sans noms d'équipe). */
+.rv-match-head { font-weight: 800; font-size: 18px; color: var(--n900); margin-bottom: 4px; }
+.rv-match-head span { color: var(--n400); margin: 0 6px; font-weight: 600; }
 .rv-phase { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .rv-plabel { font-family: var(--sketch); font-size: 18px; color: var(--n600); }
-.rv-scoreline { display: flex; align-items: center; gap: 12px; }
-.rv-team { font-size: 14px; font-weight: 600; color: var(--n500); max-width: 30vw; transition: color .3s, opacity .3s; }
-.rv-team.win { color: var(--primary-d); font-weight: 800; }
-.rv-team.dim { opacity: .5; }
-.rv-score { font-family: var(--display); font-size: 30px; font-weight: 800; }
-.rv-pwinner { font-size: 13px; color: var(--n600); }
+/* Score nu : vainqueur en couleur primaire, perdant atténué, nul = neutre. */
+.rv-score { font-family: var(--display); font-size: 40px; font-weight: 800; line-height: 1; }
+.rv-score .sd { color: var(--n700); transition: color .3s; }
+.rv-score .sd.win { color: var(--primary-d); }
+.rv-score .sd.dim { color: var(--n400); }
+.rv-score .sep { color: var(--n400); margin: 0 6px; }
 .rv-nopred { font-family: var(--sketch); font-size: 20px; color: var(--n500); }
 /* La pastille points = info reine : plus grosse, entrée propre en back-out. */
 .rv-points {
