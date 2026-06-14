@@ -132,17 +132,35 @@
   </div>
   {% endif %}
 
-  <!-- Badges -->
-  <div class="card">
-    <div class="lbl" style="margin-bottom:12px;">Badges</div>
-    <div class="badges">
-      {% for b in profile.badges %}
-      <div class="bdg {{ '' if b.unlocked else 'off' }} tip" tabindex="0" data-tip="{{ b.desc }}{{ ' — débloqué !' if b.unlocked else '' }}">
-        <div class="ic">{{ b.icon }}</div>
-        <div class="nm">{{ b.label }}</div>
-      </div>
-      {% endfor %}
+  <!-- Cabinet à trophées -->
+  <div class="card cabinet" data-cabinet{% if profile.trophies_just_unlocked %} data-confetti{% endif %}>
+    <div class="cab-head">
+      <div class="lbl">Cabinet à trophées</div>
+      <span class="cab-count">{{ profile.trophy_summary.unlocked_count }}/{{ profile.trophy_summary.total }}</span>
     </div>
+    {% for grp in profile.trophy_groups %}
+    {# Étagère par catégorie : débloqués d'abord, puis les plus proches. #}
+    {% set ordered = grp['items']|sort(attribute='progress', reverse=true)|sort(attribute='unlocked', reverse=true) %}
+    <div class="shelf">
+      <div class="shelf-lbl">{{ grp.label }}</div>
+      <div class="shelf-row">
+        {% for t in ordered %}
+        {% set hidden = t.secret and not t.unlocked %}
+        <div class="trophy {{ 'on' if t.unlocked else 'off' }}{{ ' secret' if hidden else '' }}{{ ' tier-' ~ t.tier if t.tier else '' }}{{ ' just-unlocked' if t.just_unlocked else '' }} tip"
+             tabindex="0"
+             data-tip="{% if hidden %}Trophée secret — continue à jouer pour le découvrir.{% else %}{{ t.desc }}{{ ' — débloqué !' if t.unlocked else '' }}{% endif %}">
+          <div class="t-ic">{% if hidden %}❓{% else %}{{ t.icon }}{% endif %}</div>
+          <div class="t-nm">{% if hidden %}???{% else %}{{ t.label }}{% endif %}</div>
+          {% if t.medal and t.unlocked %}<span class="t-medal">{{ t.medal }}</span>{% endif %}
+          {% if not t.unlocked and not hidden and t.target %}
+          <div class="t-bar"><i style="width:{{ (t.progress * 100)|round|int }}%;"></i></div>
+          <div class="t-prog">{{ t.current }}/{{ t.target }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
   </div>
 
   <!-- Stats fun -->

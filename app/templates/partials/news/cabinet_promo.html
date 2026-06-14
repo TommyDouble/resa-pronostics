@@ -1,0 +1,45 @@
+{# Parcours « Cabinet à trophées » — une vue par écran réel :
+   accroche → le cabinet sur le profil → un déblocage célébré.
+   Maquettes HTML/CSS, données d'exemple, thème clair manuscrit, reduced-motion safe. #}
+
+{# ① Accroche #}
+<div class="story-screen" data-story-screen>
+  <div class="story-hero-ico">🏆</div>
+  <p class="story-lead">Tes exploits deviennent des trophées.</p>
+  <p class="story-cap">Assiduité, scores exacts, séries… chaque réussite remplit ta vitrine.</p>
+</div>
+
+{# ② Le cabinet sur le profil #}
+<div class="story-screen" data-story-screen>
+  <div class="sm-frame sm-cabinet" aria-hidden="true">
+    <div class="sm-shelf-lbl">Adresse</div>
+    <div class="sm-troph-row">
+      <div class="trophy on tier-or">
+        <div class="t-ic">🎯</div><div class="t-nm">Sniper</div>
+        <span class="t-medal">🥇</span>
+      </div>
+      <div class="trophy off">
+        <div class="t-ic">😬</div><div class="t-nm">Si près !</div>
+        <div class="t-bar"><i style="width:66%;"></i></div>
+        <div class="t-prog">2/3</div>
+      </div>
+      <div class="trophy off secret">
+        <div class="t-ic">❓</div><div class="t-nm">???</div>
+      </div>
+    </div>
+  </div>
+  <p class="story-cap">① Sur ton profil, le cabinet remplit ses étagères, catégorie par catégorie.</p>
+</div>
+
+{# ③ Un déblocage célébré #}
+<div class="story-screen" data-story-screen>
+  <div class="sm-unlock" aria-hidden="true">
+    <span class="rp-confetti"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+    <div class="trophy on tier-or" style="transform:rotate(-2deg);">
+      <div class="t-ic">🔥</div><div class="t-nm">En série</div>
+      <span class="t-medal">🥇</span>
+    </div>
+    <div class="sm-unlock-tag">🏆 Débloqué !</div>
+  </div>
+  <p class="story-cap">② Chaque trophée se débloque avec sa petite fête. 🎉 À toi de tous les collectionner !</p>
+</div>

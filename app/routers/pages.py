@@ -67,6 +67,7 @@ from app.timeutils import (
 # Whitelist stricte des templates de story (registre central app.news) :
 # empêche tout include de chemin arbitraire depuis la BDD.
 from app.news import STORY_TEMPLATES
+from app.trophies import evaluate, summarize, CATEGORIES as TROPHY_CATEGORIES
 
 router = APIRouter()
 templates = create_templates()
@@ -1399,6 +1400,21 @@ async def other_profile(request: Request, token: str, participant_id: int):
     return templates.TemplateResponse(request, "profile.html", {"request": request, **ctx})
 
 
+def _longest_consecutive_days(days: list) -> int:
+    """Plus longue suite de dates calendaires consécutives (chaînes 'YYYY-MM-DD')."""
+    best = run = 0
+    prev = None
+    for d in sorted(set(days)):
+        try:
+            cur = date.fromisoformat(d)
+        except (TypeError, ValueError):
+            continue
+        run = run + 1 if (prev is not None and (cur - prev).days == 1) else 1
+        prev = cur
+        best = max(best, run)
+    return best
+
+
 async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict:
     """Build profile data for a participant."""
     row = await db.execute("SELECT * FROM participants WHERE id=?", (participant_id,))
@@ -1416,6 +1432,7 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     # Success rate
     played_row = await db.execute(
         """SELECT m.phase, m.score_team1, m.score_team2, m.result, m.qualifier_winner,
+                  m.match_date, m.kickoff_time,
                   pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
                   pr.qualifier_prediction
            FROM predictions pr
@@ -1450,19 +1467,32 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         else:
             run = 0
     streak = run  # série EN COURS = série en fin de liste chronologique
+    # (Le palier « En série » est dérivé de longest_streak par app.trophies.evaluate.)
 
-    # Badge « En série » : paliers sur la plus longue série (persiste, ne se reverrouille pas).
-    streak_icon, streak_tier = "🔥", None
-    for threshold, icon, tier_name in ((12, "💎", "diamant"), (8, "🥇", "or"),
-                                       (5, "🥈", "argent"), (3, "🥉", "bronze")):
-        if longest_streak >= threshold:
-            streak_icon, streak_tier = icon, tier_name
-            break
-    streak_unlocked = longest_streak >= 3
-    if streak_tier:
-        streak_desc = f"Meilleure série : {longest_streak} d'affilée · niveau {streak_tier}"
-    else:
-        streak_desc = "Enchaîne 3 bons pronos d'affilée pour le niveau bronze"
+    # Near-miss : bon résultat mais score exact raté à un seul but près.
+    near_miss = sum(
+        1 for r in played_predictions
+        if is_match_prediction_correct(r, r) and not is_match_score_exact(r, r)
+        and r.get("exact_score_team1") is not None and r.get("score_team1") is not None
+        and (abs(r["exact_score_team1"] - r["score_team1"])
+             + abs(r["exact_score_team2"] - r["score_team2"])) == 1
+    )
+    # Journée parfaite : une journée sportive d'au moins 3 matchs joués, tous corrects.
+    by_sday = defaultdict(list)
+    for r in played_predictions:
+        by_sday[sporting_day(r)].append(r)
+    perfect_day = any(
+        len(day) >= 3 and all(is_match_prediction_correct(r, r) for r in day)
+        for day in by_sday.values()
+    )
+    # Présent : plus longue série de JOURS d'affilée avec au moins un prono soumis.
+    psd_row = await db.execute(
+        """SELECT DISTINCT date(submitted_at) AS d FROM predictions
+           WHERE participant_id=? AND submitted_at IS NOT NULL ORDER BY d""",
+        (participant_id,)
+    )
+    pred_days = [r["d"] for r in await psd_row.fetchall() if r["d"]]
+    present_streak = _longest_consecutive_days(pred_days)
     # Best day
     best_day_row = await db.execute(
         """SELECT m.group_name, SUM(s.points) as day_points
@@ -1577,25 +1607,40 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         and bonus_rankings[0]["rank"] == 1
         and bonus_rankings[0]["id"] == participant_id
     )
-    badges = [
-        {"key": "sniper", "icon": "🎯", "label": "Sniper",
-         "desc": "5 scores exacts trouvés",
-         "unlocked": exact >= 5},
-        {"key": "streak", "icon": streak_icon, "label": "En série",
-         "desc": streak_desc, "unlocked": streak_unlocked, "tier": streak_tier},
-        {"key": "loyal", "icon": "🛡️", "label": "Fidèle au poste",
-         "desc": "Tous les matchs joués pronostiqués (min. 5)",
-         "unlocked": total_results >= 5 and total_played >= total_results},
-        {"key": "draw_king", "icon": "🤝", "label": "Roi du nul",
-         "desc": "3 matchs nuls trouvés",
-         "unlocked": draw_correct >= 3},
-        {"key": "last_minute", "icon": "⏱️", "label": "Dernière minute",
-         "desc": "5 pronos dans l'heure avant le coup d'envoi",
-         "unlocked": last_minute_count >= 5},
-        {"key": "bonus_king", "icon": "⭐", "label": "Roi des bonus",
-         "desc": "1er au classement bonus",
-         "unlocked": bonus_king},
+    # Cabinet à trophées (W7) — source unique app.trophies, dérivée sans état.
+    trophies = evaluate({
+        "match_count": match_count,
+        "present_streak": present_streak,
+        "total_played": total_played,
+        "total_results": total_results,
+        "exact": exact,
+        "bonus_king": bonus_king,
+        "near_miss": near_miss,
+        "longest_streak": longest_streak,
+        "draw_correct": draw_correct,
+        "perfect_day": perfect_day,
+    })
+    trophy_groups = [
+        {"key": ck, "label": cl, "items": [t for t in trophies if t["category"] == ck]}
+        for ck, cl in TROPHY_CATEGORIES
     ]
+    trophy_summary = summarize(trophies)
+    # Célébration : trophées nouvellement débloqués depuis la dernière visite du
+    # propriétaire (repère seen_trophies). On marque vu dans la foulée.
+    just_unlocked = 0
+    if viewer_id is None:
+        seen = set((p.get("seen_trophies") or "").split(",")) - {""}
+        unlocked_keys = {t["key"] for t in trophies if t["unlocked"]}
+        new_keys = unlocked_keys - seen
+        for t in trophies:
+            t["just_unlocked"] = t["key"] in new_keys
+        just_unlocked = len(new_keys)
+        if new_keys:
+            await db.execute(
+                "UPDATE participants SET seen_trophies=? WHERE id=?",
+                (",".join(sorted(unlocked_keys)), participant_id),
+            )
+            await db.commit()
     fun_stats = []
     if favorite_pick:
         fun_stats.append({"icon": "❤️", "label": "Équipe la plus jouée gagnante",
@@ -1649,7 +1694,10 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         "best_day_pts": best_day_pts,
         "last5": [] if is_limited_view else last5,
         "recent_form": [] if is_limited_view else recent_form,
-        "badges": badges,
+        "trophies": trophies,
+        "trophy_groups": trophy_groups,
+        "trophy_summary": trophy_summary,
+        "trophies_just_unlocked": just_unlocked,
         "fun_stats": [] if is_limited_view else fun_stats,
         "comparison": comparison,
     }

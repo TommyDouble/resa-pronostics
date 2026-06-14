@@ -1123,6 +1123,47 @@ img.av { object-fit: cover; display: block; }
 .bdg.off .ic { background: var(--n100); border-color: var(--n300); filter: grayscale(1); color: var(--n400); }
 .bdg.off .nm { color: var(--n400); }
 
+/* Cabinet à trophées (W7) — étagères par catégorie */
+.cabinet .cab-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.cab-count { font-family: var(--display); font-weight: 800; font-size: 14px; color: var(--primary); }
+.shelf { margin-top: 12px; }
+.shelf-lbl { font-family: var(--sketch); font-size: 17px; color: var(--n600); margin-bottom: 6px; }
+.shelf-row {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  padding-bottom: 10px; border-bottom: 2px solid var(--line);  /* rebord d'étagère */
+}
+.trophy {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  text-align: center; padding: 10px 6px 8px; border-radius: var(--r-card);
+  background: var(--paper2); border: 1px solid var(--line);
+}
+.trophy .t-ic {
+  width: 48px; height: 48px; border-radius: 99px; font-size: 22px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--primary-l); border: 1.5px solid rgba(211,69,13,.35); box-shadow: var(--sh);
+}
+.trophy .t-nm { font-size: 10px; font-weight: 700; line-height: 1.15; color: var(--n900); }
+.trophy.off { opacity: .96; }
+.trophy.off .t-ic { background: var(--n100); border-color: var(--n300); filter: grayscale(1) opacity(.55); }
+.trophy.off .t-nm { color: var(--n500); }
+.trophy.on { background: #fff; border-color: var(--primary); }
+.trophy.on .t-ic { box-shadow: 0 0 0 2px var(--primary), var(--sh); }
+/* Médaille de palier en coin */
+.t-medal { position: absolute; top: 4px; right: 6px; font-size: 15px; }
+.trophy.tier-or .t-ic { background: linear-gradient(135deg,#FFE9A8,#F4B740); border-color:#E0A21E; }
+.trophy.tier-diamant .t-ic { background: linear-gradient(135deg,#CFF3FF,#7FD7F0); border-color:#4FB6D8; }
+/* Jauge de progression (verrouillé en cours) */
+.t-bar { width: 80%; height: 5px; border-radius: 999px; background: var(--board); overflow: hidden; margin-top: 2px; }
+.t-bar i { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
+.t-prog { font-size: 9px; font-weight: 700; color: var(--n500); }
+/* Secret */
+.trophy.secret .t-ic { background: var(--n100); border-color: var(--n300); color: var(--n400); filter: none; }
+.trophy.secret .t-nm { color: var(--n400); letter-spacing: 1px; }
+/* Célébration d'un nouveau déblocage */
+@keyframes trophy-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+.trophy.just-unlocked .t-ic { animation: trophy-pop .6s cubic-bezier(.34,1.56,.64,1) both; }
+@media (prefers-reduced-motion: reduce) { .trophy.just-unlocked .t-ic { animation: none; } }
+
 /* ---- Fun stats list ---- */
 .funlist { display: flex; flex-direction: column; }
 .funlist .it { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
@@ -2040,6 +2081,19 @@ body.story-locked { overflow: hidden; }
 .sm-rrow b { font-family: var(--display); }
 .sm-rrow.me { background: var(--primary-l); border-color: var(--primary); }
 .sm-rank-delta { margin-top: 2px; }
+
+/* Maquettes story « Cabinet à trophées » */
+.sm-cabinet { gap: 6px; transform: rotate(-1.2deg); }
+.sm-shelf-lbl { font-family: var(--sketch); font-size: 16px; color: var(--n600); text-align: left; }
+.sm-troph-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sm-troph-row .trophy { padding: 8px 4px 6px; }
+.sm-troph-row .trophy .t-ic { width: 40px; height: 40px; font-size: 19px; }
+.sm-unlock { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0 4px; }
+.sm-unlock .trophy { width: 120px; }
+.sm-unlock-tag {
+  font-family: var(--display); font-weight: 800; font-size: 15px;
+  color: #5b3d00; background: #FBBF24; padding: 6px 14px; border-radius: var(--pill);
+}
 @keyframes sm-cta-pulse {
   0%, 100% { box-shadow: 0 0 0 3px var(--primary-l); }
   50% { box-shadow: 0 0 0 7px var(--primary-l); }
