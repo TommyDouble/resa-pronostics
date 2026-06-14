@@ -57,16 +57,31 @@ def test_tiered_always_shows_next_step():
 
 
 def test_marathon_top_tier_closes_on_last_match():
-    """Le palier OR de Marathonien = nombre total de matchs de la compétition."""
+    """Le palier DIAMANT de Marathonien = nombre total de matchs de la compétition."""
     m = _empty_metrics()
     m["total_matches"] = 104
-    m["match_count"] = 60
+    m["match_count"] = 90  # entre or (80) et diamant (104)
     marathon = _by_key(evaluate(m))["marathon"]
-    assert marathon["target"] == 104 and marathon["next_tier"] == "or"
-    # Tous les matchs pronostiqués → palier maxi, plus de cible.
+    assert marathon["target"] == 104 and marathon["next_tier"] == "diamant"
+    # Tous les matchs pronostiqués → palier maxi (diamant), plus de cible.
     m["match_count"] = 104
     full = _by_key(evaluate(m))["marathon"]
-    assert full["tier"] == "or" and full["target"] is None
+    assert full["tier"] == "diamant" and full["target"] is None
+
+
+def test_all_tiered_reach_diamant_and_chocolate_order():
+    """Tous les trophées à paliers culminent en diamant ; l'ordre inclut chocolat."""
+    from app.trophies import _MEDALS
+    order = list(_MEDALS)
+    assert order == ["chocolat", "bronze", "argent", "or", "diamant"]
+    # Métriques très hautes → chaque trophée à paliers doit atteindre "diamant".
+    m = {"match_count": 999, "total_matches": 104, "exact": 999, "present_streak": 999,
+         "longest_streak": 999, "draw_correct": 999, "total_played": 0, "total_results": 0,
+         "bonus_king": False, "near_miss": 0, "perfect_day": False}
+    tiered = [t for t in evaluate(m) if t["tier"] is not None or t["target"] is not None]
+    for t in _by_key(evaluate(m)).values():
+        if t["key"] in ("sniper", "present", "marathon", "streak", "draw_king"):
+            assert t["tier"] == "diamant", t["key"]
 
 
 def test_secret_perfect_day_hidden_until_unlocked():
@@ -79,8 +94,8 @@ def test_secret_perfect_day_hidden_until_unlocked():
 
 def test_summarize_nearest_is_highest_progress_locked():
     m = _empty_metrics()
-    m["exact"] = 4         # sniper 4/5 = 0.8 (le plus proche)
-    m["draw_correct"] = 1  # roi du nul 1/3
+    m["exact"] = 1         # sniper 1/2 (chocolat) = 0.5, le plus proche, encore verrouillé
+    m["draw_correct"] = 1  # roi du nul 1/3 ≈ 0.33
     s = summarize(evaluate(m))
     assert s["unlocked_count"] == 0
     assert s["nearest"]["key"] == "sniper"

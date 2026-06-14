@@ -16,7 +16,8 @@ CATEGORIES = [
     ("caractere", "Caractère"),
 ]
 
-_MEDALS = {"bronze": "🥉", "argent": "🥈", "or": "🥇", "diamant": "💎"}
+# Ordre des paliers : chocolat (entrée, optionnel) → bronze → argent → or → diamant.
+_MEDALS = {"chocolat": "🍫", "bronze": "🥉", "argent": "🥈", "or": "🥇", "diamant": "💎"}
 
 
 def _tiered(key, icon, label, category, value, thresholds, noun):
@@ -86,24 +87,28 @@ def evaluate(m: dict) -> list[dict]:
     # Marathonien : le palier OR se clôture sur le dernier match de la compétition
     # (= tous les matchs pronostiqués). Repli à 100 si le total n'est pas connu.
     total_matches = g("total_matches", 0) or 0
-    marathon_top = total_matches if total_matches > 50 else 100
+    # Diamant de Marathonien = dernier match de la compétition (tous pronostiqués).
+    marathon_top = total_matches if total_matches >= 100 else 100
     trophies = [
         # — Régularité (accessible à tous) —
         _simple("first_step", "👣", "Premier pas", "regularite",
                 g("match_count") >= 1,
                 "Poser son tout premier pronostic"),
         _tiered("present", "📅", "Présent", "regularite",
-                g("present_streak"), [(3, "bronze"), (7, "argent"), (15, "or")],
+                g("present_streak"),
+                [(3, "bronze"), (7, "argent"), (15, "or"), (30, "diamant")],
                 "jours de connexion d'affilée"),
         _tiered("marathon", "🏃", "Marathonien", "regularite",
-                g("match_count"), [(20, "bronze"), (50, "argent"), (marathon_top, "or")],
+                g("match_count"),
+                [(5, "chocolat"), (20, "bronze"), (50, "argent"), (80, "or"), (marathon_top, "diamant")],
                 "pronostics posés"),
         _simple("loyal", "🛡️", "Fidèle au poste", "regularite",
                 g("total_results") >= 5 and g("total_played") >= g("total_results"),
                 "Tous les matchs joués pronostiqués (min. 5)"),
         # — Adresse (performance) —
         _tiered("sniper", "🎯", "Sniper", "adresse",
-                g("exact"), [(5, "bronze"), (10, "argent"), (20, "or"), (35, "diamant")],
+                g("exact"),
+                [(2, "chocolat"), (5, "bronze"), (10, "argent"), (20, "or"), (35, "diamant")],
                 "scores exacts trouvés"),
         _simple("bonus_king", "⭐", "Roi des bonus", "adresse",
                 g("bonus_king"), "1er au classement bonus"),
@@ -116,7 +121,8 @@ def evaluate(m: dict) -> list[dict]:
                 g("longest_streak"), [(3, "bronze"), (5, "argent"), (8, "or"), (12, "diamant")],
                 "bons pronos d'affilée"),
         _tiered("draw_king", "🤝", "Roi du nul", "caractere",
-                g("draw_correct"), [(3, "bronze"), (6, "argent"), (10, "or")],
+                g("draw_correct"),
+                [(3, "bronze"), (6, "argent"), (10, "or"), (15, "diamant")],
                 "matchs nuls trouvés"),
         # — Secret —
         _simple("perfect_day", "✨", "Journée parfaite", "caractere",

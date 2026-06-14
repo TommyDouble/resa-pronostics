@@ -1150,6 +1150,7 @@ img.av { object-fit: cover; display: block; }
 .trophy.on .t-ic { box-shadow: 0 0 0 2px var(--primary), var(--sh); }
 /* Médaille de palier en coin */
 .t-medal { position: absolute; top: 4px; right: 6px; font-size: 15px; }
+.trophy.tier-chocolat .t-ic { background: linear-gradient(135deg,#C79A6B,#7B4B27); border-color:#6B3F1F; color:#fff; }
 .trophy.tier-or .t-ic { background: linear-gradient(135deg,#FFE9A8,#F4B740); border-color:#E0A21E; }
 .trophy.tier-diamant .t-ic { background: linear-gradient(135deg,#CFF3FF,#7FD7F0); border-color:#4FB6D8; }
 /* Jauge de progression (verrouillé en cours) */
