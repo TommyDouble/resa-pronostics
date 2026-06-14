@@ -1,7 +1,7 @@
 """W1.1 — Reveal du jour v2 : journée sportive, gate d'encodage, fenêtre, /api/reveal/seen."""
 from datetime import timedelta
 
-from app.database import get_db
+from app.database import get_db, _migrate_reveal_sporting_day
 from app.routers.pages import _reveal_window_data
 from app.timeutils import now_utc, sporting_day
 from tests.conftest import run
@@ -148,3 +148,34 @@ def test_home_entry_and_story_promo(client, participant):
     # La story promo (parcours multi-écrans) reste rendue indépendamment.
     assert "data-story-feature" in html
     assert "rp-demo" in html
+
+
+def test_migration_reveal_sporting_day_rolls_back_one_day(participant):
+    """Migration one-shot : recule last_revealed_date d'un jour, une seule fois.
+
+    Une valeur héritée (date calendrier) masquait la nuit sportive incluant les
+    matchs 0h–9h ; on la recule d'un cran sans jamais reculer deux fois."""
+    async def _c():
+        async with get_db() as db:
+            await db.execute("DELETE FROM app_settings WHERE key='migr_reveal_sporting_day_v1'")
+            await db.execute(
+                "UPDATE participants SET last_revealed_date='2026-06-13' WHERE id=?",
+                (participant["id"],),
+            )
+            await db.commit()
+
+            async def revealed():
+                row = await (await db.execute(
+                    "SELECT last_revealed_date FROM participants WHERE id=?", (participant["id"],)
+                )).fetchone()
+                return row["last_revealed_date"]
+
+            await _migrate_reveal_sporting_day(db); await db.commit()
+            first = await revealed()
+            await _migrate_reveal_sporting_day(db); await db.commit()  # 2e passage
+            second = await revealed()
+            return first, second
+
+    first, second = run(_c())
+    assert first == "2026-06-12"   # reculé d'un jour
+    assert second == "2026-06-12"  # idempotent : pas de second recul

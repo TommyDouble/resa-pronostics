@@ -334,7 +334,35 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await ensure_pre_tournament_defaults(db)
         await ensure_default_settings(db)
         await ensure_news_defaults(db)
+        await _migrate_reveal_sporting_day(db)
         await db.commit()
+
+
+async def _migrate_reveal_sporting_day(db):
+    """One-shot : aligne `last_revealed_date` sur la « journée sportive » (cutoff 9h).
+
+    Avant Reveal v2, ce champ stockait la date CALENDRIER du dernier match vu ;
+    la nouvelle logique la compare à la journée sportive (kickoff − 9h). Les matchs
+    joués entre 0h et 9h retombent sur la veille sportive : une valeur héritée peut
+    donc marquer toute une nuit comme « vue » à tort, masquant le reveal de la nuit.
+    On recule la borne d'un jour — l'écart maximal entre date calendrier et journée
+    sportive — une seule fois (garde via app_settings, donc pas de double recul).
+    """
+    key = "migr_reveal_sporting_day_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+    await db.execute(
+        """UPDATE participants
+           SET last_revealed_date = date(last_revealed_date, '-1 day')
+           WHERE last_revealed_date IS NOT NULL AND last_revealed_date <> ''"""
+    )
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
 
 
 async def ensure_news_defaults(db):
