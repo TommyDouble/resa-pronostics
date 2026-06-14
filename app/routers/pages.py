@@ -298,9 +298,39 @@ def _section_help(section_key: str) -> str:
     )
 
 
+async def _record_daily_visit(db, p) -> None:
+    """Série de connexions (trophée « Présent ») : compte UNE visite par jour.
+
+    Seul état réellement non recalculable (une visite passée ne laisse pas de
+    trace dérivable). Mise à jour idempotente : un seul incrément par journée.
+    """
+    pid = p["id"]
+    pd = dict(p)
+    today = local_today().strftime("%Y-%m-%d")
+    last = pd.get("last_visit_date") or ""
+    if last == today:
+        return
+    cur = pd.get("visit_streak") or 0
+    if last:
+        try:
+            consecutive = (date.fromisoformat(today) - date.fromisoformat(last)).days == 1
+        except ValueError:
+            consecutive = False
+        streak = cur + 1 if consecutive else 1
+    else:
+        streak = 1
+    best = max(pd.get("best_visit_streak") or 0, streak)
+    await db.execute(
+        "UPDATE participants SET last_visit_date=?, visit_streak=?, best_visit_streak=? WHERE id=?",
+        (today, streak, best, pid),
+    )
+    await db.commit()
+
+
 async def _get_participant_context(token: str, db, active_nav: str = "home") -> dict:
     """Build common context for participant templates."""
     p = await require_participant(token)
+    await _record_daily_visit(db, p)
     # Get rank + total points
     rankings = await get_rankings(db)
     rank = next((r for r in rankings if r["id"] == p["id"]), None)
@@ -1400,21 +1430,6 @@ async def other_profile(request: Request, token: str, participant_id: int):
     return templates.TemplateResponse(request, "profile.html", {"request": request, **ctx})
 
 
-def _longest_consecutive_days(days: list) -> int:
-    """Plus longue suite de dates calendaires consécutives (chaînes 'YYYY-MM-DD')."""
-    best = run = 0
-    prev = None
-    for d in sorted(set(days)):
-        try:
-            cur = date.fromisoformat(d)
-        except (TypeError, ValueError):
-            continue
-        run = run + 1 if (prev is not None and (cur - prev).days == 1) else 1
-        prev = cur
-        best = max(best, run)
-    return best
-
-
 async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict:
     """Build profile data for a participant."""
     row = await db.execute("SELECT * FROM participants WHERE id=?", (participant_id,))
@@ -1485,14 +1500,10 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         len(day) >= 3 and all(is_match_prediction_correct(r, r) for r in day)
         for day in by_sday.values()
     )
-    # Présent : plus longue série de JOURS d'affilée avec au moins un prono soumis.
-    psd_row = await db.execute(
-        """SELECT DISTINCT date(submitted_at) AS d FROM predictions
-           WHERE participant_id=? AND submitted_at IS NOT NULL ORDER BY d""",
-        (participant_id,)
-    )
-    pred_days = [r["d"] for r in await psd_row.fetchall() if r["d"]]
-    present_streak = _longest_consecutive_days(pred_days)
+    # Présent : plus longue série de JOURS de connexion d'affilée (cf.
+    # _record_daily_visit). Indépendant des matchs/du calendrier et des pronos
+    # groupés — on récompense l'habitude de revenir, pas la soumission.
+    present_streak = p.get("best_visit_streak") or 0
     # Best day
     best_day_row = await db.execute(
         """SELECT m.group_name, SUM(s.points) as day_points

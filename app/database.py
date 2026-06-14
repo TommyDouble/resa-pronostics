@@ -245,6 +245,9 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
             "last_seen_news_id INTEGER NOT NULL DEFAULT 0",
             "last_revealed_date TEXT",
             "seen_trophies TEXT",
+            "last_visit_date TEXT",
+            "visit_streak INTEGER NOT NULL DEFAULT 0",
+            "best_visit_streak INTEGER NOT NULL DEFAULT 0",
         ]
         for column in participant_columns:
             try:

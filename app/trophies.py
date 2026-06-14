@@ -85,7 +85,7 @@ def evaluate(m: dict) -> list[dict]:
                 "Poser son tout premier pronostic"),
         _tiered("present", "📅", "Présent", "regularite",
                 g("present_streak"), [(3, "bronze"), (7, "argent"), (15, "or")],
-                "jours d'affilée pronostiqués"),
+                "jours de connexion d'affilée"),
         _tiered("marathon", "🏃", "Marathonien", "regularite",
                 g("match_count"), [(20, "bronze"), (50, "argent"), (100, "or")],
                 "pronostics posés"),

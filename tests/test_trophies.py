@@ -1,5 +1,9 @@
-"""W7 — Cabinet à trophées : logique pure app.trophies + rendu du cabinet."""
+"""W7 — Cabinet à trophées : logique pure app.trophies + série de connexions."""
+from app.database import get_db
+from app.routers.pages import _record_daily_visit
+from app.timeutils import local_today
 from app.trophies import evaluate, summarize, CATEGORIES
+from tests.conftest import run
 
 
 def _by_key(trophies):
@@ -59,3 +63,41 @@ def test_summarize_nearest_is_highest_progress_locked():
     assert s["nearest"]["key"] == "sniper"
     # un secret verrouillé ne doit jamais être proposé comme "le plus proche"
     assert s["nearest"]["secret"] is False
+
+
+def test_visit_streak_consecutive_idempotent_and_reset(participant):
+    """Série de connexions : +1 si hier, idempotent si déjà aujourd'hui, reset sinon."""
+    pid = participant["id"]
+    today = local_today().strftime("%Y-%m-%d")
+    yest = local_today(-1).strftime("%Y-%m-%d")
+    older = local_today(-3).strftime("%Y-%m-%d")
+
+    def state():
+        async def _c():
+            async with get_db() as db:
+                r = await (await db.execute(
+                    "SELECT last_visit_date, visit_streak, best_visit_streak FROM participants WHERE id=?",
+                    (pid,))).fetchone()
+                return dict(r)
+        return run(_c())
+
+    def visit(last, cur, best):
+        async def _c():
+            async with get_db() as db:
+                await db.execute(
+                    "UPDATE participants SET last_visit_date=?, visit_streak=?, best_visit_streak=? WHERE id=?",
+                    (last, cur, best, pid))
+                await db.commit()
+                p = dict(await (await db.execute("SELECT * FROM participants WHERE id=?", (pid,))).fetchone())
+                await _record_daily_visit(db, p)
+        run(_c())
+
+    visit(yest, 2, 2)              # dernière visite = hier, série 2
+    assert state()["visit_streak"] == 3 and state()["best_visit_streak"] == 3
+
+    visit(today, 3, 3)             # déjà venu aujourd'hui → inchangé
+    assert state()["visit_streak"] == 3
+
+    visit(older, 9, 9)             # trou de plusieurs jours → reset à 1, best conservé
+    s = state()
+    assert s["visit_streak"] == 1 and s["best_visit_streak"] == 9
