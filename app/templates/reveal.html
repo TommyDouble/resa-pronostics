@@ -68,20 +68,23 @@
     </div>
 
     <div class="rv-phase rv-result">
-      <div class="rv-plabel">Résultat</div>
-      <div class="rv-scoreline">
-        <span class="rv-team {{ 'win' if m.result == 'team1' else ('dim' if m.result == 'team2' else '') }}">{{ m.team1_name|team }}</span>
-        <b class="rv-score">{{ m.score_team1 }}–{{ m.score_team2 }}</b>
-        <span class="rv-team {{ 'win' if m.result == 'team2' else ('dim' if m.result == 'team1' else '') }}">{{ m.team2_name|team }}</span>
+      <div class="rv-result-inner">
+        <div class="rv-plabel">Résultat</div>
+        <div class="rv-scoreline">
+          <span class="rv-team {{ 'win' if m.result == 'team1' else ('dim' if m.result == 'team2' else '') }}">{{ m.team1_name|team }}</span>
+          <b class="rv-score">{{ m.score_team1 }}–{{ m.score_team2 }}</b>
+          <span class="rv-team {{ 'win' if m.result == 'team2' else ('dim' if m.result == 'team1' else '') }}">{{ m.team2_name|team }}</span>
+        </div>
+        {% if m.tier == 'exact' %}
+          <div class="rv-points exact">+{{ m.points }} pts · score exact 🎯</div>
+        {% elif m.tier == 'correct' %}
+          <div class="rv-points ok">+{{ m.points }} pts · bien vu ✓</div>
+        {% else %}
+          <div class="rv-points miss">+{{ m.points }} pts</div>
+        {% endif %}
       </div>
-      {% if m.tier == 'exact' %}
-        <div class="rv-points exact">+{{ m.points }} pts · score exact 🎯</div>
-      {% elif m.tier == 'correct' %}
-        <div class="rv-points ok">+{{ m.points }} pts · bien vu ✓</div>
-      {% else %}
-        <div class="rv-points miss">+{{ m.points }} pts</div>
-      {% endif %}
     </div>
+    <div class="rv-cont-hint">tape pour continuer ▸</div>
   </section>
   {% endfor %}
 
@@ -90,13 +93,14 @@
   {% if evo and evo.after %}
   <section class="rv-stage rv-rank" data-reveal-stage data-reveal-rank
            data-delta="{{ evo.delta }}" data-moved="{{ '1' if evo.moved else '0' }}">
-    <div class="rv-plabel">{% if evo.delta > 0 %}Ton ascension 🚀{% elif evo.delta < 0 %}Ton classement{% else %}Ton classement{% endif %}</div>
+    <div class="rv-plabel">{% if evo.delta > 0 %}Ton ascension 🚀{% elif evo.delta < 0 %}Aïe, ça glisse 😅{% else %}Ton classement{% endif %}</div>
 
     {% if evo.moved %}
     {# 5 slots fixes : MOI toujours au centre (index 2).
        Les 4 slots autour affichent l'état "avant" puis glissent vers l'état "après"
-       via CSS (.rv-climb.animating), donnant l'effet d'un ascenseur. #}
-    <div class="rv-climb" data-rv-climb>
+       via CSS (.rv-climb.animating). Montée = entourage défile vers le bas ;
+       descente (.rv-desc) = entourage remonte → je m'enfonce. #}
+    <div class="rv-climb {{ 'rv-desc' if evo.delta < 0 else '' }}" data-rv-climb>
       {% for i in range(5) %}
         {% set b = evo.before_ctx[i] %}
         {% set a = evo.after_ctx[i] %}
@@ -136,6 +140,9 @@
       {% if evo.delta > 0 %}<span class="chip up">▲ +{{ evo.delta }} place{{ 's' if evo.delta > 1 else '' }} · {{ evo.before_rank }}e → {{ evo.after_rank }}e</span>
       {% else %}<span class="chip dn">▼ {{ -evo.delta }} place{{ 's' if evo.delta < -1 else '' }} · {{ evo.before_rank }}e → {{ evo.after_rank }}e</span>{% endif %}
     </div>
+    {% if evo.delta < 0 and evo.me_after_points > evo.me_before_points %}
+    <p class="rv-desc-note">+{{ evo.me_after_points - evo.me_before_points }} pts quand même… mais eux ont fait mieux 🤷</p>
+    {% endif %}
 
     {% else %}
     <div class="rv-rank-stack rv-rank-static">

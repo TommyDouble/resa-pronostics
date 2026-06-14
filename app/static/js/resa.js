@@ -1403,13 +1403,24 @@ function initReveal() {
 
   function advance() { if (idx < stages.length - 1) enter(idx + 1); }
 
+  // Verdict en deux temps : le point (info reine) "tombe" après le résultat.
+  // Confetti calé sur l'apparition du point (pas du score), une seule fois.
+  function revealPoints(stage) {
+    stage.classList.add('show-points');
+    if (stage.dataset.exact === '1' && !stage.dataset.celebrated && window.resaConfetti) {
+      stage.dataset.celebrated = '1';
+      window.resaConfetti({ count: 90 });
+    }
+  }
+
   function enterMatch(stage) {
-    stage.classList.remove('show-result');
-    if (reduce) { stage.classList.add('show-result'); return; }
-    after(1300, function() {
+    stage.classList.remove('show-result', 'show-points');
+    if (reduce) { stage.classList.add('show-result', 'show-points'); return; }
+    // 1) Suspense prono allongé, puis le résultat monte.
+    after(2000, function() {
       stage.classList.add('show-result');
-      if (stage.dataset.exact === '1' && window.resaConfetti) window.resaConfetti({ count: 90 });
-      after(1600, advance);
+      // 2) Le point tombe ~420ms plus tard. Pas d'auto-avance : on attend le tap.
+      after(420, function() { revealPoints(stage); });
     });
   }
 
@@ -1435,6 +1446,10 @@ function initReveal() {
         }
       });
       if (p < 1) requestAnimationFrame(frame);
+      else rows.forEach(function(r) {  // micro-pulse du rang à l'arrivée
+        var rk = r.querySelector('.rk');
+        if (rk) { rk.classList.remove('pulse'); void rk.offsetWidth; rk.classList.add('pulse'); }
+      });
     }
     requestAnimationFrame(frame);
   }
@@ -1452,14 +1467,15 @@ function initReveal() {
     }
     var meRow = climb ? climb.querySelector('.rv-crow.me') : null;
     if (meRow) {
+      meRow.style.animation = 'none';  // coupe rv-rev / rv-lift / rv-drop en cours
       var rk = meRow.querySelector('.rk');
       if (rk) setRankText(rk, +rk.dataset.to);
       var sc = meRow.querySelector('.sc');
       var ptsEl = meRow.querySelector('.pts-val');
       if (sc && ptsEl) ptsEl.textContent = +sc.dataset.toPts;
     }
-    stage.classList.remove('climbing');
-    stage.classList.add('rv-done');
+    stage.classList.remove('revving', 'lifting', 'dropping');
+    stage.classList.add('climbing', 'rv-done');  // garde le halo sur la position d'arrivée
   }
 
   function playClimb(stage) {
@@ -1470,12 +1486,18 @@ function initReveal() {
       if (!reduce) after(2600, advance);
       return;
     }
-    stage.classList.add('climbing');
-    after(550, function() {  // lecture de l'état avant
+    var down = (+stage.dataset.delta) < 0;
+    var moveDur = down ? 1000 : 900;
+    // 1) Vibration de décollage (le halo s'allume, MOI monte en puissance / se crispe).
+    stage.classList.add('climbing', 'revving');
+    after(360, function() {
+      // 2) Tout démarre ensemble : voisins, count-up et poussée/chute → fins alignées.
+      stage.classList.remove('revving');
+      stage.classList.add(down ? 'dropping' : 'lifting');
       climb.classList.add('animating');
-      animateRanks([meRow], 1200);
-      after(1400, function() { stage.classList.remove('climbing'); stage.classList.add('rv-done'); });
-      after(2600, advance);
+      animateRanks([meRow], 900);
+      after(moveDur + 60, function() { stage.classList.remove('lifting', 'dropping'); stage.classList.add('rv-done'); });
+      after(moveDur + 900, advance);
     });
   }
 
@@ -1504,10 +1526,18 @@ function initReveal() {
   function onTap() {
     var stage = stages[idx];
     if (!stage || stage.hasAttribute('data-reveal-final')) return;  // CTA : liens cliquables
-    if (stage.hasAttribute('data-reveal-match') && !stage.classList.contains('show-result')) {
+    if (stage.hasAttribute('data-reveal-match')) {
       clearTimers();
-      stage.classList.add('show-result');
-      if (stage.dataset.exact === '1' && window.resaConfetti) window.resaConfetti({ count: 90 });
+      if (!stage.classList.contains('show-result')) {       // 1er tap : révèle le résultat
+        stage.classList.add('show-result');
+        after(280, function() { revealPoints(stage); });
+        return;
+      }
+      if (!stage.classList.contains('show-points')) {        // 2e tap : fait tomber le point
+        revealPoints(stage);
+        return;
+      }
+      advance();                                             // 3e tap : match suivant
       return;
     }
     if (stage.hasAttribute('data-reveal-rank') && !stage.classList.contains('rv-done')) {
