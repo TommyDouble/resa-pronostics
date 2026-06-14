@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="fr">
-{% from "_macros.html" import avatar %}
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,7 +16,6 @@
   {% if pl %}
   <div class="rv-rrow {{ 'me' if pl.is_me else '' }}">
     <span class="rk">{% if pl.rank == 1 %}🥇{% else %}{{ pl.rank }}{% endif %}</span>
-    {{ avatar(pl.avatar_path, pl.name, pl.id) }}
     <span class="nm">{{ pl.name }}</span>
     <span class="sc">{{ pl.points }}<small> pts</small></span>
   </div>
@@ -105,7 +103,6 @@
         {% set me = b %}
         <div class="rv-crow me">
           <span class="rk" data-from="{{ evo.before_rank }}" data-to="{{ evo.after_rank }}">{{ evo.before_rank }}</span>
-          {{ avatar(me.avatar_path, me.name, me.id) if me else '' }}
           <span class="nm">{{ me.name if me else '' }}</span>
           <span class="sc" data-from-pts="{{ evo.me_before_points }}" data-to-pts="{{ evo.me_after_points }}"><b class="pts-val">{{ evo.me_before_points }}</b><small> pts</small></span>
         </div>
@@ -115,7 +112,6 @@
           {% if b %}
           <div class="rv-crow rv-face rv-face-before">
             <span class="rk">{{ '🥇' if b.rank == 1 else b.rank }}</span>
-            {{ avatar(b.avatar_path, b.name, b.id) }}
             <span class="nm">{{ b.name }}</span>
             <span class="sc">{{ b.points }}<small> pts</small></span>
           </div>
@@ -123,7 +119,6 @@
           {% if a and (not b or a.id != b.id or a.rank != b.rank) %}
           <div class="rv-crow rv-face rv-face-after">
             <span class="rk">{{ '🥇' if a.rank == 1 else a.rank }}</span>
-            {{ avatar(a.avatar_path, a.name, a.id) }}
             <span class="nm">{{ a.name }}</span>
             <span class="sc">{{ a.points }}<small> pts</small></span>
           </div>
