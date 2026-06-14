@@ -288,9 +288,9 @@ def _default_prediction_section(sections: list[dict]) -> str:
 
 def _section_help(section_key: str) -> str:
     return {
-        "group_match_1": "Match 1 regroupe le premier match de chaque équipe dans son groupe.",
-        "group_match_2": "Match 2 regroupe le deuxième match de chaque équipe dans son groupe.",
-        "group_match_3": "Match 3 regroupe le troisième match de chaque équipe dans son groupe.",
+        "group_match_1": "Journée 1 regroupe le premier match de chaque équipe dans son groupe.",
+        "group_match_2": "Journée 2 regroupe le deuxième match de chaque équipe dans son groupe.",
+        "group_match_3": "Journée 3 regroupe le troisième match de chaque équipe dans son groupe.",
     }.get(
         section_key,
         "Les phases finales valent ×2. Les points portent sur l'équipe qui se qualifie.",
@@ -708,7 +708,7 @@ async def participant_home(request: Request, token: str):
                LEFT JOIN scores s ON s.match_id = m.id AND s.participant_id = ?
                WHERE datetime(m.match_date || 'T' || m.kickoff_time) >= datetime(?)
                  AND datetime(m.match_date || 'T' || m.kickoff_time) <= datetime(?)
-               ORDER BY m.kickoff_time""",
+               ORDER BY m.match_date, m.kickoff_time""",
             (p["id"], p["id"], today_start_utc, today_end_utc)
         )
         today_matches = [dict(r) for r in await rows.fetchall()]
@@ -1432,7 +1432,7 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     correct = sum(1 for row in played_predictions if is_match_prediction_correct(row, row))
     exact = sum(1 for row in played_predictions if is_match_score_exact(row, row))
     success_rate = round(correct / total_played * 100) if total_played else 0
-    # Streak: consecutive correct predictions (latest first)
+    # Séries (chronologique) : plus longue série historique + série en cours.
     streak_row = await db.execute(
         """SELECT m.phase, m.score_team1, m.score_team2, m.result, m.qualifier_winner,
                   pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
@@ -1440,23 +1440,39 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
            FROM predictions pr
            JOIN matches m ON m.id = pr.match_id
            WHERE pr.participant_id=? AND m.result IS NOT NULL
-           ORDER BY m.match_date DESC, m.kickoff_time DESC""",
+           ORDER BY m.match_date ASC, m.kickoff_time ASC""",
         (participant_id,)
     )
     streak_preds = await streak_row.fetchall()
-    streak = 0
+    longest_streak = 0
+    run = 0
     for sp in streak_preds:
         sp_dict = dict(sp)
         if is_match_prediction_correct(sp_dict, sp_dict):
-            streak += 1
+            run += 1
+            longest_streak = max(longest_streak, run)
         else:
+            run = 0
+    streak = run  # série EN COURS = série en fin de liste chronologique
+
+    # Badge « En série » : paliers sur la plus longue série (persiste, ne se reverrouille pas).
+    streak_icon, streak_tier = "🔥", None
+    for threshold, icon, tier_name in ((12, "💎", "diamant"), (8, "🥇", "or"),
+                                       (5, "🥈", "argent"), (3, "🥉", "bronze")):
+        if longest_streak >= threshold:
+            streak_icon, streak_tier = icon, tier_name
             break
+    streak_unlocked = longest_streak >= 3
+    if streak_tier:
+        streak_desc = f"Meilleure série : {longest_streak} d'affilée · niveau {streak_tier}"
+    else:
+        streak_desc = "Enchaîne 3 bons pronos d'affilée pour le niveau bronze"
     # Best day
     best_day_row = await db.execute(
         """SELECT m.group_name, SUM(s.points) as day_points
            FROM scores s
            JOIN matches m ON m.id = s.match_id
-           WHERE s.participant_id=?
+           WHERE s.participant_id=? AND m.group_name IS NOT NULL AND m.group_name != ''
            GROUP BY m.group_name
            ORDER BY day_points DESC LIMIT 1""",
         (participant_id,)
@@ -1569,9 +1585,8 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         {"key": "sniper", "icon": "🎯", "label": "Sniper",
          "desc": "5 scores exacts trouvés",
          "unlocked": exact >= 5},
-        {"key": "streak", "icon": "🔥", "label": "En série",
-         "desc": "4 bons pronos d'affilée",
-         "unlocked": streak >= 4},
+        {"key": "streak", "icon": streak_icon, "label": "En série",
+         "desc": streak_desc, "unlocked": streak_unlocked, "tier": streak_tier},
         {"key": "loyal", "icon": "🛡️", "label": "Fidèle au poste",
          "desc": "Tous les matchs joués pronostiqués (min. 5)",
          "unlocked": total_results >= 5 and total_played >= total_results},
@@ -1633,6 +1648,7 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         "success_rate": success_rate,
         "exact_count": exact,
         "streak": streak,
+        "longest_streak": longest_streak,
         "best_day": best_day,
         "best_day_pts": best_day_pts,
         "last5": [] if is_limited_view else last5,
