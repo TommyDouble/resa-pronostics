@@ -22,8 +22,8 @@ _MEDALS = {"bronze": "🥉", "argent": "🥈", "or": "🥇", "diamant": "💎"}
 def _tiered(key, icon, label, category, value, thresholds, noun):
     """Trophée à paliers. `thresholds` = [(seuil, nom_palier), ...] croissant.
 
-    Renvoie le palier courant (médaille), la progression vers le prochain, et un
-    libellé. Débloqué dès le premier seuil atteint.
+    Toujours explicite sur la marche suivante : palier courant + combien il reste
+    pour le prochain (médaille incluse). Débloqué dès le premier seuil atteint.
     """
     value = value or 0
     tier = None
@@ -31,24 +31,28 @@ def _tiered(key, icon, label, category, value, thresholds, noun):
         if value >= seuil:
             tier = name
     unlocked = tier is not None
-    nxt = next((s for s, _ in thresholds if value < s), None)
+    nxt = next(((s, nm) for s, nm in thresholds if value < s), None)
     floor = max((s for s, _ in thresholds if value >= s), default=0)
     if nxt is not None:
-        target = nxt
-        span_lo = floor
-        progress = (value - span_lo) / (target - span_lo) if target > span_lo else 1.0
+        target, next_tier = nxt
+        progress = (value - floor) / (target - floor) if target > floor else 1.0
+        remaining = target - value
+        if unlocked:
+            desc = (f"Niveau {tier} ({value} {noun}). Plus que {remaining} "
+                    f"pour passer {next_tier} {_MEDALS.get(next_tier)} ({target}).")
+        else:
+            desc = (f"Plus que {remaining} pour le niveau {next_tier} "
+                    f"{_MEDALS.get(next_tier)} : {value}/{target} {noun}.")
     else:
-        target = None
+        target, next_tier, remaining = None, None, 0
         progress = 1.0
-    if unlocked:
-        desc = f"{noun} : {value} · niveau {tier}"
-    else:
-        desc = f"{thresholds[0][0]} {noun} pour le bronze (tu en es à {value})"
+        desc = f"Palier maximum atteint 🏅 — niveau {tier} ({value} {noun})."
     return {
         "key": key, "icon": icon, "label": label, "category": category,
         "secret": False, "unlocked": unlocked,
         "tier": tier, "medal": _MEDALS.get(tier),
-        "current": value, "target": target,
+        "next_tier": next_tier, "next_medal": _MEDALS.get(next_tier),
+        "current": value, "target": target, "remaining": remaining,
         "progress": round(max(0.0, min(1.0, progress)), 3),
         "desc": desc,
     }
@@ -65,6 +69,7 @@ def _simple(key, icon, label, category, unlocked, desc, *,
         "key": key, "icon": icon, "label": label, "category": category,
         "secret": secret, "unlocked": bool(unlocked),
         "tier": None, "medal": None,
+        "next_tier": None, "next_medal": None, "remaining": 0,
         "current": current, "target": target,
         "progress": round(max(0.0, min(1.0, progress)), 3),
         "desc": desc,
@@ -78,6 +83,10 @@ def evaluate(m: dict) -> list[dict]:
     exact, bonus_king, near_miss, longest_streak, draw_correct, perfect_day.
     """
     g = lambda k, d=0: m.get(k, d)
+    # Marathonien : le palier OR se clôture sur le dernier match de la compétition
+    # (= tous les matchs pronostiqués). Repli à 100 si le total n'est pas connu.
+    total_matches = g("total_matches", 0) or 0
+    marathon_top = total_matches if total_matches > 50 else 100
     trophies = [
         # — Régularité (accessible à tous) —
         _simple("first_step", "👣", "Premier pas", "regularite",
@@ -87,7 +96,7 @@ def evaluate(m: dict) -> list[dict]:
                 g("present_streak"), [(3, "bronze"), (7, "argent"), (15, "or")],
                 "jours de connexion d'affilée"),
         _tiered("marathon", "🏃", "Marathonien", "regularite",
-                g("match_count"), [(20, "bronze"), (50, "argent"), (100, "or")],
+                g("match_count"), [(20, "bronze"), (50, "argent"), (marathon_top, "or")],
                 "pronostics posés"),
         _simple("loyal", "🛡️", "Fidèle au poste", "regularite",
                 g("total_results") >= 5 and g("total_played") >= g("total_results"),

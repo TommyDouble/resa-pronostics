@@ -46,6 +46,29 @@ def test_tiered_sniper_levels_and_progress():
     assert _by_key(evaluate(m))["sniper"]["target"] is None
 
 
+def test_tiered_always_shows_next_step():
+    """Même débloqué, un trophée à paliers indique la marche suivante (médaille + reste)."""
+    m = _empty_metrics()
+    m["longest_streak"] = 4  # bronze (3) atteint, argent (5) en vue
+    streak = _by_key(evaluate(m))["streak"]
+    assert streak["unlocked"] and streak["tier"] == "bronze"
+    assert streak["next_tier"] == "argent" and streak["next_medal"] == "🥈"
+    assert streak["target"] == 5 and streak["remaining"] == 1
+
+
+def test_marathon_top_tier_closes_on_last_match():
+    """Le palier OR de Marathonien = nombre total de matchs de la compétition."""
+    m = _empty_metrics()
+    m["total_matches"] = 104
+    m["match_count"] = 60
+    marathon = _by_key(evaluate(m))["marathon"]
+    assert marathon["target"] == 104 and marathon["next_tier"] == "or"
+    # Tous les matchs pronostiqués → palier maxi, plus de cible.
+    m["match_count"] = 104
+    full = _by_key(evaluate(m))["marathon"]
+    assert full["tier"] == "or" and full["target"] is None
+
+
 def test_secret_perfect_day_hidden_until_unlocked():
     m = _empty_metrics()
     pd = _by_key(evaluate(m))["perfect_day"]

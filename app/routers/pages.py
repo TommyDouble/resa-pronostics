@@ -1619,8 +1619,11 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         and bonus_rankings[0]["id"] == participant_id
     )
     # Cabinet à trophées (W7) — source unique app.trophies, dérivée sans état.
+    tm_row = await db.execute("SELECT COUNT(*) AS cnt FROM matches")
+    total_matches = (await tm_row.fetchone())["cnt"]
     trophies = evaluate({
         "match_count": match_count,
+        "total_matches": total_matches,
         "present_streak": present_streak,
         "total_played": total_played,
         "total_results": total_results,

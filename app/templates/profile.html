@@ -152,9 +152,10 @@
           <div class="t-ic">{% if hidden %}❓{% else %}{{ t.icon }}{% endif %}</div>
           <div class="t-nm">{% if hidden %}???{% else %}{{ t.label }}{% endif %}</div>
           {% if t.medal and t.unlocked %}<span class="t-medal">{{ t.medal }}</span>{% endif %}
-          {% if not t.unlocked and not hidden and t.target %}
+          {# Marche vers le palier suivant — visible aussi quand un palier est déjà acquis. #}
+          {% if t.target and not hidden %}
           <div class="t-bar"><i style="width:{{ (t.progress * 100)|round|int }}%;"></i></div>
-          <div class="t-prog">{{ t.current }}/{{ t.target }}</div>
+          <div class="t-prog">{{ t.current }}/{{ t.target }}{% if t.next_medal %} → {{ t.next_medal }}{% endif %}</div>
           {% endif %}
         </div>
         {% endfor %}
