@@ -1439,48 +1439,43 @@ function initReveal() {
     requestAnimationFrame(frame);
   }
 
+  // Animation ascenseur : MOI centré fixe, les slots voisins glissent via CSS.
   function finishClimb(stage) {
-    Array.prototype.forEach.call(stage.querySelectorAll('.rv-crow'), function(r) {
-      r.style.transition = 'none';
-      r.style.transform = 'translateY(0)';
-      var rk = r.querySelector('.rk');
+    var climb = stage.querySelector('[data-rv-climb]');
+    if (climb) {
+      // Supprime les transitions pour un saut instantané
+      Array.prototype.forEach.call(climb.querySelectorAll('.rv-face'), function(f) {
+        f.style.transition = 'none';
+      });
+      void climb.offsetHeight;
+      climb.classList.add('animating');
+    }
+    var meRow = climb ? climb.querySelector('.rv-crow.me') : null;
+    if (meRow) {
+      var rk = meRow.querySelector('.rk');
       if (rk) setRankText(rk, +rk.dataset.to);
-      var sc = r.querySelector('.sc');
-      var ptsEl = r.querySelector('.pts-val');
+      var sc = meRow.querySelector('.sc');
+      var ptsEl = meRow.querySelector('.pts-val');
       if (sc && ptsEl) ptsEl.textContent = +sc.dataset.toPts;
-    });
+    }
     stage.classList.remove('climbing');
     stage.classList.add('rv-done');
   }
 
-  // Anime la MONTÉE/CHUTE : chaque ligne est dans le DOM à son rang d'arrivée,
-  // on la décale d'abord à son rang d'avant (FLIP) puis on la laisse glisser.
   function playClimb(stage) {
     var climb = stage.querySelector('[data-rv-climb]');
-    var rows = climb ? Array.prototype.slice.call(climb.querySelectorAll('.rv-crow')) : [];
-    if (reduce || rows.length < 2) {
+    var meRow = climb ? climb.querySelector('.rv-crow.me') : null;
+    if (!climb || !meRow || reduce) {
       finishClimb(stage);
       if (!reduce) after(2600, advance);
       return;
     }
-    var step = rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top;
-    var byBefore = rows.slice().sort(function(a, b) { return (+a.dataset.before) - (+b.dataset.before); });
-    var beforeIndex = new Map();
-    byBefore.forEach(function(r, i) { beforeIndex.set(r, i); });
-    rows.forEach(function(r, afterIdx) {
-      r.style.transition = 'none';
-      r.style.transform = 'translateY(' + ((beforeIndex.get(r) - afterIdx) * step) + 'px)';
-    });
-    void climb.offsetHeight;  // reflow : fige l'état "avant"
     stage.classList.add('climbing');
-    after(450, function() {  // petit temps de lecture du classement d'avant
-      rows.forEach(function(r) {
-        r.style.transition = 'transform 1.5s cubic-bezier(.22,.61,.36,1)';
-        r.style.transform = 'translateY(0)';
-      });
-      animateRanks(rows, 1500);
-      after(1700, function() { stage.classList.remove('climbing'); stage.classList.add('rv-done'); });
-      after(2900, advance);
+    after(550, function() {  // lecture de l'état avant
+      climb.classList.add('animating');
+      animateRanks([meRow], 1200);
+      after(1400, function() { stage.classList.remove('climbing'); stage.classList.add('rv-done'); });
+      after(2600, advance);
     });
   }
 

@@ -391,32 +391,40 @@ async def _reveal_rank_evolution(db, participant_id: int, window_ids: list) -> d
     me_after = next((r["rank"] for r in current if r["id"] == participant_id), None)
     moved = me_before is not None and me_after is not None and me_before != me_after
 
-    # Tranche du classement traversée par le mouvement (pour animer la montée/chute) :
-    # tous les joueurs entre la position de départ et d'arrivée (+1 de contexte),
-    # en ordre d'arrivée, avec leur rang avant — pour un FLIP côté client.
-    segment = []
-    if moved:
-        lo = max(1, min(me_before, me_after) - 1)
-        hi = max(me_before, me_after) + 1
-        win = [r for r in current if lo <= r["rank"] <= hi]
-        rows_max = 9
-        if len(win) > rows_max:  # on garde la tranche la plus proche du joueur
-            win = sorted(win, key=lambda r: abs(r["rank"] - me_after))[:rows_max]
-        win = sorted(win, key=lambda r: r["rank"])
-        segment = [{
-            "id": r["id"], "name": r["name"], "avatar_path": r["avatar_path"],
-            "after_rank": r["rank"], "before_rank": before_rank[r["id"]],
-            "after_points": r["total_points"],
-            "before_points": baseline_points[r["id"]],
-            "is_me": r["id"] == participant_id,
-        } for r in win]
+    # Contexte 5 slots (2 dessus + MOI + 2 dessous) avant et après le mouvement.
+    # MOI reste au centre ; les 4 slots autour glissent vers leurs nouveaux voisins.
+    def get_ctx(order, rank_of, points_of):
+        idx = next((k for k, r in enumerate(order) if r["id"] == participant_id), None)
+        if idx is None:
+            return [None] * 5
+        result = []
+        for offset in (-2, -1, 0, 1, 2):
+            j = idx + offset
+            if 0 <= j < len(order):
+                r = order[j]
+                result.append({
+                    "id": r["id"], "name": r["name"], "avatar_path": r["avatar_path"],
+                    "rank": rank_of(r), "points": points_of(r),
+                    "is_me": r["id"] == participant_id,
+                })
+            else:
+                result.append(None)
+        return result
+
+    current_rank_map = {r["id"]: r["rank"] for r in current}
+    current_pts_map  = {r["id"]: r["total_points"] for r in current}
+    before_ctx = get_ctx(before_order, lambda r: before_rank[r["id"]], lambda r: baseline_points[r["id"]])
+    after_ctx  = get_ctx(current,      lambda r: current_rank_map[r["id"]], lambda r: current_pts_map[r["id"]])
+    me_before_points = baseline_points.get(participant_id, 0)
+    me_after_points  = current_pts_map.get(participant_id, 0)
 
     return {
         "before": before, "after": after,
         "before_rank": me_before, "after_rank": me_after,
         "moved": moved,
         "delta": (me_before - me_after) if (me_before and me_after) else 0,
-        "segment": segment,
+        "before_ctx": before_ctx, "after_ctx": after_ctx,
+        "me_before_points": me_before_points, "me_after_points": me_after_points,
     }
 
 
