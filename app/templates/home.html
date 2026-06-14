@@ -86,6 +86,12 @@
         <span data-local-utc="{{ next_match|match_utc_iso }}">{{ next_match|match_datetime }}</span>
         · dans <span class="countdown" data-countdown="{{ next_match.kickoff_ts }}">...</span>
       </div>
+      {# Hook tourné vers l'avant : transforme le prochain match en enjeu de classement. #}
+      {% if rival_ahead %}
+      <div class="rival-line">🎯 {{ rival_ahead.name }} est à <b>{{ rival_ahead.gap }} pt{{ 's' if rival_ahead.gap > 1 else '' }}</b> — un bon prono et tu repasses devant.</div>
+      {% elif rival_behind %}
+      <div class="rival-line">👑 Tu mènes de <b>{{ rival_behind.gap }} pt{{ 's' if rival_behind.gap > 1 else '' }}</b> sur {{ rival_behind.name }} — creuse l'écart.</div>
+      {% endif %}
     </div>
     {% else %}
     <p class="muted" style="margin:6px 0 0;font-size:13px;">Plus aucun match au calendrier — merci d'avoir joué !</p>
@@ -119,19 +125,21 @@
     </div>
   </div>
 
-  {% if yesterday and yesterday.cnt > 0 %}
+  {# Récap = miroir EXACT du Reveal (même fenêtre journée sportive). Affiché tant
+     que le Reveal est dispo ; disparaît une fois le Reveal vu, comme le CTA. #}
+  {% if reveal_available and reveal_match_count > 0 %}
   <div class="card yesterday-card">
     <div>
-      <div class="lbl">Hier</div>
-      <div class="y-pts">+{{ yesterday.pts }} pts</div>
-      <div class="muted" style="font-size:12.5px;">sur {{ yesterday.cnt }} match{{ 's' if yesterday.cnt > 1 else '' }}</div>
+      <div class="lbl">{{ reveal_day_label }}</div>
+      <div class="y-pts">+{{ reveal_points }} pts</div>
+      <div class="muted" style="font-size:12.5px;">sur {{ reveal_match_count }} match{{ 's' if reveal_match_count > 1 else '' }}</div>
     </div>
-    {% if my_evolution is not none %}
+    {% if reveal_evolution is not none %}
     <div class="y-evo">
-      {% if my_evolution > 0 %}
-        <span class="chip up">▲ {{ my_evolution }} place{{ 's' if my_evolution > 1 else '' }}</span>
-      {% elif my_evolution < 0 %}
-        <span class="chip dn">▼ {{ -my_evolution }} place{{ 's' if my_evolution < -1 else '' }}</span>
+      {% if reveal_evolution > 0 %}
+        <span class="chip up">▲ {{ reveal_evolution }} place{{ 's' if reveal_evolution > 1 else '' }}</span>
+      {% elif reveal_evolution < 0 %}
+        <span class="chip dn">▼ {{ -reveal_evolution }} place{{ 's' if reveal_evolution < -1 else '' }}</span>
       {% else %}
         <span class="chip fl">= stable</span>
       {% endif %}

@@ -82,8 +82,8 @@
       <div class="big">{{ profile.streak }}{% if profile.streak >= 4 %}&nbsp;🔥{% endif %}</div>
       <div class="cap">
         Série en cours
-        <span class="help-tip" tabindex="0" data-tip="Nombre de matchs joués consécutifs avec un bon résultat, en partant du plus récent.">?</span>
-        <br>de bons pronos
+        <span class="help-tip" tabindex="0" data-tip="Bons résultats consécutifs en partant du match le plus récent. Ton record : {{ profile.longest_streak }} d'affilée.">?</span>
+        <br>{% if profile.longest_streak > profile.streak %}record : {{ profile.longest_streak }}{% else %}de bons pronos{% endif %}
       </div>
     </div>
     <div class="metric">

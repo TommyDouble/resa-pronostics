@@ -1183,6 +1183,20 @@ async def matches_list(request: Request, phase: str = "group"):
             (phase,)
         )
         matches = [dict(r) for r in await rows.fetchall()]
+        # Repère lisible « Journée N » (groupe) / round court (phases finales) à côté
+        # du n° officiel FIFA, qui n'est pas chronologique.
+        if phase == "group":
+            by_group = {}
+            for m in matches:  # déjà triés par date/heure
+                by_group.setdefault(m["group_name"], []).append(m)
+            for group_matches in by_group.values():
+                for idx, m in enumerate(group_matches):
+                    m["round_label"] = f"Journée {min(idx // 2 + 1, 3)}"
+        else:
+            short = {"round_of_32": "16es", "round_of_16": "8es", "quarter": "Quarts",
+                     "semi": "Demies", "third_place": "3e place", "final": "Finale"}
+            for m in matches:
+                m["round_label"] = short.get(phase, "")
         counts = {}
         for ph in PHASE_LABELS:
             c_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE phase=?", (ph,))
