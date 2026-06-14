@@ -150,6 +150,25 @@ def test_home_entry_and_story_promo(client, participant):
     assert "rp-demo" in html
 
 
+def test_home_recap_mirrors_reveal(client, participant):
+    """L'encart récap reflète la fenêtre du Reveal (journée sportive) et disparaît
+    une fois le Reveal vu — pas de chiffre « jour calendaire » divergent."""
+    _reset_matches()
+    a = _yesterday_match(961040, 20, result="team1", s1=2, s2=0)
+    _pred_score(participant["id"], a, 2, 0, 5)  # score exact
+    win = _window(participant["id"])
+
+    html = client.get(f"/p/{participant['token']}").text
+    assert "yesterday-card" in html
+    assert f"+{win['total_points']} pts" in html  # mêmes points que le Reveal
+
+    # Miroir exact : une fois le Reveal vu, l'encart (et le CTA) disparaissent.
+    client.post(f"/api/reveal/seen?token={participant['token']}")
+    html2 = client.get(f"/p/{participant['token']}").text
+    assert "yesterday-card" not in html2
+    assert "reveal-entry" not in html2
+
+
 def test_migration_reveal_sporting_day_rolls_back_one_day(participant):
     """Migration one-shot : recule last_revealed_date d'un jour, une seule fois.
 

@@ -697,6 +697,15 @@ async def participant_home(request: Request, token: str):
         ctx["reveal_available"] = reveal is not None
         ctx["reveal_points"] = reveal["total_points"] if reveal else 0
         ctx["reveal_day_label"] = reveal["day_label"] if reveal else ""
+        # Encart récap = miroir EXACT du Reveal (même fenêtre journée sportive et
+        # même baseline) : points, compte et flèche dérivent du même objet, donc
+        # toujours cohérents. Se cache en même temps que le Reveal (reveal_available).
+        ctx["reveal_match_count"] = reveal["match_count"] if reveal else 0
+        ctx["reveal_evolution"] = (
+            reveal["evolution"]["delta"]
+            if reveal and reveal.get("evolution") and reveal["evolution"].get("after")
+            else None
+        )
         # Upcoming/today matches
         today_start_utc, today_end_utc = utc_day_bounds_for_local_date()
         rows = await db.execute(
@@ -758,19 +767,8 @@ async def participant_home(request: Request, token: str):
         # Encoded count
         encoded_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE result IS NOT NULL")
         encoded_count = (await encoded_row.fetchone())["cnt"]
-        # Récap d'hier: points gagnés sur les matchs de la veille déjà encodés
-        y_start, y_end = utc_day_bounds_for_local_date(local_today(-1))
-        y_row = await db.execute(
-            """SELECT COALESCE(SUM(s.points), 0) AS pts, COUNT(m.id) AS cnt
-               FROM matches m
-               LEFT JOIN scores s ON s.match_id = m.id AND s.participant_id = ?
-               WHERE m.result IS NOT NULL
-                 AND datetime(m.match_date || 'T' || m.kickoff_time) >= datetime(?)
-                 AND datetime(m.match_date || 'T' || m.kickoff_time) <= datetime(?)""",
-            (p["id"], y_start, y_end)
-        )
-        yesterday = dict(await y_row.fetchone())
-        my_evolution = (await get_rank_evolution(db))["deltas"].get(p["id"])
+        # (Le récap « nuit » dérive désormais du Reveal — cf. reveal_* plus haut —
+        # pour rester aligné sur la journée sportive et cohérent avec l'animation.)
         # Pre-tournament status
         pt_status = await _pt_status(db, p["id"])
         all_caught_up = (
@@ -785,8 +783,6 @@ async def participant_home(request: Request, token: str):
             "unpredicted_today": unpredicted_today,
             "next_match": next_match,
             "all_caught_up": all_caught_up,
-            "yesterday": yesterday,
-            "my_evolution": my_evolution,
             "mini_rank": mini_rank,
             "rival_ahead": rival_ahead,
             "rival_behind": rival_behind,
