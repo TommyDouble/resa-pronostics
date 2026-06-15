@@ -152,6 +152,12 @@
           <div class="t-ic">{% if hidden %}❓{% else %}{{ t.icon }}{% endif %}</div>
           <div class="t-nm">{% if hidden %}???{% else %}{{ t.label }}{% endif %}</div>
           {% if t.medal and t.unlocked %}<span class="t-medal">{{ t.medal }}</span>{% endif %}
+          {# Pips ordinaux : palier atteint sur N (repère non-coloriel, lisible figé). #}
+          {% if t.tier_count and not hidden %}
+          <div class="t-pips" aria-hidden="true">
+            {% for i in range(t.tier_count) %}<span class="{{ 'on' if i < t.tier_index else '' }}"></span>{% endfor %}
+          </div>
+          {% endif %}
           {# Marche vers le palier suivant — visible aussi quand un palier est déjà acquis. #}
           {% if t.target and not hidden %}
           <div class="t-bar"><i style="width:{{ (t.progress * 100)|round|int }}%;"></i></div>

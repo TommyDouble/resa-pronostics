@@ -28,9 +28,12 @@ def _tiered(key, icon, label, category, value, thresholds, noun):
     """
     value = value or 0
     tier = None
+    tier_index = 0          # nb de paliers atteints (pour les pips ordinaux)
     for seuil, name in thresholds:
         if value >= seuil:
             tier = name
+            tier_index += 1
+    tier_count = len(thresholds)
     unlocked = tier is not None
     nxt = next(((s, nm) for s, nm in thresholds if value < s), None)
     floor = max((s for s, _ in thresholds if value >= s), default=0)
@@ -52,6 +55,7 @@ def _tiered(key, icon, label, category, value, thresholds, noun):
         "key": key, "icon": icon, "label": label, "category": category,
         "secret": False, "unlocked": unlocked,
         "tier": tier, "medal": _MEDALS.get(tier),
+        "tier_index": tier_index, "tier_count": tier_count,
         "next_tier": next_tier, "next_medal": _MEDALS.get(next_tier),
         "current": value, "target": target, "remaining": remaining,
         "progress": round(max(0.0, min(1.0, progress)), 3),
@@ -70,6 +74,7 @@ def _simple(key, icon, label, category, unlocked, desc, *,
         "key": key, "icon": icon, "label": label, "category": category,
         "secret": secret, "unlocked": bool(unlocked),
         "tier": None, "medal": None,
+        "tier_index": 0, "tier_count": 0,
         "next_tier": None, "next_medal": None, "remaining": 0,
         "current": current, "target": target,
         "progress": round(max(0.0, min(1.0, progress)), 3),

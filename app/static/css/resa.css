@@ -1136,34 +1136,76 @@ img.av { object-fit: cover; display: block; }
   position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
   text-align: center; padding: 10px 6px 8px; border-radius: var(--r-card);
   background: var(--paper2); border: 1px solid var(--line);
+  transition: transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s;
 }
+.trophy.on:hover { transform: translateY(-2px); }
+.trophy:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* Pastille : un seul squelette, le relief (biseau + bordure bi-ton) est constant,
+   seule la couleur change selon le palier (variables). */
 .trophy .t-ic {
+  position: relative; overflow: hidden;
   width: 48px; height: 48px; border-radius: 99px; font-size: 22px;
   display: flex; align-items: center; justify-content: center;
   background: var(--primary-l); border: 1.5px solid rgba(211,69,13,.35); box-shadow: var(--sh);
 }
 .trophy .t-nm { font-size: 10px; font-weight: 700; line-height: 1.15; color: var(--n900); }
 .trophy.off { opacity: .96; }
-.trophy.off .t-ic { background: var(--n100); border-color: var(--n300); filter: grayscale(1) opacity(.55); }
+.trophy.off .t-ic { background: var(--n100); border-color: var(--n300); filter: grayscale(1) opacity(.55); box-shadow: none; }
 .trophy.off .t-nm { color: var(--n500); }
+/* Débloqué SANS palier (trophées binaires) : liseré orange de la marque. */
 .trophy.on { background: #fff; border-color: var(--primary); }
-.trophy.on .t-ic { box-shadow: 0 0 0 2px var(--primary), var(--sh); }
-/* Médaille de palier en coin */
-.t-medal { position: absolute; top: 4px; right: 6px; font-size: 15px; }
-.trophy.tier-chocolat .t-ic { background: linear-gradient(135deg,#C79A6B,#7B4B27); border-color:#6B3F1F; color:#fff; }
-.trophy.tier-or .t-ic { background: linear-gradient(135deg,#FFE9A8,#F4B740); border-color:#E0A21E; }
-.trophy.tier-diamant .t-ic { background: linear-gradient(135deg,#CFF3FF,#7FD7F0); border-color:#4FB6D8; }
-/* Jauge de progression (verrouillé en cours) */
+.trophy.on .t-ic { box-shadow: inset 0 1.5px 1px rgba(255,255,255,.5), 0 0 0 2px var(--primary), var(--sh); }
+
+/* Système de paliers : la couleur, la bordure bi-ton et l'anneau viennent des variables. */
+.trophy[class*="tier-"] .t-ic {
+  background: var(--t-grad);
+  border-color: var(--t-edge-lo); border-top-color: var(--t-edge-hi);
+  color: var(--t-ink);
+  box-shadow:
+    inset 0 1.5px 1.5px rgba(255,255,255,.5),   /* arête haute = relief */
+    inset 0 -2px 3px rgba(0,0,0,.18),            /* creux bas = jeton frappé */
+    0 0 0 2px var(--t-ring), var(--sh);
+}
+.tier-chocolat { --t-grad: linear-gradient(145deg,#B07A4E,#6E4423); --t-edge-hi:#C99A6B; --t-edge-lo:#4A2C18; --t-ink:#FBEFE2; --t-ring:rgba(123,75,39,.18); }
+.tier-bronze   { --t-grad: linear-gradient(145deg,#E3A96F,#A6692F); --t-edge-hi:#F2C597; --t-edge-lo:#7C4A1E; --t-ink:#ffffff; --t-ring:rgba(166,105,47,.18); }
+.tier-argent   { --t-grad: linear-gradient(145deg,#EDF1F4,#AEB8C2); --t-edge-hi:#FFFFFF; --t-edge-lo:#8A95A1; --t-ink:#54606C; --t-ring:rgba(138,149,161,.22); }
+.tier-or       { --t-grad: linear-gradient(145deg,#F7DD93,#E0A521); --t-edge-hi:#FFF1C2; --t-edge-lo:#B07F12; --t-ink:#6E4A00; --t-ring:rgba(224,165,33,.24); }
+.tier-diamant  { --t-grad: linear-gradient(145deg,#DFF5FF,#86C9E2); --t-edge-hi:#FFFFFF; --t-edge-lo:#4FA6C4; --t-ink:#1F6B86; --t-ring:rgba(127,200,226,.32); }
+
+/* Sheen discret (transform/opacity seulement) au survol et au déblocage. */
+.trophy.on .t-ic::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.55) 50%, transparent 62%);
+  transform: translateX(-130%); opacity: 0;
+}
+.trophy.on:hover .t-ic::after, .trophy.just-unlocked .t-ic::after {
+  opacity: 1; transform: translateX(130%); transition: transform .6s ease, opacity .25s;
+}
+
+/* Médaille de palier en coin (pastille blanche pour la lisibilité plein soleil). */
+.t-medal {
+  position: absolute; top: 3px; right: 5px; font-size: 14px; line-height: 1;
+  background: #fff; border-radius: 99px; padding: 1px 2px; box-shadow: var(--sh);
+}
+/* Pips ordinaux : palier atteint sur N (repère non-coloriel). */
+.t-pips { display: flex; gap: 3px; margin-top: 1px; }
+.t-pips span { width: 5px; height: 5px; border-radius: 99px; background: var(--n300); }
+.t-pips span.on { background: var(--n800); }
+/* Jauge vers le palier suivant */
 .t-bar { width: 80%; height: 5px; border-radius: 999px; background: var(--board); overflow: hidden; margin-top: 2px; }
 .t-bar i { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
 .t-prog { font-size: 9px; font-weight: 700; color: var(--n500); }
 /* Secret */
-.trophy.secret .t-ic { background: var(--n100); border-color: var(--n300); color: var(--n400); filter: none; }
+.trophy.secret .t-ic { background: var(--n100); border-color: var(--n300); color: var(--n400); filter: none; box-shadow: var(--sh); }
 .trophy.secret .t-nm { color: var(--n400); letter-spacing: 1px; }
 /* Célébration d'un nouveau déblocage */
-@keyframes trophy-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
-.trophy.just-unlocked .t-ic { animation: trophy-pop .6s cubic-bezier(.34,1.56,.64,1) both; }
-@media (prefers-reduced-motion: reduce) { .trophy.just-unlocked .t-ic { animation: none; } }
+@keyframes trophy-pop { 0% { transform: scale(.6); } 35% { transform: scale(.92); } 60% { transform: scale(1.16); } 100% { transform: scale(1); } }
+.trophy.just-unlocked .t-ic { animation: trophy-pop .56s cubic-bezier(.34,1.56,.64,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .trophy, .trophy .t-ic { transition: none; }
+  .trophy.just-unlocked .t-ic { animation: none; }
+  .trophy .t-ic::after { display: none; }
+}
 
 /* ---- Fun stats list ---- */
 .funlist { display: flex; flex-direction: column; }
