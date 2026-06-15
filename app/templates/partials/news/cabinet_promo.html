@@ -1,6 +1,7 @@
 {# Parcours « Cabinet à trophées » — une vue par écran réel :
    accroche → le cabinet sur le profil → un déblocage célébré.
    Maquettes HTML/CSS, données d'exemple, thème clair manuscrit, reduced-motion safe. #}
+{% from "partials/glyphs.html" import glyph %}
 
 {# ① Accroche #}
 <div class="story-screen" data-story-screen>
@@ -15,16 +16,16 @@
     <div class="sm-shelf-lbl">Adresse</div>
     <div class="sm-troph-row">
       <div class="trophy on tier-or">
-        <div class="t-ic">🎯</div><div class="t-nm">Sniper</div>
+        <div class="t-ic">{{ glyph('sniper') }}</div><div class="t-nm">Sniper</div>
         <span class="t-medal">🥇</span>
       </div>
       <div class="trophy off">
-        <div class="t-ic">😬</div><div class="t-nm">Si près !</div>
+        <div class="t-ic">{{ glyph('so_close') }}</div><div class="t-nm">Si près !</div>
         <div class="t-bar"><i style="width:66%;"></i></div>
         <div class="t-prog">2/3</div>
       </div>
       <div class="trophy off secret">
-        <div class="t-ic">❓</div><div class="t-nm">???</div>
+        <div class="t-ic">{{ glyph('inconnu') }}</div><div class="t-nm">???</div>
       </div>
     </div>
   </div>
@@ -36,7 +37,7 @@
   <div class="sm-unlock" aria-hidden="true">
     <span class="rp-confetti"><i></i><i></i><i></i><i></i><i></i><i></i></span>
     <div class="trophy on tier-or" style="transform:rotate(-2deg);">
-      <div class="t-ic">🔥</div><div class="t-nm">En série</div>
+      <div class="t-ic">{{ glyph('streak') }}</div><div class="t-nm">En série</div>
       <span class="t-medal">🥇</span>
     </div>
     <div class="sm-unlock-tag">🏆 Débloqué !</div>

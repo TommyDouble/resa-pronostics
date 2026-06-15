@@ -1,5 +1,6 @@
 {% extends "participant_base.html" %}
 {% from "_macros.html" import avatar %}
+{% from "partials/glyphs.html" import glyph %}
 {% block title %}{{ profile.name }} — Profil{% endblock %}
 {% block page_content %}
 
@@ -149,7 +150,7 @@
         <div class="trophy {{ 'on' if t.unlocked else 'off' }}{{ ' secret' if hidden else '' }}{{ ' tier-' ~ t.tier if t.tier else '' }}{{ ' just-unlocked' if t.just_unlocked else '' }} tip"
              tabindex="0"
              data-tip="{% if hidden %}Trophée secret — continue à jouer pour le découvrir.{% else %}{{ t.desc }}{{ ' — débloqué !' if t.unlocked else '' }}{% endif %}">
-          <div class="t-ic">{% if hidden %}❓{% else %}{{ t.icon }}{% endif %}</div>
+          <div class="t-ic">{{ glyph('inconnu' if hidden else t.key) }}</div>
           <div class="t-nm">{% if hidden %}???{% else %}{{ t.label }}{% endif %}</div>
           {% if t.medal and t.unlocked %}<span class="t-medal">{{ t.medal }}</span>{% endif %}
           {# Pips ordinaux : palier atteint sur N (repère non-coloriel, lisible figé). #}

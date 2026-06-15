@@ -1144,13 +1144,16 @@ img.av { object-fit: cover; display: block; }
    seule la couleur change selon le palier (variables). */
 .trophy .t-ic {
   position: relative; overflow: hidden;
-  width: 48px; height: 48px; border-radius: 99px; font-size: 22px;
+  width: 48px; height: 48px; border-radius: 99px;
   display: flex; align-items: center; justify-content: center;
   background: var(--primary-l); border: 1.5px solid rgba(211,69,13,.35); box-shadow: var(--sh);
+  color: var(--primary-d);  /* encre du glyphe (trophée binaire débloqué) */
 }
+/* Glyphe SVG monochrome : net, hérite l'encre via currentColor. */
+.t-glyph { width: 24px; height: 24px; display: block; }
 .trophy .t-nm { font-size: 10px; font-weight: 700; line-height: 1.15; color: var(--n900); }
 .trophy.off { opacity: .96; }
-.trophy.off .t-ic { background: var(--n100); border-color: var(--n300); filter: grayscale(1) opacity(.55); box-shadow: none; }
+.trophy.off .t-ic { background: var(--n100); border-color: var(--n300); box-shadow: none; color: var(--n400); }
 .trophy.off .t-nm { color: var(--n500); }
 /* Débloqué SANS palier (trophées binaires) : liseré orange de la marque. */
 .trophy.on { background: #fff; border-color: var(--primary); }
@@ -1160,17 +1163,17 @@ img.av { object-fit: cover; display: block; }
 .trophy[class*="tier-"] .t-ic {
   background: var(--t-grad);
   border-color: var(--t-edge-lo); border-top-color: var(--t-edge-hi);
-  color: var(--t-ink);
+  color: var(--t-glyph-ink, var(--t-ink));  /* encre du glyphe, contraste garanti par palier */
   box-shadow:
     inset 0 1.5px 1.5px rgba(255,255,255,.5),   /* arête haute = relief */
     inset 0 -2px 3px rgba(0,0,0,.18),            /* creux bas = jeton frappé */
     0 0 0 2px var(--t-ring), var(--sh);
 }
-.tier-chocolat { --t-grad: linear-gradient(145deg,#B07A4E,#6E4423); --t-edge-hi:#C99A6B; --t-edge-lo:#4A2C18; --t-ink:#FBEFE2; --t-ring:rgba(123,75,39,.18); }
-.tier-bronze   { --t-grad: linear-gradient(145deg,#E3A96F,#A6692F); --t-edge-hi:#F2C597; --t-edge-lo:#7C4A1E; --t-ink:#ffffff; --t-ring:rgba(166,105,47,.18); }
-.tier-argent   { --t-grad: linear-gradient(145deg,#EDF1F4,#AEB8C2); --t-edge-hi:#FFFFFF; --t-edge-lo:#8A95A1; --t-ink:#54606C; --t-ring:rgba(138,149,161,.22); }
-.tier-or       { --t-grad: linear-gradient(145deg,#F7DD93,#E0A521); --t-edge-hi:#FFF1C2; --t-edge-lo:#B07F12; --t-ink:#6E4A00; --t-ring:rgba(224,165,33,.24); }
-.tier-diamant  { --t-grad: linear-gradient(145deg,#DFF5FF,#86C9E2); --t-edge-hi:#FFFFFF; --t-edge-lo:#4FA6C4; --t-ink:#1F6B86; --t-ring:rgba(127,200,226,.32); }
+.tier-chocolat { --t-grad: linear-gradient(145deg,#B07A4E,#6E4423); --t-edge-hi:#C99A6B; --t-edge-lo:#4A2C18; --t-ink:#FBEFE2; --t-glyph-ink:#F4E3C8; --t-ring:rgba(123,75,39,.18); }
+.tier-bronze   { --t-grad: linear-gradient(145deg,#E3A96F,#A6692F); --t-edge-hi:#F2C597; --t-edge-lo:#7C4A1E; --t-ink:#ffffff; --t-glyph-ink:#5A3410; --t-ring:rgba(166,105,47,.18); }
+.tier-argent   { --t-grad: linear-gradient(145deg,#EDF1F4,#AEB8C2); --t-edge-hi:#FFFFFF; --t-edge-lo:#8A95A1; --t-ink:#54606C; --t-glyph-ink:#3E4750; --t-ring:rgba(138,149,161,.22); }
+.tier-or       { --t-grad: linear-gradient(145deg,#F7DD93,#E0A521); --t-edge-hi:#FFF1C2; --t-edge-lo:#B07F12; --t-ink:#6E4A00; --t-glyph-ink:#6E4A00; --t-ring:rgba(224,165,33,.24); }
+.tier-diamant  { --t-grad: linear-gradient(145deg,#DFF5FF,#86C9E2); --t-edge-hi:#FFFFFF; --t-edge-lo:#4FA6C4; --t-ink:#1F6B86; --t-glyph-ink:#16536A; --t-ring:rgba(127,200,226,.32); }
 
 /* Sheen discret (transform/opacity seulement) au survol et au déblocage. */
 .trophy.on .t-ic::after {
@@ -1188,7 +1191,7 @@ img.av { object-fit: cover; display: block; }
   background: #fff; border-radius: 99px; padding: 1px 2px; box-shadow: var(--sh);
 }
 /* Pips ordinaux : palier atteint sur N (repère non-coloriel). */
-.t-pips { display: flex; gap: 3px; margin-top: 1px; }
+.t-pips { display: flex; justify-content: center; width: 100%; gap: 3px; margin-top: 1px; }
 .t-pips span { width: 5px; height: 5px; border-radius: 99px; background: var(--n300); }
 .t-pips span.on { background: var(--n800); }
 /* Jauge vers le palier suivant */
