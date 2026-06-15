@@ -1,0 +1,81 @@
+{# Stable trophy emblems following the Claude Design reference.
+   Emoji silhouettes are pre-rendered PNG masks, so runtime rendering stays
+   identical across devices without system emoji fonts. #}
+
+{% macro trophy_sprite() -%}
+<svg class="trophy-symbol-sprite" width="0" height="0" aria-hidden="true" focusable="false">
+  {% set symbols = [
+    'first_step', 'present', 'marathon', 'loyal', 'sniper', 'bonus_king',
+    'so_close', 'streak', 'draw_king', 'last_minute', 'perfect_day', 'lock'
+  ] %}
+  <defs>
+    {% for key in symbols %}
+    <mask id="trophy-symbol-mask-{{ key }}" maskUnits="userSpaceOnUse" x="28.5" y="28.5" width="43" height="43">
+      <image href="/static/img/trophy-silhouettes/{{ key }}.png" x="28.5" y="28.5" width="43" height="43" preserveAspectRatio="xMidYMid meet"/>
+    </mask>
+    {% endfor %}
+  </defs>
+  {% for key in symbols %}
+  <symbol id="trophy-symbol-{{ key }}" viewBox="0 0 100 100">
+    <rect class="trophy-symbol-mask-fill" x="28.5" y="28.5" width="43" height="43" fill="currentColor" mask="url(#trophy-symbol-mask-{{ key }})"/>
+  </symbol>
+  {% endfor %}
+</svg>
+{%- endmacro %}
+
+{% macro trophy_frame(uid) -%}
+<svg class="trophy-emblem-frame" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="{{ uid }}-rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--t-rim-hi)"/>
+      <stop offset="1" stop-color="var(--t-rim-lo)"/>
+    </linearGradient>
+    <linearGradient id="{{ uid }}-field" x1="0" y1="0" x2=".42" y2="1">
+      <stop offset="0" stop-color="var(--t-field-hi)"/>
+      <stop offset="1" stop-color="var(--t-field-lo)"/>
+    </linearGradient>
+    <radialGradient id="{{ uid }}-shine" cx=".5" cy=".4" r=".55">
+      <stop offset="0" stop-color="#fff" stop-opacity="var(--t-shine-opacity)"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="{{ uid }}-shade" cx=".5" cy=".84" r=".62">
+      <stop offset=".5" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity="var(--t-shade-opacity)"/>
+    </radialGradient>
+    <clipPath id="{{ uid }}-field-clip">
+      <polygon points="50.00,14.60 80.66,32.30 80.66,67.70 50.00,85.40 19.34,67.70 19.34,32.30"/>
+    </clipPath>
+  </defs>
+  <circle class="trophy-emblem-glow" cx="50" cy="50" r="48.5" fill="none" stroke="var(--t-edge)" stroke-width="2"/>
+  <polygon points="50.00,3.50 90.27,26.75 90.27,73.25 50.00,96.50 9.73,73.25 9.73,26.75" fill="var(--t-edge)"/>
+  <polygon points="50.00,5.30 89.23,27.95 89.23,73.25 50.00,95.90 10.77,73.25 10.77,27.95" fill="url(#{{ uid }}-rim)"/>
+  <polygon points="50.00,14.20 81.52,32.40 81.52,68.80 50.00,87.00 18.48,68.80 18.48,32.40" fill="var(--t-edge)" opacity="var(--t-inner-edge-opacity)"/>
+  <polygon points="50.00,14.60 80.66,32.30 80.66,67.70 50.00,85.40 19.34,67.70 19.34,32.30" fill="url(#{{ uid }}-field)"/>
+  <g clip-path="url(#{{ uid }}-field-clip)">
+    <rect x="0" y="0" width="100" height="100" fill="url(#{{ uid }}-shine)"/>
+    <rect x="0" y="0" width="100" height="100" fill="url(#{{ uid }}-shade)"/>
+  </g>
+  <polygon points="50.00,14.60 80.66,32.30 80.66,67.70 50.00,85.40 19.34,67.70 19.34,32.30" fill="none" stroke="#fff" stroke-width="1.05" opacity="var(--t-stitch-hi-opacity)"/>
+  <polygon points="50.00,5.30 89.23,27.95 89.23,73.25 50.00,95.90 10.77,73.25 10.77,27.95" fill="none" stroke="var(--t-edge)" stroke-width=".9" opacity=".45"/>
+</svg>
+{%- endmacro %}
+
+{% macro trophy_symbol(key) -%}
+{% set symbol_key = 'lock' if key == 'lock' else key %}
+<span class="trophy-symbol-wrap">
+  <svg class="trophy-symbol trophy-symbol--{{ symbol_key }}" aria-hidden="true" focusable="false">
+    <use href="#trophy-symbol-{{ symbol_key }}"></use>
+  </svg>
+</span>
+{%- endmacro %}
+
+{% macro tier_badge(tier) -%}
+{% set labels = {
+  'chocolat': 'Ch',
+  'bronze': 'Br',
+  'argent': 'Ag',
+  'or': 'Or',
+  'diamant': 'Di'
+} %}
+<span class="t-medal t-medal--{{ tier }}" aria-hidden="true">{{ labels.get(tier, tier) }}</span>
+{%- endmacro %}

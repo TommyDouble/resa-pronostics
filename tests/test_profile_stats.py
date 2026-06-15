@@ -60,6 +60,12 @@ def _profile(pid):
     return run(_q())
 
 
+def _cabinet_fragment(html):
+    start = html.index("<!-- Cabinet à trophées -->")
+    end = html.index("<!-- Stats fun -->", start)
+    return html[start:end]
+
+
 def _fun_stat(profile, label):
     return next((s for s in profile["fun_stats"] if s["label"] == label), None)
 
@@ -122,6 +128,55 @@ def test_limited_profile_hides_trophy_cabinet_for_other_viewer(client):
     html = client.get(f"/p/{viewer_token}/profil/{target_id}").text
     assert "Profil limité aux stats publiques" in html
     assert "Cabinet à trophées" not in html
+
+
+def test_trophy_cabinet_uses_stable_svg_emblems_without_tier_emoji(client):
+    pid, token = _make_participant()
+    base_number = 9800000 + pid * 10
+    for i in range(2):
+        mid = _make_match(
+            base_number + i,
+            f"2000-02-0{i + 1}",
+            result="team1",
+            score_team1=2,
+            score_team2=1,
+        )
+        _predict(pid, mid, "team1", 2, 1)
+
+    html = client.get(f"/p/{token}/profil").text
+    cabinet = _cabinet_fragment(html)
+    assert html.count('class="trophy-symbol-sprite"') == 1
+    for symbol in (
+        "first_step",
+        "present",
+        "marathon",
+        "loyal",
+        "sniper",
+        "bonus_king",
+        "so_close",
+        "streak",
+        "draw_king",
+        "last_minute",
+        "perfect_day",
+        "lock",
+    ):
+        assert f'id="trophy-symbol-{symbol}"' in html
+        assert f'id="trophy-symbol-mask-{symbol}"' in html
+        assert f'/static/img/trophy-silhouettes/{symbol}.png' in html
+    assert cabinet.count('class="trophy ') == 11
+    assert cabinet.count('class="trophy-emblem-frame"') == 11
+    assert cabinet.count('class="trophy-symbol ') == 11
+    assert 'href="#trophy-symbol-first_step"' in cabinet
+    assert 'href="#trophy-symbol-sniper"' in cabinet
+    assert 'href="#trophy-symbol-lock"' in cabinet
+    assert "trophy-symbol-wrap--legacy" not in cabinet
+    assert 'class="t-glyph' not in cabinet
+    assert 't-medal--chocolat' in cabinet and ">Ch<" in cabinet
+    assert "Progression : 2/5 vers bronze" in cabinet
+    assert 'class="t-bar"' not in cabinet
+    assert 'class="t-pips"' not in cabinet
+    assert not any(mark in cabinet for mark in ("🥉", "🥈", "🥇", "💎", "🍫", "🏅"))
+    assert "\ufe0f" not in cabinet
 
 
 def test_perfect_day_requires_all_result_matches_predicted(client):

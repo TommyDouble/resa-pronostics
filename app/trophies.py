@@ -16,8 +16,15 @@ CATEGORIES = [
     ("caractere", "Caractère"),
 ]
 
-# Ordre des paliers : chocolat (entrée, optionnel) → bronze → argent → or → diamant.
-_MEDALS = {"chocolat": "🍫", "bronze": "🥉", "argent": "🥈", "or": "🥇", "diamant": "💎"}
+# Ordre des paliers : chocolat (entrée, optionnel) -> bronze -> argent -> or -> diamant.
+# Les valeurs restent textuelles pour éviter les emojis système dans le cabinet.
+_MEDALS = {
+    "chocolat": "chocolat",
+    "bronze": "bronze",
+    "argent": "argent",
+    "or": "or",
+    "diamant": "diamant",
+}
 
 
 def _tiered(key, icon, label, category, value, thresholds, noun):
@@ -43,14 +50,14 @@ def _tiered(key, icon, label, category, value, thresholds, noun):
         remaining = target - value
         if unlocked:
             desc = (f"Niveau {tier} ({value} {noun}). Plus que {remaining} "
-                    f"pour passer {next_tier} {_MEDALS.get(next_tier)} ({target}).")
+                    f"pour passer {next_tier} ({target}).")
         else:
             desc = (f"Plus que {remaining} pour le niveau {next_tier} "
-                    f"{_MEDALS.get(next_tier)} : {value}/{target} {noun}.")
+                    f": {value}/{target} {noun}.")
     else:
         target, next_tier, remaining = None, None, 0
         progress = 1.0
-        desc = f"Palier maximum atteint 🏅 — niveau {tier} ({value} {noun})."
+        desc = f"Palier maximum atteint — niveau {tier} ({value} {noun})."
     return {
         "key": key, "icon": icon, "label": label, "category": category,
         "secret": False, "unlocked": unlocked,

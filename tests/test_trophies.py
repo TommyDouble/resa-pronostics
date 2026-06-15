@@ -52,7 +52,7 @@ def test_tiered_always_shows_next_step():
     m["longest_streak"] = 4  # bronze (3) atteint, argent (5) en vue
     streak = _by_key(evaluate(m))["streak"]
     assert streak["unlocked"] and streak["tier"] == "bronze"
-    assert streak["next_tier"] == "argent" and streak["next_medal"] == "🥈"
+    assert streak["next_tier"] == "argent" and streak["next_medal"] == "argent"
     assert streak["target"] == 5 and streak["remaining"] == 1
 
 

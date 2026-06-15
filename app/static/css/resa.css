@@ -1126,88 +1126,152 @@ img.av { object-fit: cover; display: block; }
 /* Cabinet à trophées (W7) — étagères par catégorie */
 .cabinet .cab-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .cab-count { font-family: var(--display); font-weight: 800; font-size: 14px; color: var(--primary); }
-.shelf { margin-top: 12px; }
-.shelf-lbl { font-family: var(--sketch); font-size: 17px; color: var(--n600); margin-bottom: 6px; }
+.shelf { margin-top: 10px; }
+.shelf-lbl { font-family: var(--sketch); font-size: 17px; color: var(--n600); margin-bottom: 5px; }
 .shelf-row {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
-  padding-bottom: 10px; border-bottom: 2px solid var(--line);  /* rebord d'étagère */
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px 8px;
+  padding: 2px 2px 11px; border-bottom: 2px solid var(--line);  /* rebord d'étagère */
 }
 .trophy {
-  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
-  text-align: center; padding: 10px 6px 8px; border-radius: var(--r-card);
-  background: var(--paper2); border: 1px solid var(--line);
-  transition: transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s;
+  --trophy-emblem-size: 54px;
+  --trophy-medal-x: 14px;
+  --te-hex: polygon(50% 2%, 91.57% 26%, 91.57% 74%, 50% 98%, 8.43% 74%, 8.43% 26%);
+  --t-rim-hi: #F4B49B;
+  --t-rim-lo: #B23B0C;
+  --t-field-hi: #FAEDE7;
+  --t-field-lo: #EFD3C7;
+  --t-edge: #C24310;
+  --t-ink: #A33308;
+  --t-halo: rgba(211,69,13,.24);
+  --t-inner-edge-opacity: .5;
+  --t-shine-opacity: .62;
+  --t-shade-opacity: .2;
+  --t-stitch-hi-opacity: .42;
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  min-width: 0; text-align: center; padding: 5px 3px 4px; border-radius: 8px;
+  background: transparent; border: 1px solid transparent;
+  cursor: help;
+  transition: background .16s ease, border-color .16s ease, transform .16s cubic-bezier(.2,.7,.3,1);
 }
-.trophy.on:hover { transform: translateY(-2px); }
+.trophy.on:hover { transform: translateY(-1px); background: rgba(255,255,255,.58); border-color: rgba(211,69,13,.16); }
 .trophy:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-/* Pastille : un seul squelette, le relief (biseau + bordure bi-ton) est constant,
-   seule la couleur change selon le palier (variables). */
-.trophy .t-ic {
-  position: relative; overflow: hidden;
-  width: 48px; height: 48px; border-radius: 99px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--primary-l); border: 1.5px solid rgba(211,69,13,.35); box-shadow: var(--sh);
-  color: var(--primary-d);  /* encre du glyphe (trophée binaire débloqué) */
+/* Emblème hexagonal : même squelette, seules les variables de palier changent. */
+.trophy-symbol-sprite {
+  position: absolute; width: 0; height: 0; overflow: hidden;
 }
-/* Glyphe SVG monochrome : net, hérite l'encre via currentColor. */
-.t-glyph { width: 24px; height: 24px; display: block; }
-.trophy .t-nm { font-size: 10px; font-weight: 700; line-height: 1.15; color: var(--n900); }
+.trophy .t-ic {
+  position: relative; overflow: visible;
+  width: var(--trophy-emblem-size); height: var(--trophy-emblem-size); border: none; border-radius: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: none; clip-path: none;
+  color: var(--t-ink);
+  filter: drop-shadow(0 3px 5px rgba(120,70,30,.18));
+}
+.trophy-emblem-frame {
+  position: absolute; inset: 0; z-index: 0;
+  width: 100%; height: 100%; display: block; overflow: visible;
+}
+.trophy-emblem-glow {
+  opacity: 0;
+}
+.trophy-symbol-wrap {
+  position: absolute; inset: 0; z-index: 1; margin: auto;
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%; color: var(--t-ink);
+}
+.trophy-symbol {
+  width: 100%; height: 100%; display: block; overflow: visible;
+}
+.trophy .t-nm {
+  max-width: 82px;
+  font-family: var(--display); font-size: 10.5px; font-weight: 800; line-height: 1.12; color: var(--n900);
+}
 .trophy.off { opacity: .96; }
-.trophy.off .t-ic { background: var(--n100); border-color: var(--n300); box-shadow: none; color: var(--n400); }
+.trophy.off,
+.trophy.secret {
+  --t-rim-hi: #FFFFFF;
+  --t-rim-lo: #C3C8C3;
+  --t-field-hi: #F4F4F0;
+  --t-field-lo: #E4E6E0;
+  --t-edge: #C3C8C3;
+  --t-ink: #9AA09A;
+  --t-halo: rgba(156,163,156,.16);
+  --t-inner-edge-opacity: .3;
+  --t-shine-opacity: 0;
+  --t-shade-opacity: 0;
+  --t-stitch-hi-opacity: .25;
+}
+.trophy.off .t-ic { filter: none; }
+.trophy.off .trophy-symbol { opacity: .92; }
 .trophy.off .t-nm { color: var(--n500); }
 /* Débloqué SANS palier (trophées binaires) : liseré orange de la marque. */
-.trophy.on { background: #fff; border-color: var(--primary); }
-.trophy.on .t-ic { box-shadow: inset 0 1.5px 1px rgba(255,255,255,.5), 0 0 0 2px var(--primary), var(--sh); }
+.trophy.on { background: transparent; border-color: transparent; }
+.trophy--prestige {
+  --t-rim-hi: #FFF1C2;
+  --t-rim-lo: #B07F12;
+  --t-field-hi: #F7DD93;
+  --t-field-lo: #E0A521;
+  --t-edge: #9C6C0D;
+  --t-ink: #6E4A00;
+  --t-halo: rgba(224,165,33,.28);
+  border-color: #E0A521;
+}
+.trophy--prestige .t-ic {
+  filter: drop-shadow(0 4px 8px rgba(156,108,13,.26));
+}
+.trophy--prestige .trophy-emblem-glow {
+  opacity: .5;
+}
 
 /* Système de paliers : la couleur, la bordure bi-ton et l'anneau viennent des variables. */
-.trophy[class*="tier-"] .t-ic {
-  background: var(--t-grad);
-  border-color: var(--t-edge-lo); border-top-color: var(--t-edge-hi);
-  color: var(--t-glyph-ink, var(--t-ink));  /* encre du glyphe, contraste garanti par palier */
-  box-shadow:
-    inset 0 1.5px 1.5px rgba(255,255,255,.5),   /* arête haute = relief */
-    inset 0 -2px 3px rgba(0,0,0,.18),            /* creux bas = jeton frappé */
-    0 0 0 2px var(--t-ring), var(--sh);
-}
-.tier-chocolat { --t-grad: linear-gradient(145deg,#B07A4E,#6E4423); --t-edge-hi:#C99A6B; --t-edge-lo:#4A2C18; --t-ink:#FBEFE2; --t-glyph-ink:#F4E3C8; --t-ring:rgba(123,75,39,.18); }
-.tier-bronze   { --t-grad: linear-gradient(145deg,#E3A96F,#A6692F); --t-edge-hi:#F2C597; --t-edge-lo:#7C4A1E; --t-ink:#ffffff; --t-glyph-ink:#5A3410; --t-ring:rgba(166,105,47,.18); }
-.tier-argent   { --t-grad: linear-gradient(145deg,#EDF1F4,#AEB8C2); --t-edge-hi:#FFFFFF; --t-edge-lo:#8A95A1; --t-ink:#54606C; --t-glyph-ink:#3E4750; --t-ring:rgba(138,149,161,.22); }
-.tier-or       { --t-grad: linear-gradient(145deg,#F7DD93,#E0A521); --t-edge-hi:#FFF1C2; --t-edge-lo:#B07F12; --t-ink:#6E4A00; --t-glyph-ink:#6E4A00; --t-ring:rgba(224,165,33,.24); }
-.tier-diamant  { --t-grad: linear-gradient(145deg,#DFF5FF,#86C9E2); --t-edge-hi:#FFFFFF; --t-edge-lo:#4FA6C4; --t-ink:#1F6B86; --t-glyph-ink:#16536A; --t-ring:rgba(127,200,226,.32); }
+.tier-chocolat { --t-rim-hi:#C99A6B; --t-rim-lo:#5E3A1E; --t-field-hi:#A9744A; --t-field-lo:#5A381D; --t-edge:#3F2812; --t-ink:#F4E3C8; --t-halo:rgba(123,75,39,.2); }
+.tier-bronze   { --t-rim-hi:#F2C597; --t-rim-lo:#86511F; --t-field-hi:#E3A96F; --t-field-lo:#9A5E27; --t-edge:#6E3F19; --t-ink:#4A2A0C; --t-halo:rgba(166,105,47,.22); }
+.tier-argent   { --t-rim-hi:#FFFFFF; --t-rim-lo:#8A95A1; --t-field-hi:#EDF1F4; --t-field-lo:#AAB4BF; --t-edge:#7B8590; --t-ink:#3E4750; --t-halo:rgba(138,149,161,.24); }
+.tier-or       { --t-rim-hi:#FFF1C2; --t-rim-lo:#B07F12; --t-field-hi:#F7DD93; --t-field-lo:#E0A521; --t-edge:#9C6C0D; --t-ink:#6E4A00; --t-halo:rgba(224,165,33,.28); }
+.tier-diamant  { --t-rim-hi:#FFFFFF; --t-rim-lo:#4FA6C4; --t-field-hi:#DFF5FF; --t-field-lo:#86C9E2; --t-edge:#4691AC; --t-ink:#13536A; --t-halo:rgba(127,200,226,.34); }
 
-/* Sheen discret (transform/opacity seulement) au survol et au déblocage. */
-.trophy.on .t-ic::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.55) 50%, transparent 62%);
-  transform: translateX(-130%); opacity: 0;
-}
-.trophy.on:hover .t-ic::after, .trophy.just-unlocked .t-ic::after {
-  opacity: 1; transform: translateX(130%); transition: transform .6s ease, opacity .25s;
-}
-
-/* Médaille de palier en coin (pastille blanche pour la lisibilité plein soleil). */
+/* Médaille de palier en coin, stable et indépendante des emojis système. */
 .t-medal {
-  position: absolute; top: 3px; right: 5px; font-size: 14px; line-height: 1;
-  background: #fff; border-radius: 99px; padding: 1px 2px; box-shadow: var(--sh);
+  position: absolute; top: 2px; left: calc(50% + var(--trophy-medal-x)); right: auto; z-index: 3;
+  min-width: 18px; height: 16px; padding: 0 3px;
+  display: grid; place-items: center;
+  clip-path: var(--te-hex);
+  background: linear-gradient(145deg, var(--t-rim-hi), var(--t-field-lo));
+  color: var(--t-ink);
+  font-family: var(--display); font-size: 7.5px; font-weight: 900; line-height: 1;
+  box-shadow: 0 1px 3px rgba(31,29,27,.16);
 }
 /* Pips ordinaux : palier atteint sur N (repère non-coloriel). */
 .t-pips { display: flex; justify-content: center; width: 100%; gap: 3px; margin-top: 1px; }
-.t-pips span { width: 5px; height: 5px; border-radius: 99px; background: var(--n300); }
+.t-pips span { width: 4.5px; height: 4.5px; border-radius: 99px; background: var(--n300); }
 .t-pips span.on { background: var(--n800); }
 /* Jauge vers le palier suivant */
-.t-bar { width: 80%; height: 5px; border-radius: 999px; background: var(--board); overflow: hidden; margin-top: 2px; }
+.t-bar { width: 82%; height: 5px; border-radius: 999px; background: var(--board); overflow: hidden; margin-top: 2px; }
 .t-bar i { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
-.t-prog { font-size: 9px; font-weight: 700; color: var(--n500); }
+.t-prog { font-size: 9.5px; font-weight: 700; color: var(--n500); }
 /* Secret */
-.trophy.secret .t-ic { background: var(--n100); border-color: var(--n300); color: var(--n400); filter: none; box-shadow: var(--sh); }
 .trophy.secret .t-nm { color: var(--n400); letter-spacing: 1px; }
 /* Célébration d'un nouveau déblocage */
 @keyframes trophy-pop { 0% { transform: scale(.6); } 35% { transform: scale(.92); } 60% { transform: scale(1.16); } 100% { transform: scale(1); } }
 .trophy.just-unlocked .t-ic { animation: trophy-pop .56s cubic-bezier(.34,1.56,.64,1) both; }
+.trophy.just-unlocked { background: rgba(255,255,255,.72); box-shadow: 0 0 0 2px var(--t-halo); }
+.trophy.just-unlocked .trophy-emblem-glow { opacity: .5; }
 @media (prefers-reduced-motion: reduce) {
   .trophy, .trophy .t-ic { transition: none; }
   .trophy.just-unlocked .t-ic { animation: none; }
-  .trophy .t-ic::after { display: none; }
+}
+@media (max-width: 520px) {
+  .shelf-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px 7px; }
+  .trophy {
+    --trophy-emblem-size: 50px;
+    --trophy-medal-x: 12px;
+    padding: 5px 2px 4px;
+  }
+  .trophy .t-nm { max-width: 76px; font-size: 10px; }
+  .t-medal {
+    min-width: 17px; height: 15px; padding: 0 3px;
+    font-size: 7px;
+  }
 }
 
 /* ---- Fun stats list ---- */
