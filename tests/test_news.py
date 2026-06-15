@@ -59,6 +59,13 @@ def test_news_seen_rejects_bad_token(client):
     assert res.status_code == 403
 
 
+def test_cabinet_story_shows_home_then_profile_steps(client, participant):
+    html = client.get(f"/p/{participant['token']}").text
+    assert "Le Cabinet à trophées" in html
+    assert "Sur l'accueil" in html
+    assert "Sur ton profil" in html
+
+
 def test_admin_news_crud(admin_client):
     # Création
     res = admin_client.post(

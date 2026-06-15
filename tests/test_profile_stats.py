@@ -21,14 +21,16 @@ def _make_participant():
     return run(_create())
 
 
-def _make_match(number, match_date, team1="France", team2="Brésil"):
+def _make_match(number, match_date, team1="France", team2="Brésil", result=None,
+                score_team1=None, score_team2=None):
     async def _create():
         async with get_db() as db:
             cursor = await db.execute(
                 """INSERT INTO matches (match_number, phase, match_date, kickoff_time,
-                                        team1_name, team2_name, weight)
-                   VALUES (?, 'group', ?, '12:00', ?, ?, 1)""",
-                (number, match_date, team1, team2),
+                                        team1_name, team2_name, weight,
+                                        score_team1, score_team2, result)
+                   VALUES (?, 'group', ?, '12:00', ?, ?, 1, ?, ?, ?)""",
+                (number, match_date, team1, team2, score_team1, score_team2, result),
             )
             await db.commit()
             return cursor.lastrowid
@@ -102,3 +104,41 @@ def test_home_mini_ranking_links_to_profiles(client):
     html = client.get(f"/p/{token}").text
     assert f'href="/p/{token}/profil' in html
     assert 'class="rrow' in html
+
+
+def test_limited_profile_hides_trophy_cabinet_for_other_viewer(client):
+    target_id, _ = _make_participant()
+    _, viewer_token = _make_participant()
+
+    async def _limit():
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE participants SET profile_visibility='limited' WHERE id=?",
+                (target_id,),
+            )
+            await db.commit()
+
+    run(_limit())
+    html = client.get(f"/p/{viewer_token}/profil/{target_id}").text
+    assert "Profil limité aux stats publiques" in html
+    assert "Cabinet à trophées" not in html
+
+
+def test_perfect_day_requires_all_result_matches_predicted(client):
+    pid, _ = _make_participant()
+    base_number = 9900000 + pid * 10
+    mids = [
+        _make_match(base_number + i, "2000-01-02", result="team1", score_team1=1, score_team2=0)
+        for i in range(4)
+    ]
+    for mid in mids[:3]:
+        _predict(pid, mid, "team1", 1, 0)
+
+    profile = _profile(pid)
+    perfect = next(t for t in profile["trophies"] if t["key"] == "perfect_day")
+    assert perfect["unlocked"] is False
+
+    _predict(pid, mids[3], "team1", 1, 0)
+    profile = _profile(pid)
+    perfect = next(t for t in profile["trophies"] if t["key"] == "perfect_day")
+    assert perfect["unlocked"] is True

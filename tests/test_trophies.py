@@ -14,13 +14,13 @@ def _empty_metrics():
     return {
         "match_count": 0, "present_streak": 0, "total_played": 0, "total_results": 0,
         "exact": 0, "bonus_king": False, "near_miss": 0, "longest_streak": 0,
-        "draw_correct": 0, "perfect_day": False,
+        "draw_correct": 0, "last_minute_count": 0, "perfect_day": False,
     }
 
 
 def test_evaluate_shape_and_categories():
     trophies = evaluate(_empty_metrics())
-    assert len(trophies) == 10
+    assert len(trophies) == 11
     valid = {c[0] for c in CATEGORIES}
     assert all(t["category"] in valid for t in trophies)
     # Tout verrouillé sur des métriques vides.
@@ -56,6 +56,23 @@ def test_tiered_always_shows_next_step():
     assert streak["target"] == 5 and streak["remaining"] == 1
 
 
+def test_last_minute_tiered_levels():
+    m = _empty_metrics()
+    m["last_minute_count"] = 4
+    late = _by_key(evaluate(m))["last_minute"]
+    assert late["unlocked"] is False
+    assert late["target"] == 5 and late["remaining"] == 1
+
+    m["last_minute_count"] = 12
+    late = _by_key(evaluate(m))["last_minute"]
+    assert late["unlocked"] and late["tier"] == "argent"
+    assert late["target"] == 20 and late["next_tier"] == "or"
+
+    m["last_minute_count"] = 35
+    late = _by_key(evaluate(m))["last_minute"]
+    assert late["tier"] == "diamant" and late["target"] is None
+
+
 def test_marathon_top_tier_closes_on_last_match():
     """Le palier DIAMANT de Marathonien = nombre total de matchs de la compétition."""
     m = _empty_metrics()
@@ -76,11 +93,11 @@ def test_all_tiered_reach_diamant_and_chocolate_order():
     assert order == ["chocolat", "bronze", "argent", "or", "diamant"]
     # Métriques très hautes → chaque trophée à paliers doit atteindre "diamant".
     m = {"match_count": 999, "total_matches": 104, "exact": 999, "present_streak": 999,
-         "longest_streak": 999, "draw_correct": 999, "total_played": 0, "total_results": 0,
-         "bonus_king": False, "near_miss": 0, "perfect_day": False}
-    tiered = [t for t in evaluate(m) if t["tier"] is not None or t["target"] is not None]
+         "longest_streak": 999, "draw_correct": 999, "last_minute_count": 999,
+         "total_played": 0, "total_results": 0, "bonus_king": False, "near_miss": 0,
+         "perfect_day": False}
     for t in _by_key(evaluate(m)).values():
-        if t["key"] in ("sniper", "present", "marathon", "streak", "draw_king"):
+        if t["key"] in ("sniper", "present", "marathon", "streak", "draw_king", "last_minute"):
             assert t["tier"] == "diamant", t["key"]
 
 

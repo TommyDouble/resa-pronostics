@@ -1446,7 +1446,8 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     match_count = (await mc_row.fetchone())["cnt"]
     # Success rate
     played_row = await db.execute(
-        """SELECT m.phase, m.score_team1, m.score_team2, m.result, m.qualifier_winner,
+        """SELECT m.id AS match_id,
+                  m.phase, m.score_team1, m.score_team2, m.result, m.qualifier_winner,
                   m.match_date, m.kickoff_time,
                   pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
                   pr.qualifier_prediction
@@ -1492,12 +1493,22 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         and (abs(r["exact_score_team1"] - r["score_team1"])
              + abs(r["exact_score_team2"] - r["score_team2"])) == 1
     )
-    # Journée parfaite : une journée sportive d'au moins 3 matchs joués, tous corrects.
+    # Journée parfaite : une journée sportive d'au moins 3 matchs avec résultat,
+    # tous pronostiqués par le participant et tous corrects.
+    result_rows = await db.execute(
+        """SELECT id AS match_id, match_date, kickoff_time
+           FROM matches
+           WHERE result IS NOT NULL"""
+    )
     by_sday = defaultdict(list)
-    for r in played_predictions:
-        by_sday[sporting_day(r)].append(r)
+    for r in await result_rows.fetchall():
+        row = dict(r)
+        by_sday[sporting_day(row)].append(row["match_id"])
+    predictions_by_match = {r["match_id"]: r for r in played_predictions}
     perfect_day = any(
-        len(day) >= 3 and all(is_match_prediction_correct(r, r) for r in day)
+        len(day) >= 3
+        and all(mid in predictions_by_match for mid in day)
+        and all(is_match_prediction_correct(predictions_by_match[mid], predictions_by_match[mid]) for mid in day)
         for day in by_sday.values()
     )
     # Présent : plus longue série de JOURS de connexion d'affilée (cf.
@@ -1619,42 +1630,60 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         and bonus_rankings[0]["id"] == participant_id
     )
     # Cabinet à trophées (W7) — source unique app.trophies, dérivée sans état.
-    tm_row = await db.execute("SELECT COUNT(*) AS cnt FROM matches")
-    total_matches = (await tm_row.fetchone())["cnt"]
-    trophies = evaluate({
-        "match_count": match_count,
-        "total_matches": total_matches,
-        "present_streak": present_streak,
-        "total_played": total_played,
-        "total_results": total_results,
-        "exact": exact,
-        "bonus_king": bonus_king,
-        "near_miss": near_miss,
-        "longest_streak": longest_streak,
-        "draw_correct": draw_correct,
-        "perfect_day": perfect_day,
-    })
-    trophy_groups = [
-        {"key": ck, "label": cl, "items": [t for t in trophies if t["category"] == ck]}
-        for ck, cl in TROPHY_CATEGORIES
-    ]
-    trophy_summary = summarize(trophies)
-    # Célébration : trophées nouvellement débloqués depuis la dernière visite du
-    # propriétaire (repère seen_trophies). On marque vu dans la foulée.
+    show_trophy_cabinet = not is_limited_view
+    trophies = []
+    trophy_groups = []
+    trophy_summary = {"unlocked_count": 0, "total": 0, "nearest": None, "last_unlocked": None}
     just_unlocked = 0
-    if viewer_id is None:
-        seen = set((p.get("seen_trophies") or "").split(",")) - {""}
-        unlocked_keys = {t["key"] for t in trophies if t["unlocked"]}
-        new_keys = unlocked_keys - seen
+    if show_trophy_cabinet:
+        tm_row = await db.execute("SELECT COUNT(*) AS cnt FROM matches")
+        total_matches = (await tm_row.fetchone())["cnt"]
+        trophies = evaluate({
+            "match_count": match_count,
+            "total_matches": total_matches,
+            "present_streak": present_streak,
+            "total_played": total_played,
+            "total_results": total_results,
+            "exact": exact,
+            "bonus_king": bonus_king,
+            "near_miss": near_miss,
+            "longest_streak": longest_streak,
+            "draw_correct": draw_correct,
+            "last_minute_count": last_minute_count,
+            "perfect_day": perfect_day,
+        })
         for t in trophies:
-            t["just_unlocked"] = t["key"] in new_keys
-        just_unlocked = len(new_keys)
-        if new_keys:
+            t["just_unlocked"] = False
+        trophy_groups = [
+            {"key": ck, "label": cl, "items": [t for t in trophies if t["category"] == ck]}
+            for ck, cl in TROPHY_CATEGORIES
+        ]
+        trophy_summary = summarize(trophies)
+
+    # Célébration : trophées nouvellement débloqués depuis la dernière visite du
+    # propriétaire. Première visite post-déploiement = initialisation silencieuse.
+    if show_trophy_cabinet and viewer_id is None:
+        raw_seen = p.get("seen_trophies")
+        unlocked_keys = {t["key"] for t in trophies if t["unlocked"]}
+        if raw_seen is None:
             await db.execute(
                 "UPDATE participants SET seen_trophies=? WHERE id=?",
                 (",".join(sorted(unlocked_keys)), participant_id),
             )
             await db.commit()
+        else:
+            seen = set(raw_seen.split(",")) - {""}
+            new_keys = unlocked_keys - seen
+            for t in trophies:
+                t["just_unlocked"] = t["key"] in new_keys
+            just_unlocked = len(new_keys)
+            if new_keys:
+                seen |= unlocked_keys
+                await db.execute(
+                    "UPDATE participants SET seen_trophies=? WHERE id=?",
+                    (",".join(sorted(seen)), participant_id),
+                )
+                await db.commit()
     fun_stats = []
     if favorite_pick:
         fun_stats.append({"icon": "❤️", "label": "Équipe la plus jouée gagnante",
@@ -1712,6 +1741,7 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         "trophy_groups": trophy_groups,
         "trophy_summary": trophy_summary,
         "trophies_just_unlocked": just_unlocked,
+        "show_trophy_cabinet": show_trophy_cabinet,
         "fun_stats": [] if is_limited_view else fun_stats,
         "comparison": comparison,
     }

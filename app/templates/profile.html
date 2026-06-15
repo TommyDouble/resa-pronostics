@@ -133,6 +133,7 @@
   </div>
   {% endif %}
 
+  {% if profile.show_trophy_cabinet %}
   <!-- Cabinet à trophées -->
   <div class="card cabinet" data-cabinet{% if profile.trophies_just_unlocked %} data-confetti{% endif %}>
     <div class="cab-head">
@@ -170,6 +171,7 @@
     </div>
     {% endfor %}
   </div>
+  {% endif %}
 
   <!-- Stats fun -->
   {% if profile.fun_stats %}

@@ -83,10 +83,11 @@ def _simple(key, icon, label, category, unlocked, desc, *,
 
 
 def evaluate(m: dict) -> list[dict]:
-    """Construit la liste des trophées v1 (~10) à partir des métriques.
+    """Construit la liste des trophées v1 (~11) à partir des métriques.
 
     Métriques attendues : match_count, present_streak, total_played, total_results,
-    exact, bonus_king, near_miss, longest_streak, draw_correct, perfect_day.
+    exact, bonus_king, near_miss, longest_streak, draw_correct, last_minute_count,
+    perfect_day.
     """
     g = lambda k, d=0: m.get(k, d)
     # Marathonien : le palier OR se clôture sur le dernier match de la compétition
@@ -129,6 +130,10 @@ def evaluate(m: dict) -> list[dict]:
                 g("draw_correct"),
                 [(3, "bronze"), (6, "argent"), (10, "or"), (15, "diamant")],
                 "matchs nuls trouvés"),
+        _tiered("last_minute", "⏱️", "Dernière minute", "caractere",
+                g("last_minute_count"),
+                [(5, "bronze"), (10, "argent"), (20, "or"), (35, "diamant")],
+                "pronos dans l'heure avant coup d'envoi"),
         # — Secret —
         _simple("perfect_day", "✨", "Journée parfaite", "caractere",
                 g("perfect_day"),

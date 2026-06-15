@@ -2129,6 +2129,21 @@ body.story-locked { overflow: hidden; }
 .sm-rank-delta { margin-top: 2px; }
 
 /* Maquettes story « Cabinet à trophées » */
+.sm-home-trophy { gap: 9px; }
+.sm-trophy-entry {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 12px; border-radius: var(--r-card);
+  background: #fff; border: 1px solid var(--line); box-shadow: var(--sh);
+}
+.sm-trophy-ico { font-size: 20px; }
+.sm-trophy-body { flex: 1; display: flex; flex-direction: column; line-height: 1.18; }
+.sm-trophy-body b { font-size: 13px; font-weight: 800; color: var(--n900); }
+.sm-trophy-body small { font-size: 10.5px; color: var(--n600); }
+.sm-trophy-go {
+  font-family: var(--display); font-size: 10.5px; font-weight: 800;
+  color: var(--primary); border: 1px solid var(--line); border-radius: var(--pill);
+  padding: 4px 7px; background: var(--paper);
+}
 .sm-cabinet { gap: 6px; transform: rotate(-1.2deg); }
 .sm-shelf-lbl { font-family: var(--sketch); font-size: 16px; color: var(--n600); text-align: left; }
 .sm-troph-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
