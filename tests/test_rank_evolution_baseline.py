@@ -12,6 +12,7 @@ import contextlib
 from pathlib import Path
 import uuid
 
+import app.routers.pages as page_routes
 from app.database import get_db
 from app.scoring import (
     get_latest_finalized_climbers,
@@ -91,6 +92,11 @@ def _participant_token(participant_id):
             return (await row.fetchone())["token"]
 
     return run(_query())
+
+
+def _evolution_header(html):
+    start = html.index('class="evo-ref')
+    return html[start:html.index("</div>", start)]
 
 
 def _make_match(number, match_date, kickoff="18:00", encoded=True,
@@ -241,10 +247,14 @@ def test_climber_stays_on_last_finalized_day_while_next_day_is_live(client):
         assert _sync_history()["day"] == "2035-05-01"
 
         html = client.get(f"/p/{_participant_token(a)}/classement").text
+        evolution_header = _evolution_header(html)
         assert 'class="evo-ref is-progress"' in html
         assert 'class="evo-ref-status"' in html
-        assert 'class="evo-ref-day"' in html
-        assert 'class="evo-ref-progress">1/2 résultats encodés' in html
+        assert "Actualisé après" in evolution_header
+        assert "France" in evolution_header and "Brésil" in evolution_header
+        assert "1–0" in evolution_header
+        assert "résultats encodés" not in evolution_header
+        assert "evo-ref-day" not in evolution_header
 
         async def _finish():
             async with get_db() as db:
@@ -276,6 +286,19 @@ def test_climber_banner_lists_its_sporting_day_matches(client):
             970026, "2035-06-02", "02:00",
             team1="Japon", team2="Maroc",
         )
+
+        async def _make_overnight_knockout():
+            async with get_db() as db:
+                await db.execute(
+                    """UPDATE matches
+                       SET phase='round_of_16', result='draw', score_team1=2,
+                           score_team2=2, qualifier_winner='team2'
+                       WHERE id=?""",
+                    (overnight,),
+                )
+                await db.commit()
+
+        run(_make_overnight_knockout())
         _award(a, prior, 0); _award(b, prior, 8); _award(c, prior, 6)
         _award(a, evening, 8); _award(b, evening, 0); _award(c, evening, 0)
         _award(a, overnight, 8); _award(b, overnight, 0); _award(c, overnight, 0)
@@ -287,17 +310,23 @@ def test_climber_banner_lists_its_sporting_day_matches(client):
         assert "Fusée Liste" in html
         assert "vendredi 1 juin" in html
         assert 'class="chip up ch-delta">▲ 2 places</span>' in html
-        assert "Une journée sportive commence à 9 h et se termine juste avant 9 h le lendemain." in html
-        assert "• vendredi 20:00 · Canada – Qatar" in html
-        assert "• samedi 04:00 · Japon – Maroc" in html
-        assert "9 h–8 h 59" not in html
-        assert 'data-tip="Grimpeur de la journée sportive du vendredi 1 juin"' in html
+        assert 'data-tooltip-content="climber-day-tooltip"' in html
+        assert '<template id="climber-day-tooltip">' in html
+        assert "Pourquoi ce Grimpeur ?" in html
+        assert "Ce titre récompense la meilleure progression au classement" in html
+        assert "Journée sportive du vendredi 1 juin" in html
+        assert "Du vendredi 1 juin à 9 h au samedi 2 juin à 8 h 59" in html
+        assert "2 matchs pris en compte" in html
+        assert "Canada" in html and "Qatar" in html and "1–0" in html
+        assert "Japon" in html and "Maroc" in html and "2–2" in html
+        assert "Maroc qualifié" in html
 
 
 def test_climber_card_groups_tied_names(client):
     with isolated_match_state():
         first = _make_participant("Alpha Longnom")
         second = _make_participant("Beta Longnom")
+        _make_match(970027, "2035-06-18")
 
         async def _seed_tie():
             async with get_db() as db:
@@ -317,15 +346,89 @@ def test_climber_card_groups_tied_names(client):
         assert "Grimpeurs · dernière journée finalisée" in html
         assert "Alpha Longnom · Beta Longnom" in html
         assert 'class="chip up ch-delta">▲ 3 places</span>' in html
+        assert "Pourquoi ces Grimpeurs ?" in html
+        assert "En cas d’égalité, il est partagé." in html
 
 
-def test_ranking_responsive_css_has_small_screen_two_row_fallback():
+def test_ranking_live_header_and_rich_tooltip_css_contract():
     source = Path("app/static/css/resa.css").read_text()
 
-    assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in source
-    assert "@media (max-width: 340px)" in source
-    assert '"status status"' in source
-    assert '"day progress"' in source
+    assert ".evo-ref.is-progress" in source
+    assert "flex-direction: column;" in source
+    assert ".evo-ref-last" in source
+    assert ".floating-tooltip.rich" in source
+    assert ".climber-tooltip-match" in source
+
+
+def test_tooltip_player_keeps_plain_text_and_supports_trusted_templates():
+    source = Path("app/static/js/resa.js").read_text()
+
+    assert "trigger.getAttribute('data-tip')" in source
+    assert "bubble.textContent = text" in source
+    assert "trigger.getAttribute('data-tooltip-content')" in source
+    assert "source.content.cloneNode(true)" in source
+
+
+def test_live_header_uses_latest_encoded_kickoff_and_qualifier(client):
+    with isolated_match_state():
+        a = _make_participant("Live Alpha")
+        b = _make_participant("Live Beta")
+        early = _make_match(
+            970028, "2035-07-01", "18:00",
+            team1="Canada", team2="Qatar",
+        )
+        latest = _make_match(
+            970029, "2035-07-01", "20:00",
+            team1="États-Unis", team2="Australie",
+        )
+        _make_match(970030, "2035-07-02", "02:00", encoded=False)
+
+        async def _make_latest_knockout():
+            async with get_db() as db:
+                await db.execute(
+                    """UPDATE matches
+                       SET phase='round_of_16', result='draw', score_team1=1,
+                           score_team2=1, qualifier_winner='team2'
+                       WHERE id=?""",
+                    (latest,),
+                )
+                await db.commit()
+
+        run(_make_latest_knockout())
+        _award(a, early, 2); _award(b, early, 0)
+        _award(a, latest, 0); _award(b, latest, 4)
+
+        html = client.get(f"/p/{_participant_token(a)}/classement").text
+        evolution_header = _evolution_header(html)
+
+        assert "Actualisé après" in evolution_header
+        assert "États-Unis" in evolution_header
+        assert "1–1" in evolution_header
+        assert "Australie" in evolution_header
+        assert "Australie qualifié" in evolution_header
+        assert "Canada" not in evolution_header
+        assert "résultats encodés" not in evolution_header
+
+
+def test_live_header_has_safe_fallback_without_match_details(
+    client, monkeypatch,
+):
+    with isolated_match_state():
+        participant = _make_participant("Fallback Alpha")
+        opponent = _make_participant("Fallback Beta")
+        encoded = _make_match(970031, "2035-08-01", "18:00")
+        _make_match(970032, "2035-08-01", "20:00", encoded=False)
+        _award(participant, encoded, 2); _award(opponent, encoded, 0)
+
+        async def _no_details(db, day):
+            return []
+
+        monkeypatch.setattr(page_routes, "_sporting_day_match_details", _no_details)
+        html = client.get(f"/p/{_participant_token(participant)}/classement").text
+        evolution_header = _evolution_header(html)
+
+        assert "Évolution en cours" in evolution_header
+        assert "Classement actualisé avec les résultats encodés" in evolution_header
 
 
 def test_late_correction_replaces_persisted_climber(client):
