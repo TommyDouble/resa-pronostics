@@ -832,6 +832,9 @@ async def participant_home(request: Request, token: str):
         next_match = dict(next_match) if next_match else None
         if next_match:
             next_match["kickoff_ts"] = int(match_kickoff_utc(next_match).timestamp())
+        next_match_in_today = bool(
+            next_match and any(m["id"] == next_match["id"] for m in today_matches)
+        )
         # Mini ranking (top 3 + self) + nearest rivals
         rankings = await get_rankings(db)
         mini_rank = rankings[:3]
@@ -848,9 +851,6 @@ async def participant_home(request: Request, token: str):
                 elif r["total_points"] < my_points and rival_behind is None:
                     rival_behind = {"name": r["name"], "gap": my_points - r["total_points"]}
                     break
-        # Encoded count
-        encoded_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE result IS NOT NULL")
-        encoded_count = (await encoded_row.fetchone())["cnt"]
         # (Le récap « nuit » dérive désormais du Reveal — cf. reveal_* plus haut —
         # pour rester aligné sur la journée sportive et cohérent avec l'animation.)
         # Pre-tournament status
@@ -871,11 +871,11 @@ async def participant_home(request: Request, token: str):
             "urgency": urgency,
             "unpredicted_today": unpredicted_today,
             "next_match": next_match,
+            "next_match_in_today": next_match_in_today,
             "all_caught_up": all_caught_up,
             "mini_rank": mini_rank,
             "rival_ahead": rival_ahead,
             "rival_behind": rival_behind,
-            "encoded_count": encoded_count,
             "pt_complete": pt_status["complete"],
             "pt_filled_count": pt_status["filled_count"],
             "pt_question_count": pt_status["question_count"],
