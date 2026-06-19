@@ -34,7 +34,7 @@
     <h2>{{ urgency.team1_name|team }} – {{ urgency.team2_name|team }}</h2>
     <div class="sub">
       ⏳ <span class="countdown" data-countdown="{{ urgency.kickoff_ts }}">...</span>{% if urgency.is_top_match %} · ★ Top Match ×2{% endif %}
-      {% if unpredicted_today > 1 %} · {{ unpredicted_today }} matchs du jour à compléter{% endif %}
+      {% if unpredicted_today > 1 %} · {{ unpredicted_today }} matchs de la journée sportive à compléter{% endif %}
     </div>
     <a href="/p/{{ token }}/pronos?match={{ urgency.id }}#match-{{ urgency.id }}" class="btn white full" style="margin-top:10px;">Compléter maintenant</a>
   </div>
@@ -65,7 +65,7 @@
   <div class="card home-cta">
     <div>
       <div class="lbl">Prochaine action</div>
-      <p>{{ unpredicted_today }} match{{ 's' if unpredicted_today > 1 else '' }} d'aujourd'hui encore sans score.</p>
+      <p>{{ unpredicted_today }} match{{ 's' if unpredicted_today > 1 else '' }} de la journée sportive encore sans score.</p>
     </div>
     <a href="/p/{{ token }}/pronos" class="btn sm">Compléter</a>
   </div>
@@ -103,8 +103,10 @@
   <a href="/p/{{ token }}/reveal" class="reveal-entry">
     <span class="re-ico">🎬</span>
     <div class="re-body">
-      <span class="re-title">Le Reveal du jour est prêt</span>
-      <span class="re-sub">{{ reveal_day_label }} · découvre tes <b>+{{ reveal_points }} pts</b></span>
+      <span class="re-title">{{ 'Ton rattrapage est prêt' if reveal_is_catchup else 'Le Reveal du jour est prêt' }}</span>
+      <span class="re-sub">
+        {% if reveal_is_catchup %}Depuis ta dernière visite · {{ reveal_day_count }} journées · {{ reveal_match_count }} matchs · {% else %}{{ reveal_day_label }} · découvre tes {% endif %}<b>+{{ reveal_points }} pts</b>
+      </span>
     </div>
     <span class="re-go">▶</span>
   </a>
@@ -132,7 +134,9 @@
     <div>
       <div class="lbl">{{ reveal_day_label }}</div>
       <div class="y-pts">+{{ reveal_points }} pts</div>
-      <div class="muted" style="font-size:12.5px;">sur {{ reveal_match_count }} match{{ 's' if reveal_match_count > 1 else '' }}</div>
+      <div class="muted" style="font-size:12.5px;">
+        {% if reveal_is_catchup %}{{ reveal_day_count }} journées · {% endif %}sur {{ reveal_match_count }} match{{ 's' if reveal_match_count > 1 else '' }}
+      </div>
     </div>
     {% if reveal_evolution is not none %}
     <div class="y-evo">
@@ -150,7 +154,10 @@
 
   {% if today_matches %}
   <div>
-    <div class="lbl" style="margin-bottom:8px;">Matchs du jour</div>
+    <div class="lbl" style="margin-bottom:8px;">
+      Matchs de la journée sportive · {{ sporting_day_label }}
+      <span class="help-tip" tabindex="0" data-tip="{{ sporting_day_help }}">?</span>
+    </div>
     <div class="card p0">
       {% for m in today_matches %}
       {% if m.is_locked %}
@@ -175,9 +182,9 @@
             {% elif m.is_locked and m.result %}
               Terminé
             {% elif m.is_top_match %}
-              <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span> · ★ Top ×2
+              {% if m.is_overnight %}{{ m.calendar_day_label }} · {% endif %}<span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span> · ★ Top ×2
             {% else %}
-              <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span> · ×{{ m.weight }}
+              {% if m.is_overnight %}{{ m.calendar_day_label }} · {% endif %}<span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span> · ×{{ m.weight }}
             {% endif %}
           </div>
         </div>
@@ -230,7 +237,7 @@
     <div>
       <div class="lbl">🏆 Cabinet à trophées</div>
       {% if trophy_unlocked_count is defined and trophy_unlocked_count > 0 %}
-      <p>{{ trophy_unlocked_count }}/11 trophées débloqués — continue à jouer pour en décrocher d'autres !</p>
+      <p>{{ trophy_unlocked_count }}/12 trophées débloqués — continue à jouer pour en décrocher d'autres !</p>
       {% else %}
       <p>Tes trophées débloqués et ceux à portée de main — va voir où tu en es.</p>
       {% endif %}

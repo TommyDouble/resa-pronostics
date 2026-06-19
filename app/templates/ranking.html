@@ -76,10 +76,18 @@
   <div class="climber-hero">
     <span class="ch-rocket">🚀</span>
     <div class="ch-body">
-      <span class="ch-label">Grimpeur{{ 's' if climbers|length > 1 else '' }} du jour</span>
+      <span class="ch-label">Grimpeur{{ 's' if climbers|length > 1 else '' }} de la dernière journée finalisée</span>
       <span class="ch-name">
         {% for c in climbers %}{{ c.name }}{% if not loop.last %} · {% endif %}{% endfor %}
       </span>
+      <small class="ch-day">
+        Journée sportive du {{ climber_day_label }}
+        {% if climber_day_help %}
+        <span class="help-tip climber-day-help" tabindex="0" role="button"
+              aria-label="Détails de cette journée sportive"
+              data-tip="{{ climber_day_help }}">?</span>
+        {% endif %}
+      </small>
     </div>
     <span class="ch-delta">▲{{ climber_delta }}<small>place{{ 's' if climber_delta > 1 else '' }}</small></span>
   </div>
@@ -113,7 +121,11 @@
     {% if view == 'general' and evolution_day_label %}
     <div class="evo-ref">
       <span class="evo-ref-ico">📈</span>
-      Évolution sur la journée du <b>{{ evolution_day_label }}</b>
+      {% if evolution_status == 'in_progress' %}
+        Évolution en cours · <b>{{ evolution_day_label }}</b> · {{ evolution_encoded_count }}/{{ evolution_match_count }} résultats encodés
+      {% else %}
+        Évolution sur la journée sportive du <b>{{ evolution_day_label }}</b>
+      {% endif %}
     </div>
     {% endif %}
     {% for r in rankings %}
@@ -121,7 +133,7 @@
       <span class="rk">{{ r.rank }}</span>
       {{ avatar(r.avatar_path, r.name, r.id) }}
       <div class="nm">
-        {{ r.name }}{% if r.is_climber %} <span class="climber-mark" title="Grimpeur du jour">🚀</span>{% endif %}
+        {{ r.name }}{% if r.is_climber %} <span class="climber-mark tip" tabindex="0" data-tip="{{ r.climber_tip }}">🚀</span>{% endif %}{% if r.trophy_count %} <span class="trophy-pill">🏆{{ r.trophy_count }}</span>{% endif %}
         {% if r.full_name and r.full_name != r.name %}
           <small>{{ r.full_name }}{% if r.is_me %} · c'est toi{% endif %}</small>
         {% elif r.is_me %}

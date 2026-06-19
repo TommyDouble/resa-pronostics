@@ -86,7 +86,7 @@ async def notify_daily_recap(db, participant: dict, recap: dict):
         evo = ""
     await _push_or_email(
         db, participant,
-        title=f"📊 Hier: +{recap['points']} pts{evo}",
+        title=f"📊 {recap['date_label'].capitalize()}: +{recap['points']} pts{evo}",
         body=f"Tu es {recap['rank']}e au général. Top 3: "
              + ", ".join(name for name, _ in recap.get("top3", [])[:3]),
         url_path=f"/p/{participant['token']}/classement",

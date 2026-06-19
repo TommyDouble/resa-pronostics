@@ -199,6 +199,21 @@ CREATE TABLE IF NOT EXISTS ranking_snapshots (
   UNIQUE(snapshot_date, participant_id)
 );
 
+CREATE TABLE IF NOT EXISTS sporting_day_rank_evolutions (
+  sporting_day  TEXT    NOT NULL,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  points_before INTEGER NOT NULL,
+  day_points    INTEGER NOT NULL,
+  points_after  INTEGER NOT NULL,
+  rank_before   INTEGER NOT NULL,
+  rank_after    INTEGER NOT NULL,
+  delta         INTEGER NOT NULL,
+  is_climber    INTEGER NOT NULL DEFAULT 0,
+  finalized_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (sporting_day, participant_id)
+);
+
 CREATE TABLE IF NOT EXISTS news_items (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   slug         TEXT    NOT NULL UNIQUE,
@@ -226,6 +241,19 @@ CREATE INDEX IF NOT EXISTS idx_participants_token ON participants(token);
 CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_participant ON predictions(participant_id);
 CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
+CREATE INDEX IF NOT EXISTS idx_sporting_evo_climber
+  ON sporting_day_rank_evolutions(sporting_day, is_climber);
+
+CREATE TABLE IF NOT EXISTS trophy_awards (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  trophy_key     TEXT    NOT NULL,
+  tier           TEXT    NOT NULL DEFAULT '_',
+  awarded_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(participant_id, trophy_key, tier)
+);
+CREATE INDEX IF NOT EXISTS idx_trophy_awards_participant
+  ON trophy_awards(participant_id);
         """)
         await db.commit()
 
@@ -248,6 +276,8 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
             "last_visit_date TEXT",
             "visit_streak INTEGER NOT NULL DEFAULT 0",
             "best_visit_streak INTEGER NOT NULL DEFAULT 0",
+            "last_connected_sporting_day TEXT",
+            "reveal_connection_baseline_day TEXT",
         ]
         for column in participant_columns:
             try:
@@ -339,6 +369,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await ensure_default_settings(db)
         await ensure_news_defaults(db)
         await _migrate_reveal_sporting_day(db)
+        await _backfill_trophy_awards(db)
         await db.commit()
 
 
@@ -369,13 +400,29 @@ async def _migrate_reveal_sporting_day(db):
     )
 
 
+async def _backfill_trophy_awards(db):
+    """One-shot : peuple trophy_awards depuis les données existantes."""
+    key = "migr_backfill_trophy_awards_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+    from app.trophies import refresh_trophy_awards
+    await refresh_trophy_awards(db)
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
 async def ensure_news_defaults(db):
     """Seed des nouveautés livrées avec leur feature (registre app.news)."""
     from app.news import NEWS_DEFAULTS
     for item in NEWS_DEFAULTS:
         await db.execute(
             """INSERT INTO news_items (slug, title, body, icon, template_key, sort_order, is_published)
-               VALUES (:slug, :title, :body, :icon, :template_key, :sort_order, 1)
+               VALUES (:slug, :title, :body, :icon, :template_key, :sort_order, :is_published)
                ON CONFLICT(slug) DO NOTHING""",
             item,
         )

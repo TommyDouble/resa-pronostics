@@ -14,6 +14,7 @@ Ajouter une story = (1) une entrée dans STORY_TEMPLATES, (2) le partial des
 STORY_TEMPLATES = {
     "reveal_promo": "Promo « Reveal du jour »",
     "cabinet_promo": "Promo « Cabinet à trophées »",
+    "sporting_day_update": "Journées sportives et évolutions",
 }
 
 
@@ -26,11 +27,23 @@ NEWS_DEFAULTS = [
     {
         "slug": "reveal-du-jour",
         "title": "Le Reveal du jour",
-        "body": "Chaque matin, tes points de la veille se dévoilent carte par carte — "
-                "et c'est la fête sur tes scores exacts. 🎉",
+        "body": "Quand les résultats sont prêts, tes points depuis ta dernière visite "
+                "se dévoilent carte par carte. 🎉",
         "icon": "🎬",
         "template_key": "reveal_promo",
         "sort_order": 10,
+        "is_published": 1,
+    },
+    {
+        "slug": "journees-sportives-apres-minuit",
+        "title": "Tes journées, même après minuit",
+        "body": "Les matchs de la nuit restent ensemble, ton classement évolue en direct "
+                "et le dernier grimpeur garde son titre jusqu'à la journée suivante.",
+        "icon": "🌙",
+        "template_key": "sporting_day_update",
+        "sort_order": 20,
+        # Disponible dans l'écran Nouveautés, mais laissée au choix du PO.
+        "is_published": 0,
     },
     {
         "slug": "cabinet-trophees",
@@ -40,5 +53,6 @@ NEWS_DEFAULTS = [
         "icon": "🏆",
         "template_key": "cabinet_promo",
         "sort_order": 20,
+        "is_published": 0,
     },
 ]

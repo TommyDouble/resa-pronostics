@@ -41,19 +41,23 @@
 </div>
 {% else %}
 
-<div class="rv-root" data-reveal data-match-count="{{ reveal.match_count }}">
+<div class="rv-root" data-reveal data-match-count="{{ reveal.match_count }}" data-reveal-day="{{ reveal.sporting_day }}">
 
   {# Intro #}
   <section class="rv-stage rv-intro" data-reveal-stage>
     <div class="story-hero-ico">🎬</div>
-    <h1 class="story-lead">Le Reveal du jour</h1>
-    <p class="story-cap">Nuit du {{ reveal.day_label }} · {{ reveal.match_count }} match{{ 's' if reveal.match_count > 1 else '' }}</p>
+    <h1 class="story-lead">{{ 'Ton rattrapage' if reveal.is_catchup else 'Le Reveal du jour' }}</h1>
+    <p class="story-cap">
+      {% if reveal.is_catchup %}Depuis ta dernière visite · {{ reveal.day_count }} journées · {% else %}Journée sportive du {{ reveal.day_label }} · {% endif %}{{ reveal.match_count }} match{{ 's' if reveal.match_count > 1 else '' }}
+    </p>
     <p class="rv-tap-hint">tape pour démarrer ▶</p>
   </section>
 
   {# Un écran par match : prono puis résultat + points #}
-  {% for m in reveal.matches %}
+  {% for day in reveal.days %}
+  {% for m in day.matches %}
   <section class="rv-stage rv-match" data-reveal-stage data-reveal-match data-exact="{{ '1' if m.tier == 'exact' else '0' }}">
+    <div class="rv-plabel">Journée sportive du {{ day.day_label }}{% if m.is_overnight %} · {{ m.calendar_day_label }} {{ m|match_time }}{% endif %}</div>
     <div class="rv-match-head">{{ m.team1_name|team }} <span>—</span> {{ m.team2_name|team }}</div>
 
     <div class="rv-phase rv-pred">
@@ -81,13 +85,24 @@
     <div class="rv-cont-hint">tape pour continuer ▸</div>
   </section>
   {% endfor %}
+  {% if reveal.is_catchup %}
+  <section class="rv-stage rv-final" data-reveal-stage>
+    <div class="story-hero-ico">📅</div>
+    <h2 class="story-lead">+{{ day.total_points }} pts</h2>
+    <p class="story-cap">Journée sportive du {{ day.day_label }} · {{ day.match_count }} match{{ 's' if day.match_count > 1 else '' }}</p>
+    <div class="rv-cont-hint">tape pour continuer ▸</div>
+  </section>
+  {% endif %}
+  {% endfor %}
 
   {# Évolution du classement, focus participant #}
   {% set evo = reveal.evolution %}
   {% if evo and evo.after %}
   <section class="rv-stage rv-rank" data-reveal-stage data-reveal-rank
            data-delta="{{ evo.delta }}" data-moved="{{ '1' if evo.moved else '0' }}">
-    <div class="rv-plabel">{% if evo.delta > 0 %}Ton ascension 🚀{% elif evo.delta < 0 %}Aïe, ça glisse 😅{% else %}Ton classement{% endif %}</div>
+    <div class="rv-plabel">
+      {% if reveal.is_catchup %}Ton évolution depuis ta dernière visite{% elif evo.delta > 0 %}Ton ascension sur cette journée 🚀{% elif evo.delta < 0 %}Ton évolution sur cette journée 😅{% else %}Ton classement sur cette journée{% endif %}
+    </div>
 
     {% if evo.moved %}
     {# 5 slots fixes : MOI toujours au centre (index 2).
@@ -150,7 +165,7 @@
   <section class="rv-stage rv-final" data-reveal-stage data-reveal-final>
     <div class="story-hero-ico">{{ '🎉' if reveal.exact_count else '✅' }}</div>
     <h2 class="story-lead">+{{ reveal.total_points }} pts</h2>
-    <p class="story-cap">sur {{ reveal.match_count }} match{{ 's' if reveal.match_count > 1 else '' }}{% if reveal.exact_count %} · {{ reveal.exact_count }} score{{ 's' if reveal.exact_count > 1 else '' }} exact{{ 's' if reveal.exact_count > 1 else '' }} 🎯{% endif %}</p>
+    <p class="story-cap">{% if reveal.is_catchup %}Depuis ta dernière visite · {{ reveal.day_count }} journées · {% else %}{{ reveal.day_label }} · {% endif %}sur {{ reveal.match_count }} match{{ 's' if reveal.match_count > 1 else '' }}{% if reveal.exact_count %} · {{ reveal.exact_count }} score{{ 's' if reveal.exact_count > 1 else '' }} exact{{ 's' if reveal.exact_count > 1 else '' }} 🎯{% endif %}</p>
     <div class="rv-cta">
       <a class="btn full" href="/p/{{ token }}/classement">Voir le classement</a>
       <a class="btn ghost full" href="/p/{{ token }}/pronos">Voir mes pronos</a>

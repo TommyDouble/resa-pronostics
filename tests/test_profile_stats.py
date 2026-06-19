@@ -157,15 +157,16 @@ def test_trophy_cabinet_uses_stable_svg_emblems_without_tier_emoji(client):
         "streak",
         "draw_king",
         "last_minute",
+        "climber",
         "perfect_day",
         "lock",
     ):
         assert f'id="trophy-symbol-{symbol}"' in html
         assert f'id="trophy-symbol-mask-{symbol}"' in html
         assert f'/static/img/trophy-silhouettes/{symbol}.png' in html
-    assert cabinet.count('class="trophy ') == 11
-    assert cabinet.count('class="trophy-emblem-frame"') == 11
-    assert cabinet.count('class="trophy-symbol ') == 11
+    assert cabinet.count('class="trophy ') == 12
+    assert cabinet.count('class="trophy-emblem-frame"') == 12
+    assert cabinet.count('class="trophy-symbol ') == 12
     assert 'href="#trophy-symbol-first_step"' in cabinet
     assert 'href="#trophy-symbol-sniper"' in cabinet
     assert 'href="#trophy-symbol-lock"' in cabinet

@@ -2,8 +2,10 @@
 import uuid
 from datetime import datetime, timedelta
 
+import app.scheduler as scheduler
 from app.database import get_db
 from app.scheduler import run_pending_notifications
+from app.scoring import sync_finalized_evolution_history
 from app.timeutils import DISPLAY_TZ, local_today, now_utc
 from tests.conftest import run
 
@@ -77,12 +79,12 @@ def make_match_yesterday_with_result(number):
     return run(_create())
 
 
-def get_snapshots(participant_id, snapshot_date):
+def get_sporting_evolution(participant_id, sporting_day):
     async def _get():
         async with get_db() as db:
             rows = await db.execute(
-                "SELECT * FROM ranking_snapshots WHERE participant_id=? AND snapshot_date=?",
-                (participant_id, snapshot_date),
+                "SELECT * FROM sporting_day_rank_evolutions WHERE participant_id=? AND sporting_day=?",
+                (participant_id, sporting_day),
             )
             return [dict(r) for r in await rows.fetchall()]
 
@@ -171,18 +173,71 @@ def test_lock_escalation_2h_then_1h(client):
     assert len(get_log(p["id"], "enc_1h")) == 1
 
 
-def test_snapshot_capture_idempotent(client):
+def test_sporting_day_history_sync_is_idempotent(client):
     p = make_participant()
     make_match_yesterday_with_result(910020)
     yesterday = local_today(-1).isoformat()
     afternoon = now_utc().astimezone(DISPLAY_TZ).replace(hour=14, minute=0)
 
-    run(run_pending_notifications(now_local=afternoon))
-    assert len(get_snapshots(p["id"], yesterday)) == 1
+    async def _sync():
+        async with get_db() as db:
+            await sync_finalized_evolution_history(db)
+            await db.commit()
 
+    run(_sync())
     run(run_pending_notifications(now_local=afternoon))
-    assert len(get_snapshots(p["id"], yesterday)) == 1
+    assert len(get_sporting_evolution(p["id"], yesterday)) == 1
 
+    run(_sync())
+    run(run_pending_notifications(now_local=afternoon))
+    assert len(get_sporting_evolution(p["id"], yesterday)) == 1
+
+
+def test_daily_recap_uses_one_finalized_sporting_day(client, monkeypatch):
+    p = make_participant()
+    recap_day = "2099-01-01"
+
+    async def _seed_and_sync():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time, team1_name, team2_name,
+                    weight, score_team1, score_team2, result)
+                   VALUES (910021, 'group', ?, '12:00:00', 'France', 'Brésil', 1, 2, 0, 'team1')""",
+                (recap_day,),
+            )
+            mid = cursor.lastrowid
+            await db.execute(
+                "INSERT INTO scores (participant_id, match_id, points) VALUES (?,?,4)",
+                (p["id"], mid),
+            )
+            await sync_finalized_evolution_history(db)
+            await db.commit()
+    run(_seed_and_sync())
+
+    captured = {}
+
+    async def _capture(db, participant, recap):
+        if participant["id"] == p["id"]:
+            captured.update(recap)
+
+    monkeypatch.setattr(scheduler, "notify_daily_recap", _capture)
+    afternoon = now_utc().astimezone(DISPLAY_TZ).replace(hour=14, minute=0)
+    run(run_pending_notifications(now_local=afternoon))
+
+    assert captured["points"] == 4
+    assert captured["match_count"] >= 1
+    assert captured["date_label"]
+    assert [row["ref"] for row in get_log(p["id"], "daily_recap")] == [recap_day]
+
+    async def _cleanup():
+        async with get_db() as db:
+            await db.execute("DELETE FROM matches WHERE match_number=910021")
+            await db.execute(
+                "DELETE FROM sporting_day_rank_evolutions WHERE sporting_day=?", (recap_day,)
+            )
+            await db.commit()
+    run(_cleanup())
 
 def test_pre_tournament_reminder_when_deadline_close(client):
     p = make_participant()

@@ -15,12 +15,13 @@ def _empty_metrics():
         "match_count": 0, "present_streak": 0, "total_played": 0, "total_results": 0,
         "exact": 0, "bonus_points": 0, "near_miss": 0, "longest_streak": 0,
         "draw_correct": 0, "last_minute_count": 0, "perfect_day": False,
+        "climber_count": 0,
     }
 
 
 def test_evaluate_shape_and_categories():
     trophies = evaluate(_empty_metrics())
-    assert len(trophies) == 11
+    assert len(trophies) == 12
     valid = {c[0] for c in CATEGORIES}
     assert all(t["category"] in valid for t in trophies)
     # Tout verrouillé sur des métriques vides.
@@ -95,10 +96,31 @@ def test_all_tiered_reach_diamant_and_chocolate_order():
     m = {"match_count": 999, "total_matches": 104, "exact": 999, "present_streak": 999,
          "longest_streak": 999, "draw_correct": 999, "last_minute_count": 999,
          "total_played": 0, "total_results": 0, "bonus_points": 999, "near_miss": 0,
-         "perfect_day": False}
+         "perfect_day": False, "climber_count": 999}
     for t in _by_key(evaluate(m)).values():
-        if t["key"] in ("sniper", "present", "marathon", "streak", "draw_king", "last_minute", "bonus_king"):
+        if t["key"] in ("sniper", "present", "marathon", "streak", "draw_king", "last_minute", "bonus_king", "climber"):
             assert t["tier"] == "diamant", t["key"]
+
+
+def test_climber_tiered_levels():
+    m = _empty_metrics()
+    c = _by_key(evaluate(m))["climber"]
+    assert c["unlocked"] is False
+    assert c["category"] == "adresse"
+    assert c["target"] == 1 and c["remaining"] == 1
+
+    m["climber_count"] = 1
+    c = _by_key(evaluate(m))["climber"]
+    assert c["unlocked"] and c["tier"] == "chocolat"
+    assert c["target"] == 3 and c["next_tier"] == "bronze"
+
+    m["climber_count"] = 5
+    c = _by_key(evaluate(m))["climber"]
+    assert c["tier"] == "argent" and c["target"] == 8
+
+    m["climber_count"] = 12
+    c = _by_key(evaluate(m))["climber"]
+    assert c["tier"] == "diamant" and c["target"] is None
 
 
 def test_secret_perfect_day_hidden_until_unlocked():
@@ -156,3 +178,131 @@ def test_visit_streak_consecutive_idempotent_and_reset(participant):
     visit(older, 9, 9)             # trou de plusieurs jours → reset à 1, best conservé
     s = state()
     assert s["visit_streak"] == 1 and s["best_visit_streak"] == 9
+
+
+# --- Tests refresh_trophy_awards ---
+
+def _make_match_and_predict(pid, number, result="team1", score1=2, score2=1,
+                            pred="team1", ps1=2, ps2=1, match_date="2000-01-01"):
+    async def _create():
+        async with get_db() as db:
+            cur = await db.execute(
+                """INSERT INTO matches (match_number, phase, match_date, kickoff_time,
+                   team1_name, team2_name, weight, score_team1, score_team2, result)
+                   VALUES (?, 'group', ?, '12:00', 'A', 'B', 1, ?, ?, ?)""",
+                (number, match_date, score1, score2, result),
+            )
+            mid = cur.lastrowid
+            await db.execute(
+                """INSERT INTO predictions (participant_id, match_id, prediction,
+                   exact_score_team1, exact_score_team2)
+                   VALUES (?,?,?,?,?)""",
+                (pid, mid, pred, ps1, ps2),
+            )
+            await db.commit()
+            return mid
+    return run(_create())
+
+
+def _get_awards(pid):
+    async def _q():
+        async with get_db() as db:
+            rows = await db.execute(
+                "SELECT trophy_key, tier FROM trophy_awards WHERE participant_id=? ORDER BY trophy_key, tier",
+                (pid,),
+            )
+            return [(r["trophy_key"], r["tier"]) for r in await rows.fetchall()]
+    return run(_q())
+
+
+def _get_award_timestamps(pid):
+    async def _q():
+        async with get_db() as db:
+            rows = await db.execute(
+                "SELECT trophy_key, tier, awarded_at FROM trophy_awards WHERE participant_id=?",
+                (pid,),
+            )
+            return {(r["trophy_key"], r["tier"]): r["awarded_at"] for r in await rows.fetchall()}
+    return run(_q())
+
+
+def test_refresh_trophy_awards_creates_first_step(participant):
+    pid = participant["id"]
+    _make_match_and_predict(pid, 800001)
+
+    async def _refresh():
+        from app.trophies import refresh_trophy_awards
+        async with get_db() as db:
+            await refresh_trophy_awards(db)
+            await db.commit()
+    run(_refresh())
+
+    awards = _get_awards(pid)
+    assert ("first_step", "_") in awards
+
+
+def test_refresh_trophy_awards_tiered_stores_all_tiers(participant):
+    pid = participant["id"]
+    for i in range(5):
+        _make_match_and_predict(pid, 810000 + pid * 100 + i,
+                                pred="team1", ps1=2, ps2=1,
+                                result="team1", score1=2, score2=1)
+
+    async def _refresh():
+        from app.trophies import refresh_trophy_awards
+        async with get_db() as db:
+            await refresh_trophy_awards(db)
+            await db.commit()
+    run(_refresh())
+
+    awards = _get_awards(pid)
+    assert ("sniper", "chocolat") in awards
+    assert ("sniper", "bronze") in awards
+
+
+def test_refresh_trophy_awards_idempotent(participant):
+    pid = participant["id"]
+    _make_match_and_predict(pid, 820000 + pid)
+
+    async def _refresh():
+        from app.trophies import refresh_trophy_awards
+        async with get_db() as db:
+            await refresh_trophy_awards(db)
+            await db.commit()
+    run(_refresh())
+
+    ts_before = _get_award_timestamps(pid)
+
+    async def _refresh2():
+        from app.trophies import refresh_trophy_awards
+        async with get_db() as db:
+            await refresh_trophy_awards(db)
+            await db.commit()
+    run(_refresh2())
+
+    ts_after = _get_award_timestamps(pid)
+    for key, ts in ts_before.items():
+        assert ts_after[key] == ts
+
+
+def test_trophy_count_distinct_keys(participant):
+    pid = participant["id"]
+    for i in range(3):
+        _make_match_and_predict(pid, 830000 + pid * 100 + i,
+                                pred="team1", ps1=2, ps2=1,
+                                result="team1", score1=2, score2=1)
+
+    async def _refresh_and_count():
+        from app.trophies import refresh_trophy_awards
+        async with get_db() as db:
+            await refresh_trophy_awards(db)
+            await db.commit()
+            row = await db.execute(
+                "SELECT COUNT(DISTINCT trophy_key) AS cnt FROM trophy_awards WHERE participant_id=?",
+                (pid,),
+            )
+            return (await row.fetchone())["cnt"]
+    count = run(_refresh_and_count())
+    awards = _get_awards(pid)
+    distinct_keys = len({k for k, _ in awards})
+    assert count == distinct_keys

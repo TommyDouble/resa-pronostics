@@ -12,13 +12,23 @@ import contextlib
 import uuid
 
 from app.database import get_db
-from app.scoring import get_rank_evolution
+from app.scoring import (
+    get_latest_finalized_climbers,
+    get_rank_evolution,
+    sync_finalized_evolution_history,
+)
 from tests.conftest import run
 
 # Tout ce qui alimente le classement général : on repart d'une base vierge
 # le temps du test pour que les flèches ne dépendent que de nos fixtures.
-_ISOLATED = ("scores", "predictions", "matches", "pre_tournament_scores")
-_RESTORE_ORDER = ("matches", "predictions", "scores", "pre_tournament_scores")
+_ISOLATED = (
+    "sporting_day_rank_evolutions", "scores", "predictions", "matches",
+    "pre_tournament_scores",
+)
+_RESTORE_ORDER = (
+    "matches", "predictions", "scores", "pre_tournament_scores",
+    "sporting_day_rank_evolutions",
+)
 
 
 @contextlib.contextmanager
@@ -71,14 +81,17 @@ def _make_participant(name):
     return run(_create())
 
 
-def _make_match(number, match_date, kickoff="18:00"):
+def _make_match(number, match_date, kickoff="18:00", encoded=True,
+                team1="France", team2="Brésil"):
     async def _create():
         async with get_db() as db:
             cursor = await db.execute(
                 """INSERT INTO matches (match_number, phase, match_date, kickoff_time,
                                         team1_name, team2_name, weight, result, score_team1, score_team2)
-                   VALUES (?, 'group', ?, ?, 'France', 'Brésil', 1, 'team1', 1, 0)""",
-                (number, match_date, kickoff),
+                   VALUES (?, 'group', ?, ?, ?, ?, 1, ?, ?, ?)""",
+                (number, match_date, kickoff, team1, team2,
+                 "team1" if encoded else None,
+                 1 if encoded else None, 0 if encoded else None),
             )
             await db.commit()
             return cursor.lastrowid
@@ -106,6 +119,16 @@ def _evolution():
     return run(_q())
 
 
+def _sync_history(from_day=None):
+    async def _q():
+        async with get_db() as db:
+            await sync_finalized_evolution_history(db, from_day=from_day)
+            await db.commit()
+            return await get_latest_finalized_climbers(db)
+
+    return run(_q())
+
+
 def test_evolution_reflects_last_match_day_only(client):
     with isolated_match_state():
         a = _make_participant("Piste Alpha")
@@ -126,7 +149,7 @@ def test_evolution_reflects_last_match_day_only(client):
         assert evo["deltas"][b] == -1
 
 
-def test_evolution_empty_on_first_match_day(client):
+def test_evolution_uses_zero_or_pre_tournament_baseline_on_first_day(client):
     with isolated_match_state():
         a = _make_participant("Solo Alpha")
         b = _make_participant("Solo Beta")
@@ -135,8 +158,10 @@ def test_evolution_empty_on_first_match_day(client):
         _award(b, m, 0)
 
         evo = _evolution()
-        # Une seule journée de résultats → pas de référence, pas de flèche.
-        assert evo == {"deltas": {}, "day": None}
+        assert evo["day"] == "2035-02-01"
+        assert evo["status"] == "finalized"
+        assert evo["deltas"][a] == 0
+        assert evo["deltas"][b] == -1
 
 
 def test_evolution_independent_of_encoding_order(client):
@@ -158,3 +183,131 @@ def test_evolution_independent_of_encoding_order(client):
         assert evo["deltas"][a] >= 0
         assert evo["deltas"][b] <= 0
         assert evo["deltas"][a] - evo["deltas"][b] >= 1
+
+
+def test_overnight_matches_share_one_live_sporting_day(client):
+    with isolated_match_state():
+        a = _make_participant("Nuit Alpha")
+        b = _make_participant("Nuit Beta")
+        prior = _make_match(970010, "2035-03-31", "18:00")
+        evening = _make_match(970011, "2035-04-01", "19:00")   # 21 h Bruxelles
+        overnight = _make_match(970012, "2035-04-02", "02:00") # 4 h Bruxelles
+        _award(a, prior, 0); _award(b, prior, 8)
+        _award(a, evening, 6); _award(b, evening, 0)
+        _award(a, overnight, 6); _award(b, overnight, 0)
+
+        evo = _evolution()
+        assert evo["day"] == "2035-04-01"
+        assert evo["match_count"] == evo["encoded_count"] == 2
+        assert evo["status"] == "finalized"
+        assert evo["day_points"][a] == 12
+        assert evo["deltas"][a] == 1
+
+
+def test_climber_stays_on_last_finalized_day_while_next_day_is_live(client):
+    with isolated_match_state():
+        a = _make_participant("Fusée Alpha")
+        b = _make_participant("Fusée Beta")
+        c = _make_participant("Fusée Gamma")
+        prior = _make_match(970020, "2035-04-30")
+        finished = _make_match(970021, "2035-05-01")
+        _award(a, prior, 0); _award(b, prior, 8); _award(c, prior, 6)
+        _award(a, finished, 16); _award(b, finished, 0); _award(c, finished, 0)
+
+        title = _sync_history()
+        assert title["day"] == "2035-05-01"
+        assert [r["participant_id"] for r in title["climbers"]] == [a]
+        assert title["delta"] == 2
+
+        live = _make_match(970022, "2035-05-02", "18:00")
+        pending = _make_match(970023, "2035-05-03", "02:00", encoded=False)
+        _award(a, live, 0); _award(b, live, 10); _award(c, live, 0)
+        evo = _evolution()
+        assert evo["day"] == "2035-05-02"
+        assert evo["status"] == "in_progress"
+        assert evo["encoded_count"] == 1 and evo["match_count"] == 2
+        assert _sync_history()["day"] == "2035-05-01"
+
+        async def _finish():
+            async with get_db() as db:
+                await db.execute(
+                    "UPDATE matches SET result='team1', score_team1=1, score_team2=0 WHERE id=?",
+                    (pending,),
+                )
+                await db.commit()
+        run(_finish())
+        _award(a, pending, 0); _award(b, pending, 6); _award(c, pending, 0)
+        new_title = _sync_history("2035-05-02")
+        assert new_title["day"] == "2035-05-02"
+        # Le nouveau jour est bien le dernier finalisé ; aucun titre si le
+        # meilleur gain reste sous le seuil historique de deux places.
+        assert new_title["climbers"] == []
+
+
+def test_climber_banner_lists_its_sporting_day_matches(client):
+    with isolated_match_state():
+        a = _make_participant("Fusée Liste")
+        b = _make_participant("Liste Beta")
+        c = _make_participant("Liste Gamma")
+        prior = _make_match(970024, "2035-05-31")
+        evening = _make_match(
+            970025, "2035-06-01", "18:00",
+            team1="Canada", team2="Qatar",
+        )
+        overnight = _make_match(
+            970026, "2035-06-02", "02:00",
+            team1="Japon", team2="Maroc",
+        )
+        _award(a, prior, 0); _award(b, prior, 8); _award(c, prior, 6)
+        _award(a, evening, 8); _award(b, evening, 0); _award(c, evening, 0)
+        _award(a, overnight, 8); _award(b, overnight, 0); _award(c, overnight, 0)
+        title = _sync_history()
+        assert title["day"] == "2035-06-01"
+
+        async def _token():
+            async with get_db() as db:
+                row = await db.execute("SELECT token FROM participants WHERE id=?", (a,))
+                return (await row.fetchone())["token"]
+
+        html = client.get(f"/p/{run(_token())}/classement").text
+        assert "Journée sportive du vendredi 1 juin" in html
+        assert "Une journée sportive commence à 9 h et se termine juste avant 9 h le lendemain." in html
+        assert "• vendredi 20:00 · Canada – Qatar" in html
+        assert "• samedi 04:00 · Japon – Maroc" in html
+        assert "9 h–8 h 59" not in html
+        assert 'data-tip="Grimpeur de la journée sportive du vendredi 1 juin"' in html
+
+
+def test_late_correction_replaces_persisted_climber(client):
+    with isolated_match_state():
+        a = _make_participant("Correction Alpha")
+        b = _make_participant("Correction Beta")
+        c = _make_participant("Correction Gamma")
+        d = _make_participant("Correction Delta")
+        prior = _make_match(970030, "2035-05-30")
+        corrected = _make_match(970031, "2035-05-31")
+        for pid, points in ((a, 0), (b, 30), (c, 20), (d, 10)):
+            _award(pid, prior, points)
+        for pid, points in ((a, 40), (b, 0), (c, 0), (d, 0)):
+            _award(pid, corrected, points)
+
+        first = _sync_history()
+        assert [r["participant_id"] for r in first["climbers"]] == [a]
+
+        async def _correct():
+            async with get_db() as db:
+                await db.execute(
+                    "UPDATE scores SET points=0 WHERE participant_id=? AND match_id=?",
+                    (a, corrected),
+                )
+                await db.execute(
+                    "UPDATE scores SET points=30 WHERE participant_id=? AND match_id=?",
+                    (d, corrected),
+                )
+                await sync_finalized_evolution_history(db, from_day="2035-05-31")
+                await db.commit()
+                return await get_latest_finalized_climbers(db)
+
+        updated = run(_correct())
+        assert [r["participant_id"] for r in updated["climbers"]] == [d]
+        assert updated["delta"] == 2
