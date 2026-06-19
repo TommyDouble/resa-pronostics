@@ -198,24 +198,42 @@ function showSaveBadge(badge) {
 
 /* ---- Tooltips that stay inside the viewport ---- */
 function initFloatingTooltips() {
-  var triggers = document.querySelectorAll('.help-tip[data-tip], .tip[data-tip]');
+  var triggers = document.querySelectorAll(
+    '.help-tip[data-tip], .tip[data-tip], .help-tip[data-tooltip-content], .tip[data-tooltip-content]'
+  );
   if (!triggers.length) return;
 
   document.body.classList.add('tooltip-floating');
 
   var bubble = document.createElement('div');
+  bubble.id = 'floating-tooltip';
   bubble.className = 'floating-tooltip';
   bubble.setAttribute('role', 'tooltip');
   document.body.appendChild(bubble);
 
   var active = null;
 
-  function placeTooltip(trigger) {
+  function renderTooltip(trigger) {
+    var sourceId = trigger.getAttribute('data-tooltip-content');
+    var source = sourceId ? document.getElementById(sourceId) : null;
+    if (source && source.content) {
+      bubble.replaceChildren(source.content.cloneNode(true));
+      bubble.classList.add('rich');
+      return 'rich';
+    }
+
     var text = trigger.getAttribute('data-tip');
-    if (!text) return;
-    active = trigger;
+    if (!text) return '';
     bubble.textContent = text;
-    bubble.style.maxWidth = Math.min(300, window.innerWidth - 24) + 'px';
+    bubble.classList.remove('rich');
+    return 'plain';
+  }
+
+  function placeTooltip(trigger) {
+    var kind = renderTooltip(trigger);
+    if (!kind) return;
+    active = trigger;
+    bubble.style.maxWidth = Math.min(kind === 'rich' ? 340 : 300, window.innerWidth - 24) + 'px';
     bubble.style.left = '12px';
     bubble.style.top = '12px';
     bubble.classList.add('show');
@@ -242,6 +260,7 @@ function initFloatingTooltips() {
   }
 
   triggers.forEach(function(trigger) {
+    trigger.setAttribute('aria-describedby', bubble.id);
     trigger.addEventListener('mouseenter', function() { placeTooltip(trigger); });
     trigger.addEventListener('focus', function() { placeTooltip(trigger); });
     trigger.addEventListener('mouseleave', function() { hideTooltip(trigger); });
@@ -339,7 +358,7 @@ function initCountdown() {
     var target = parseInt(el.dataset.countdown);
     function update() {
       var diff = target - Math.floor(Date.now() / 1000);
-      if (diff <= 0) { el.textContent = 'Commencé !'; return; }
+      if (diff <= 0) { el.textContent = 'Coup d’envoi !'; return; }
       var d = Math.floor(diff / 86400);
       var h = Math.floor((diff % 86400) / 3600);
       var m = Math.floor((diff % 3600) / 60);
@@ -347,8 +366,11 @@ function initCountdown() {
       if (d > 0) {
         el.textContent = d + 'j ' + h + 'h ' + pad(m) + 'min';
         setTimeout(update, 30000);
+      } else if (h > 0) {
+        el.textContent = h + 'h ' + pad(m) + 'min';
+        setTimeout(update, (s + 1) * 1000);
       } else {
-        el.textContent = (h > 0 ? h + 'h ' : '') + pad(m) + 'min ' + pad(s) + 's';
+        el.textContent = pad(m) + 'min ' + pad(s) + 's';
         setTimeout(update, 1000);
       }
     }

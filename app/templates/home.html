@@ -17,7 +17,7 @@
   </div>
 </div>
 
-<div class="page-content">
+<div class="page-content home-content">
 
   {% include "partials/_story.html" %}
 
@@ -27,18 +27,8 @@
   </div>
   {% endif %}
 
-  {# --- Une seule action prioritaire --- #}
-  {% if urgency %}
-  <div class="urgency">
-    <div class="lbl">À compléter avant le coup d'envoi</div>
-    <h2>{{ urgency.team1_name|team }} – {{ urgency.team2_name|team }}</h2>
-    <div class="sub">
-      ⏳ <span class="countdown" data-countdown="{{ urgency.kickoff_ts }}">...</span>{% if urgency.is_top_match %} · ★ Top Match ×2{% endif %}
-      {% if unpredicted_today > 1 %} · {{ unpredicted_today }} matchs de la journée sportive à compléter{% endif %}
-    </div>
-    <a href="/p/{{ token }}/pronos?match={{ urgency.id }}#match-{{ urgency.id }}" class="btn white full" style="margin-top:10px;">Compléter maintenant</a>
-  </div>
-  {% elif pt_open and not pt_complete %}
+  {# --- Une seule action prioritaire, même ordre métier qu'avant. --- #}
+  {% if not urgency and pt_open and not pt_complete %}
   <div class="card home-cta">
     <div>
       <div class="lbl">Prochaine action</div>
@@ -53,7 +43,7 @@
     </div>
     <a href="/p/{{ token }}/pre-tournoi" class="btn sm">Compléter</a>
   </div>
-  {% elif pending_bonus > 0 %}
+  {% elif not urgency and pending_bonus > 0 %}
   <div class="card home-cta">
     <div>
       <div class="lbl">Prochaine action</div>
@@ -61,56 +51,148 @@
     </div>
     <a href="/p/{{ token }}/bonus" class="btn sm">Répondre</a>
   </div>
-  {% elif unpredicted_today > 0 %}
-  <div class="card home-cta">
-    <div>
-      <div class="lbl">Prochaine action</div>
-      <p>{{ unpredicted_today }} match{{ 's' if unpredicted_today > 1 else '' }} de la journée sportive encore sans score.</p>
-    </div>
-    <a href="/p/{{ token }}/pronos" class="btn sm">Compléter</a>
-  </div>
-  {% else %}
-  <div class="card all-good">
-    <div class="row1" style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:20px;">✅</span>
-      <b>Tout est à jour, {{ greeting_name }} !</b>
-    </div>
-    {% if next_match %}
-    <div class="next-match">
-      <span class="lbl">Prochain match</span>
-      <div class="nm-line">
+  {% endif %}
+
+  {# Hors de la journée affichée, le prochain match n'a pas de ligne porteuse. #}
+  {% if next_match and not next_match_in_today %}
+  <div class="home-next-away" data-home-next-away>
+    <span class="home-next-away-label">Prochain match</span>
+    <div class="home-next-away-body">
+      <span class="home-next-away-match">
         {{ next_match.team1_name|team }} – {{ next_match.team2_name|team }}
-        {% if next_match.is_top_match %}<span class="chip warn">★ ×2</span>{% endif %}
-      </div>
-      <div class="muted" style="font-size:12.5px;">
+        {% if next_match.is_top_match %}<span class="home-weight">★ ×2</span>{% elif next_match.weight != 1 %}<span class="home-weight">×{{ next_match.weight }}</span>{% endif %}
+      </span>
+      <span class="home-next-away-meta">
         <span data-local-utc="{{ next_match|match_utc_iso }}">{{ next_match|match_datetime }}</span>
         · dans <span class="countdown" data-countdown="{{ next_match.kickoff_ts }}">...</span>
+      </span>
+    </div>
+  </div>
+  {% elif all_caught_up and not next_match %}
+  <div class="home-calendar-end" data-home-calendar-end>Plus aucun match au calendrier — merci d'avoir joué !</div>
+  {% endif %}
+
+  {% if today_matches %}
+  <section class="home-matches" data-home-match-list>
+    <div class="home-section-head">
+      <div class="home-section-title">
+        Aujourd’hui · {{ sporting_day_label }}
+        <span class="help-tip" tabindex="0" data-tip="{{ sporting_day_help }}">?</span>
       </div>
-      {# Hook tourné vers l'avant : transforme le prochain match en enjeu de classement. #}
-      {% if rival_ahead %}
-      <div class="rival-line">🎯 {{ rival_ahead.name }} est à <b>{{ rival_ahead.gap }} pt{{ 's' if rival_ahead.gap > 1 else '' }}</b> — un bon prono et tu repasses devant.</div>
-      {% elif rival_behind %}
-      <div class="rival-line">👑 Tu mènes de <b>{{ rival_behind.gap }} pt{{ 's' if rival_behind.gap > 1 else '' }}</b> sur {{ rival_behind.name }} — creuse l'écart.</div>
+      {% if unpredicted_today > 0 and not urgency %}
+      <div class="home-section-action">
+        <span>{{ unpredicted_today }} prono{{ 's' if unpredicted_today > 1 else '' }} manquant{{ 's' if unpredicted_today > 1 else '' }}</span>
+        {% if (not pt_open or pt_complete) and pending_bonus == 0 %}
+        <a href="/p/{{ token }}/pronos">Compléter</a>
+        {% endif %}
+      </div>
       {% endif %}
     </div>
-    {% else %}
-    <p class="muted" style="margin:6px 0 0;font-size:13px;">Plus aucun match au calendrier — merci d'avoir joué !</p>
-    {% endif %}
-  </div>
+    <div class="home-match-list">
+    {% for m in today_matches %}
+      {% set is_next = next_match and m.id == next_match.id %}
+      {% set is_urgent = urgency and m.id == urgency.id %}
+      {% if m.is_locked %}
+      <a class="home-match-row {{ 'is-next' if is_next else '' }}" href="/p/{{ token }}/match/{{ m.id }}" data-home-match="{{ m.id }}">
+      {% else %}
+      <a class="home-match-row {{ 'is-next' if is_next else '' }} {{ 'is-urgent' if is_urgent else '' }}" href="/p/{{ token }}/pronos?match={{ m.id }}#match-{{ m.id }}" data-home-match="{{ m.id }}"{% if is_urgent %} data-home-urgent{% endif %}>
+      {% endif %}
+        <div class="home-match-info">
+          <div class="home-match-name">{{ m.team1_name|team }} – {{ m.team2_name|team }}</div>
+          <div class="home-match-meta">
+            {% if m.live_state == 'live' %}
+              <span class="home-live">En cours</span>
+            {% elif m.live_state == 'awaiting' %}
+              Résultat en attente
+            {% elif m.is_locked and m.result %}
+              Terminé
+            {% else %}
+              {% if m.is_overnight %}{{ m.calendar_day_label }} · {% endif %}<span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
+            {% endif %}
+            {% if m.is_top_match %} · <span class="home-weight">★ ×2</span>{% elif m.weight != 1 %} · <span class="home-weight">×{{ m.weight }}</span>{% endif %}
+            {% if not m.is_locked and is_next %} · <span class="home-next-countdown">dans <span class="countdown" data-countdown="{{ next_match.kickoff_ts }}">...</span></span>{% endif %}
+          </div>
+        </div>
+        <div class="home-match-right">
+          {% if m.is_locked and m.result is not none and m.score_team1 is not none %}
+            <div class="home-final-score">{{ m.score_team1 }}–{{ m.score_team2 }}</div>
+            {% if m.phase != 'group' and m.qualifier_winner %}
+            <div class="home-match-points">
+              {% if m.qualifier_winner == 'team1' %}{{ m.team1_name }}{% else %}{{ m.team2_name }}{% endif %}
+            </div>
+            {% endif %}
+            {% if m.get('points') is not none and m.tier %}
+              {% if m.tier == 'exact' %}
+              <span class="chip ok home-match-verdict">+{{ m.get('points', 0) }} pts</span>
+              {% elif m.tier == 'correct' %}
+              <span class="chip warn home-match-verdict">+{{ m.get('points', 0) }} pts</span>
+              {% else %}
+              <span class="chip gr home-match-verdict">0 pt</span>
+              {% endif %}
+            {% endif %}
+          {% elif is_urgent %}
+            <span class="home-match-cta">Compléter</span>
+          {% elif m.prediction %}
+            <span class="home-prediction">
+              <span class="sr-only">
+                Pronostic enregistré :
+                {% if m.exact_score_team1 is not none and m.exact_score_team2 is not none %}{{ m.exact_score_team1 }}–{{ m.exact_score_team2 }}{% elif m.prediction == 'team1' %}1{% elif m.prediction == 'draw' %}X{% else %}2{% endif %}
+              </span>
+              <span aria-hidden="true">
+                Prono
+                <b>{% if m.exact_score_team1 is not none and m.exact_score_team2 is not none %}{{ m.exact_score_team1 }}–{{ m.exact_score_team2 }}{% elif m.prediction == 'team1' %}1{% elif m.prediction == 'draw' %}X{% else %}2{% endif %}</b>
+              </span>
+            </span>
+          {% else %}
+            <span class="home-to-do">À pronostiquer</span>
+          {% endif %}
+        </div>
+      </a>
+    {% endfor %}
+    </div>
+  </section>
   {% endif %}
 
   {% if reveal_available %}
-  <a href="/p/{{ token }}/reveal" class="reveal-entry">
+  <a href="/p/{{ token }}/reveal" class="reveal-entry" data-home-reveal>
     <span class="re-ico">🎬</span>
     <div class="re-body">
       <span class="re-title">{{ 'Ton rattrapage est prêt' if reveal_is_catchup else 'Le Reveal du jour est prêt' }}</span>
       <span class="re-sub">
-        {% if reveal_is_catchup %}Depuis ta dernière visite · {{ reveal_day_count }} journées · {{ reveal_match_count }} matchs · {% else %}{{ reveal_day_label }} · découvre tes {% endif %}<b>+{{ reveal_points }} pts</b>
+        {% if reveal_is_catchup %}Depuis ta dernière visite · {{ reveal_day_count }} journées · {{ reveal_match_count }} matchs{% else %}{{ reveal_day_label }} · {{ reveal_match_count }} match{{ 's' if reveal_match_count > 1 else '' }}{% endif %}
       </span>
     </div>
-    <span class="re-go">▶</span>
+    <div class="re-result">
+      <b>+{{ reveal_points }} pts</b>
+      {% if reveal_evolution is not none %}
+        {% if reveal_evolution > 0 %}<span>▲ {{ reveal_evolution }} place{{ 's' if reveal_evolution > 1 else '' }}</span>
+        {% elif reveal_evolution < 0 %}<span>▼ {{ -reveal_evolution }} place{{ 's' if reveal_evolution < -1 else '' }}</span>
+        {% else %}<span>= stable</span>{% endif %}
+      {% endif %}
+    </div>
   </a>
   {% endif %}
+
+  <div class="home-mini-section">
+    <div class="lbl home-mini-title">Mini classement</div>
+    <div class="card p0 home-mini-ranking">
+      {% for r in mini_rank %}
+      <a class="rrow {% if r.id == participant.id %}me{% endif %}"
+         href="/p/{{ token }}/profil{{ '' if r.id == participant.id else '/' ~ r.id }}">
+        <span class="rk">{{ r.rank }}</span>
+        {{ avatar(r.avatar_path, r.name, r.id) }}
+        <div class="nm">{{ r.name }}{% if r.full_name and r.full_name != r.name %}<small>{{ r.full_name }}</small>{% elif r.id == participant.id %}<small>c'est toi</small>{% endif %}</div>
+        <span class="sc">{{ r.total_points }}<small> pts</small></span>
+      </a>
+      {% endfor %}
+      {% if rival_ahead %}
+      <div class="rival-line">🎯 <b>{{ rival_ahead.gap }} pt{{ 's' if rival_ahead.gap > 1 else '' }}</b> pour rattraper {{ rival_ahead.name }}</div>
+      {% elif rival_behind %}
+      <div class="rival-line">👑 <b>+{{ rival_behind.gap }} pt{{ 's' if rival_behind.gap > 1 else '' }}</b> sur {{ rival_behind.name }}</div>
+      {% endif %}
+      <a href="/p/{{ token }}/classement" class="mini-rank-link">Voir tout le classement →</a>
+    </div>
+  </div>
 
   <div class="card" data-push-card data-push-promo style="display:none;">
     <div style="display:flex;align-items:center;gap:10px;">
@@ -127,111 +209,6 @@
     </div>
   </div>
 
-  {# Récap = miroir EXACT du Reveal (même fenêtre journée sportive). Affiché tant
-     que le Reveal est dispo ; disparaît une fois le Reveal vu, comme le CTA. #}
-  {% if reveal_available and reveal_match_count > 0 %}
-  <div class="card yesterday-card">
-    <div>
-      <div class="lbl">{{ reveal_day_label }}</div>
-      <div class="y-pts">+{{ reveal_points }} pts</div>
-      <div class="muted" style="font-size:12.5px;">
-        {% if reveal_is_catchup %}{{ reveal_day_count }} journées · {% endif %}sur {{ reveal_match_count }} match{{ 's' if reveal_match_count > 1 else '' }}
-      </div>
-    </div>
-    {% if reveal_evolution is not none %}
-    <div class="y-evo">
-      {% if reveal_evolution > 0 %}
-        <span class="chip up">▲ {{ reveal_evolution }} place{{ 's' if reveal_evolution > 1 else '' }}</span>
-      {% elif reveal_evolution < 0 %}
-        <span class="chip dn">▼ {{ -reveal_evolution }} place{{ 's' if reveal_evolution < -1 else '' }}</span>
-      {% else %}
-        <span class="chip fl">= stable</span>
-      {% endif %}
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
-
-  {% if today_matches %}
-  <div>
-    <div class="lbl" style="margin-bottom:8px;">
-      Matchs de la journée sportive · {{ sporting_day_label }}
-      <span class="help-tip" tabindex="0" data-tip="{{ sporting_day_help }}">?</span>
-    </div>
-    <div class="card p0">
-      {% for m in today_matches %}
-      {% if m.is_locked %}
-      <a class="match-list-item linked" href="/p/{{ token }}/match/{{ m.id }}">
-      {% else %}
-      <a class="match-list-item linked" href="/p/{{ token }}/pronos?match={{ m.id }}#match-{{ m.id }}">
-      {% endif %}
-        {% if m.is_locked %}
-          <span class="dot r"></span>
-        {% elif m.prediction %}
-          <span class="dot g"></span>
-        {% else %}
-          <span class="dot gr"></span>
-        {% endif %}
-        <div class="info">
-          <div class="name">{{ m.team1_name|team }} – {{ m.team2_name|team }}</div>
-          <div class="sub">
-            {% if m.live_state == 'live' %}
-              🔴 En cours
-            {% elif m.live_state == 'awaiting' %}
-              Joué · résultat en attente
-            {% elif m.is_locked and m.result %}
-              Terminé
-            {% elif m.is_top_match %}
-              {% if m.is_overnight %}{{ m.calendar_day_label }} · {% endif %}<span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span> · ★ Top ×2
-            {% else %}
-              {% if m.is_overnight %}{{ m.calendar_day_label }} · {% endif %}<span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span> · ×{{ m.weight }}
-            {% endif %}
-          </div>
-        </div>
-        <div class="right">
-          {% if m.is_locked and m.result is not none and m.score_team1 is not none %}
-            <div class="score">{{ m.score_team1 }}–{{ m.score_team2 }}</div>
-            {% if m.phase != 'group' and m.qualifier_winner %}
-            <div class="pts">
-              {% if m.qualifier_winner == 'team1' %}{{ m.team1_name }}{% else %}{{ m.team2_name }}{% endif %}
-            </div>
-            {% endif %}
-            {% if m.get('points') is not none %}
-            <div class="pts">+{{ m.get('points', 0) }} pts</div>
-            {% endif %}
-          {% elif m.prediction %}
-            <span class="chip ok">enregistré ✓</span>
-          {% else %}
-            <span class="chip gr">à faire</span>
-          {% endif %}
-        </div>
-      </a>
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
-
-  <div>
-    <div class="lbl" style="margin-bottom:8px;">Mini classement</div>
-    <div class="card p0">
-      {% for r in mini_rank %}
-      <a class="rrow {% if r.id == participant.id %}me{% endif %}"
-         href="/p/{{ token }}/profil{{ '' if r.id == participant.id else '/' ~ r.id }}">
-        <span class="rk">{{ r.rank }}</span>
-        {{ avatar(r.avatar_path, r.name, r.id) }}
-        <div class="nm">{{ r.name }}{% if r.full_name and r.full_name != r.name %}<small>{{ r.full_name }}</small>{% elif r.id == participant.id %}<small>c'est toi</small>{% endif %}</div>
-        <span class="sc">{{ r.total_points }}<small> pts</small></span>
-      </a>
-      {% endfor %}
-      {% if rival_ahead %}
-      <div class="rival-line">🎯 Il te manque <b>{{ rival_ahead.gap }} pt{{ 's' if rival_ahead.gap > 1 else '' }}</b> pour rattraper {{ rival_ahead.name }}</div>
-      {% elif rival_behind %}
-      <div class="rival-line">👑 Tu mènes avec <b>{{ rival_behind.gap }} pt{{ 's' if rival_behind.gap > 1 else '' }}</b> d'avance sur {{ rival_behind.name }}</div>
-      {% endif %}
-      <a href="/p/{{ token }}/classement" class="mini-rank-link">Voir tout le classement →</a>
-    </div>
-  </div>
-
   {# Teaser passif vers le cabinet (pas une action prioritaire) #}
   <a href="/p/{{ token }}/profil#cabinet" class="card rules-entry" style="text-decoration:none;color:inherit;">
     <div>
@@ -245,17 +222,7 @@
     <span class="btn ghost sm">Ouvrir</span>
   </a>
 
-  <div class="card rules-entry">
-    <div>
-      <div class="lbl">Règlement</div>
-      <p>Barème, dates limites, matchs importants et bonus: tout est résumé au même endroit.</p>
-    </div>
-    <a href="/p/{{ token }}/reglement" class="btn ghost sm">Lire</a>
-  </div>
-
-  <div style="text-align:center;font-size:11px;color:var(--n600);padding-bottom:8px;">
-    {{ encoded_count }} résultat{{ 's' if encoded_count != 1 else '' }} officiel{{ 's' if encoded_count != 1 else '' }} encodé{{ 's' if encoded_count != 1 else '' }}
-  </div>
+  <a href="/p/{{ token }}/reglement" class="home-rules-link">Barème, matchs importants et bonus&nbsp;: voir le règlement →</a>
 
 </div>
 {% endblock %}

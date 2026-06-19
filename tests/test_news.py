@@ -81,6 +81,7 @@ def test_cabinet_story_is_seeded_as_draft_with_five_guided_screens(admin_client)
     assert "classement" in html.lower()
 
 
+
 def test_sporting_day_story_is_seeded_as_draft_with_four_guided_screens(admin_client):
     async def _find():
         async with get_db() as db:
