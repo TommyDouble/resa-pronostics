@@ -40,11 +40,14 @@ from app.settings_store import (
 from app.push import push_enabled, send_push_to_participant
 from app.templating import create_templates
 from app.timeutils import (
+    current_sporting_day,
+    format_match_local_date,
+    format_sporting_day_fr,
     is_match_locked,
     local_input_to_utc_iso,
     match_live_state,
     now_utc_iso,
-    utc_day_bounds_for_local_date,
+    sporting_day_bounds,
 )
 
 router = APIRouter()
@@ -181,7 +184,8 @@ async def dashboard(request: Request):
         now = _now_utc()
 
         # ---- Section « À faire » ----
-        day_start, day_end = utc_day_bounds_for_local_date()
+        dashboard_sporting_day = current_sporting_day()
+        day_start, day_end = sporting_day_bounds(dashboard_sporting_day)
         today_rows = await db.execute(
             """SELECT * FROM matches
                WHERE datetime(match_date || 'T' || kickoff_time) >= datetime(?)
@@ -192,6 +196,9 @@ async def dashboard(request: Request):
         today_matches = [dict(r) for r in await today_rows.fetchall()]
         for m in today_matches:
             m["live_state"] = match_live_state(m)
+            calendar_day = format_match_local_date(m)
+            m["is_overnight"] = calendar_day != dashboard_sporting_day
+            m["calendar_day_label"] = format_sporting_day_fr(calendar_day).split(" ", 1)[0]
 
         alert_row = await db.execute(
             """SELECT COUNT(*) as cnt FROM matches
@@ -315,6 +322,11 @@ async def dashboard(request: Request):
         "active": "dashboard",
         "flashes": _get_flashes(request),
         "today_matches": today_matches,
+        "sporting_day_label": format_sporting_day_fr(dashboard_sporting_day),
+        "sporting_day_help": (
+            f"Du {format_sporting_day_fr(dashboard_sporting_day)} à 9 h au "
+            f"{format_sporting_day_fr((datetime.fromisoformat(dashboard_sporting_day).date() + timedelta(days=1)).isoformat())} à 8 h 59"
+        ),
         "late_matches": late_matches,
         "next_match": next_match,
         "next_pred_count": next_pred_count,

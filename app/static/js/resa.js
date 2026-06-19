@@ -247,6 +247,7 @@ function initFloatingTooltips() {
     trigger.addEventListener('mouseleave', function() { hideTooltip(trigger); });
     trigger.addEventListener('blur', function() { hideTooltip(trigger); });
     trigger.addEventListener('click', function(e) {
+      e.preventDefault();
       e.stopPropagation();
       placeTooltip(trigger);
     });
@@ -1371,6 +1372,7 @@ function initReveal() {
   var stages = Array.prototype.slice.call(root.querySelectorAll('[data-reveal-stage]'));
   if (!stages.length) return;
   var token = document.body.dataset.token;
+  var revealDay = root.dataset.revealDay || '';
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var idx = -1;
   var timers = [];
@@ -1382,7 +1384,7 @@ function initReveal() {
   function markSeen() {
     if (seenSent || !token) return;
     seenSent = true;
-    fetch('/api/reveal/seen?token=' + encodeURIComponent(token), { method: 'POST' }).catch(function() {});
+    fetch('/api/reveal/seen?token=' + encodeURIComponent(token) + '&sporting_day=' + encodeURIComponent(revealDay), { method: 'POST' }).catch(function() {});
   }
 
   // Barre de progression (un segment par étape).

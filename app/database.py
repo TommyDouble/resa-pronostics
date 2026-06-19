@@ -199,6 +199,21 @@ CREATE TABLE IF NOT EXISTS ranking_snapshots (
   UNIQUE(snapshot_date, participant_id)
 );
 
+CREATE TABLE IF NOT EXISTS sporting_day_rank_evolutions (
+  sporting_day  TEXT    NOT NULL,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  points_before INTEGER NOT NULL,
+  day_points    INTEGER NOT NULL,
+  points_after  INTEGER NOT NULL,
+  rank_before   INTEGER NOT NULL,
+  rank_after    INTEGER NOT NULL,
+  delta         INTEGER NOT NULL,
+  is_climber    INTEGER NOT NULL DEFAULT 0,
+  finalized_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (sporting_day, participant_id)
+);
+
 CREATE TABLE IF NOT EXISTS news_items (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   slug         TEXT    NOT NULL UNIQUE,
@@ -226,6 +241,8 @@ CREATE INDEX IF NOT EXISTS idx_participants_token ON participants(token);
 CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_participant ON predictions(participant_id);
 CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
+CREATE INDEX IF NOT EXISTS idx_sporting_evo_climber
+  ON sporting_day_rank_evolutions(sporting_day, is_climber);
         """)
         await db.commit()
 
@@ -244,6 +261,8 @@ CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
             "is_favorite INTEGER NOT NULL DEFAULT 0",
             "last_seen_news_id INTEGER NOT NULL DEFAULT 0",
             "last_revealed_date TEXT",
+            "last_connected_sporting_day TEXT",
+            "reveal_connection_baseline_day TEXT",
         ]
         for column in participant_columns:
             try:

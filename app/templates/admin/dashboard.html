@@ -18,7 +18,7 @@
 
   <div class="card p0 dash-today">
     <div class="dash-card-head">
-      <span class="lbl">Matchs du jour</span>
+      <span class="lbl">Matchs de la journée sportive · {{ sporting_day_label }} <span class="help-tip" tabindex="0" data-tip="{{ sporting_day_help }}">?</span></span>
       <span class="muted" style="font-size:11px;">{{ today_matches|length }} match{{ 's' if today_matches|length > 1 else '' }}</span>
     </div>
     {% for m in today_matches %}
@@ -37,7 +37,7 @@
       <div class="dm-info">
         <b>#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</b>
         <div class="muted" style="font-size:11px;">
-          <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
+          {% if m.is_overnight %}{{ m.calendar_day_label }} · {% endif %}<span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
           {% if m.group_name %} · {{ m.group_name }}{% endif %}
           {% if m.is_top_match %} · ★ Top ×2{% endif %}
           {% if m.live_state == 'live' %} · en cours{% elif m.live_state == 'awaiting' %} · attente du résultat{% endif %}
@@ -65,7 +65,7 @@
       {% endif %}
     </div>
     {% else %}
-    <p class="muted" style="font-size:13px;padding:12px;">Pas de match aujourd'hui — journée tranquille.</p>
+    <p class="muted" style="font-size:13px;padding:12px;">Pas de match dans cette journée sportive.</p>
     {% endfor %}
   </div>
 

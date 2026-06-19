@@ -40,7 +40,7 @@ def test_dashboard_sections_and_inline_encode_form(admin_client):
     assert 'data-dash-swap="todo"' in html
     assert 'data-dash-swap="health"' in html
     assert "À faire" in html and "Santé du jeu" in html
-    assert "Matchs du jour" in html
+    assert "Matchs de la journée sportive" in html
     assert "Prochain match" in html and "Paiements" in html and "Bonus" in html
     # Le match commencé sans résultat propose l'encodage inline.
     assert f'action="/admin/resultats/{mid}"' in html

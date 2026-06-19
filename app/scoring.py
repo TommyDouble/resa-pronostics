@@ -2,7 +2,7 @@
 import json
 
 from app.database import get_db
-from app.timeutils import format_match_local_date
+from app.timeutils import sporting_day
 
 
 def parse_revelation_winners(correct_answer) -> set:
@@ -128,6 +128,7 @@ async def recalculate_match_scores(match_id: int):
                 (pred_dict["participant_id"], match_id, points),
             )
 
+        await sync_finalized_evolution_history(db, from_day=sporting_day(match_dict))
         await db.commit()
 
 
@@ -272,59 +273,183 @@ async def get_department_rankings(db) -> list:
     return rows
 
 
-async def get_rank_evolution(db) -> dict:
-    """{"deltas": {participant_id: delta de rang}, "day": "YYYY-MM-DD" | None}.
+def _ranks_from_points(points_by_id: dict[int, int]) -> dict[int, int]:
+    """Rangs compétition : ex æquo au même rang, rangs suivants sautés."""
+    values = list(points_by_id.values())
+    return {
+        pid: 1 + sum(1 for value in values if value > points)
+        for pid, points in points_by_id.items()
+    }
 
-    Évolution déterministe et indépendante du moment d'encodage. La « journée »
-    d'un match est la date locale (fuseau d'affichage) de son coup d'envoi —
-    exactement le même découpage que la page Pronos.
 
-    D = dernière journée comportant au moins un résultat. La baseline est le
-    classement actuel privé des points gagnés sur les matchs de la journée D :
-    la flèche raconte donc le mouvement provoqué par les matchs de cette
-    journée (delta positif = places gagnées). Les points bonus et pré-tournoi
-    (sans date de match) restent identiques entre baseline et actuel : ils
-    n'influencent jamais la flèche, qui ne reflète que les matchs joués.
-
-    Le calcul ne dépend d'aucun état stocké : il se reconstruit à chaque
-    affichage et absorbe donc les encodages tardifs, groupés ou corrigés.
-    """
-    empty = {"deltas": {}, "day": None}
+async def get_sporting_day_states(db) -> dict[str, dict]:
+    """Matchs groupés selon la fenêtre locale 9 h–8 h 59."""
     rows = await db.execute(
-        "SELECT id, match_date, kickoff_time FROM matches WHERE result IS NOT NULL"
+        "SELECT id, match_date, kickoff_time, result FROM matches ORDER BY match_date, kickoff_time"
     )
-    matches = [dict(r) for r in await rows.fetchall()]
-    if not matches:
-        return empty
-    day_of = {m["id"]: format_match_local_date(m) for m in matches}
-    day_d = max(day_of.values())
-    # Pas de journée antérieure avec résultat → pas de référence (1re journée).
-    if not any(d < day_d for d in day_of.values()):
-        return empty
-    day_d_ids = [mid for mid, d in day_of.items() if d == day_d]
+    states = {}
+    for row in await rows.fetchall():
+        match = dict(row)
+        day = sporting_day(match)
+        bucket = states.setdefault(day, {"day": day, "match_ids": [], "match_count": 0,
+                                         "encoded_count": 0, "finalized": False})
+        bucket["match_ids"].append(match["id"])
+        bucket["match_count"] += 1
+        if match["result"] is not None:
+            bucket["encoded_count"] += 1
+    for bucket in states.values():
+        bucket["finalized"] = (
+            bucket["match_count"] > 0
+            and bucket["encoded_count"] == bucket["match_count"]
+        )
+    return states
 
-    placeholders = ",".join("?" for _ in day_d_ids)
-    pts_rows = await db.execute(
-        f"""SELECT participant_id, COALESCE(SUM(points), 0) AS pts
-            FROM scores WHERE match_id IN ({placeholders})
-            GROUP BY participant_id""",
-        day_d_ids,
+
+async def _match_points_by_sporting_day(db) -> dict[str, dict[int, int]]:
+    rows = await db.execute(
+        """SELECT s.participant_id, s.points, m.match_date, m.kickoff_time
+           FROM scores s JOIN matches m ON m.id=s.match_id
+           WHERE s.match_id IS NOT NULL"""
     )
-    day_d_points = {r["participant_id"]: r["pts"] for r in await pts_rows.fetchall()}
+    result = {}
+    for row in await rows.fetchall():
+        item = dict(row)
+        day = sporting_day(item)
+        bucket = result.setdefault(day, {})
+        bucket[item["participant_id"]] = bucket.get(item["participant_id"], 0) + item["points"]
+    return result
 
+
+def _evolution_payload(current: list, day_points: dict[int, int], day: str,
+                       status: str, match_count: int, encoded_count: int) -> dict:
+    after_points = {r["id"]: r["total_points"] for r in current}
+    before_points = {
+        pid: points - day_points.get(pid, 0) for pid, points in after_points.items()
+    }
+    before_ranks = _ranks_from_points(before_points)
+    after_ranks = {r["id"]: r["rank"] for r in current}
+    deltas = {pid: before_ranks[pid] - after_ranks[pid] for pid in after_points}
+    return {
+        "deltas": deltas,
+        "day": day,
+        "status": status,
+        "match_count": match_count,
+        "encoded_count": encoded_count,
+        "ranks_before": before_ranks,
+        "ranks_after": after_ranks,
+        "points_before": before_points,
+        "points_after": after_points,
+        "day_points": {pid: day_points.get(pid, 0) for pid in after_points},
+    }
+
+
+async def get_rank_evolution(db) -> dict:
+    """Évolution live de la dernière journée sportive ayant un résultat.
+
+    Tant que la journée suivante n'a aucun résultat, la dernière évolution
+    finalisée reste visible. Dès le premier encodage, la nouvelle journée prend
+    le relais et ses deltas deviennent cumulatifs.
+    """
+    empty = {
+        "deltas": {}, "day": None, "status": None,
+        "match_count": 0, "encoded_count": 0,
+        "ranks_before": {}, "ranks_after": {}, "points_before": {},
+        "points_after": {}, "day_points": {},
+    }
+    states = await get_sporting_day_states(db)
+    candidates = [day for day, state in states.items() if state["encoded_count"] > 0]
+    if not candidates:
+        return empty
+    day = max(candidates)
+    state = states[day]
+    points_by_day = await _match_points_by_sporting_day(db)
     current = await _rankings_from_db(db, "general")
-    # Baseline = points actuels moins ceux gagnés sur la journée D.
-    baseline_points = {
-        r["id"]: r["total_points"] - day_d_points.get(r["id"], 0) for r in current
+    return _evolution_payload(
+        current,
+        points_by_day.get(day, {}),
+        day,
+        "finalized" if state["finalized"] else "in_progress",
+        state["match_count"],
+        state["encoded_count"],
+    )
+
+
+async def sync_finalized_evolution_history(db, from_day: str | None = None) -> None:
+    """Backfill/recalcul des journées complètes, idempotent et correction-safe."""
+    states = await get_sporting_day_states(db)
+    finalized_days = sorted(
+        day for day, state in states.items()
+        if state["finalized"] and (from_day is None or day >= from_day)
+    )
+    if not finalized_days:
+        return
+    current = await _rankings_from_db(db, "general")
+    current_points = {r["id"]: r["total_points"] for r in current}
+    all_day_points = await _match_points_by_sporting_day(db)
+    all_days = sorted(all_day_points)
+
+    for day in finalized_days:
+        future_points = {pid: 0 for pid in current_points}
+        for future_day in all_days:
+            if future_day <= day:
+                continue
+            for pid, points in all_day_points[future_day].items():
+                if pid in future_points:
+                    future_points[pid] += points
+        after_points = {
+            pid: points - future_points.get(pid, 0) for pid, points in current_points.items()
+        }
+        day_points = all_day_points.get(day, {})
+        before_points = {
+            pid: points - day_points.get(pid, 0) for pid, points in after_points.items()
+        }
+        before_ranks = _ranks_from_points(before_points)
+        after_ranks = _ranks_from_points(after_points)
+        deltas = {pid: before_ranks[pid] - after_ranks[pid] for pid in current_points}
+        best_delta = max(deltas.values(), default=0)
+        climber_ids = {pid for pid, delta in deltas.items() if delta == best_delta} if best_delta >= 2 else set()
+
+        existing = await db.execute(
+            "SELECT MIN(finalized_at) AS finalized_at FROM sporting_day_rank_evolutions WHERE sporting_day=?",
+            (day,),
+        )
+        finalized_at = (await existing.fetchone())["finalized_at"]
+        await db.execute("DELETE FROM sporting_day_rank_evolutions WHERE sporting_day=?", (day,))
+        for pid in current_points:
+            await db.execute(
+                """INSERT INTO sporting_day_rank_evolutions
+                   (sporting_day, participant_id, points_before, day_points, points_after,
+                    rank_before, rank_after, delta, is_climber, finalized_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,COALESCE(?, datetime('now')),datetime('now'))""",
+                (
+                    day, pid, before_points[pid], day_points.get(pid, 0), after_points[pid],
+                    before_ranks[pid], after_ranks[pid], deltas[pid],
+                    1 if pid in climber_ids else 0, finalized_at,
+                ),
+            )
+
+
+async def get_latest_finalized_climbers(db) -> dict:
+    row = await db.execute(
+        "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
+    )
+    day = (await row.fetchone())["day"]
+    if not day:
+        return {"day": None, "delta": 0, "climbers": []}
+    rows = await db.execute(
+        """SELECT e.*, p.name, p.nickname
+           FROM sporting_day_rank_evolutions e
+           JOIN participants p ON p.id=e.participant_id
+           WHERE e.sporting_day=? AND e.is_climber=1
+           ORDER BY COALESCE(NULLIF(p.nickname, ''), p.name)""",
+        (day,),
+    )
+    climbers = [dict(r) for r in await rows.fetchall()]
+    return {
+        "day": day,
+        "delta": max((r["delta"] for r in climbers), default=0),
+        "climbers": climbers,
     }
-    # Rang ex æquo identique au classement : 1 + nombre de joueurs au-dessus.
-    all_points = sorted(baseline_points.values(), reverse=True)
-    baseline_rank = {
-        pid: 1 + sum(1 for p in all_points if p > bp)
-        for pid, bp in baseline_points.items()
-    }
-    deltas = {r["id"]: baseline_rank[r["id"]] - r["rank"] for r in current}
-    return {"deltas": deltas, "day": day_d}
 
 
 def answers_match(answer_type: str, given: str, correct: str) -> bool:
@@ -373,6 +498,7 @@ async def calculate_bonus_scores(question_id: int):
                     (ans["participant_id"], question_id, points),
                 )
 
+        await sync_finalized_evolution_history(db)
         await db.commit()
 
 
@@ -469,4 +595,5 @@ async def recalculate_pre_tournament_scores():
                     (pred["participant_id"], question["key"], points),
                 )
 
+        await sync_finalized_evolution_history(db)
         await db.commit()

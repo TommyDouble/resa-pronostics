@@ -5,8 +5,7 @@ Boucle de fond qui, à intervalle régulier, envoie ce qui est dû :
 - escalade proche du coup d'envoi (~2 h puis ~1 h) pour les retardataires ;
 - rappel pré-tournoi quand la deadline est à moins de 24 h ;
 - rappel des questions bonus sans réponse à moins de 24 h de la deadline ;
-- récap quotidien de la veille (points, rang, top 3) ;
-- capture quotidienne du classement (ranking_snapshots) pour l'historique.
+- récap quotidien de la dernière journée sportive finalisée (points, rang, top 3).
 
 Chaque envoi est journalisé dans notification_log (anti-doublons). Les
 rappels d'encodage, bonus et le récap quotidien sont *push only* ; seuls
@@ -30,17 +29,17 @@ from app.pre_tournament import (
     get_pre_tournament_questions,
     pt_filled_keys,
 )
-from app.scoring import get_rank_evolution, get_rankings
+from app.scoring import get_sporting_day_states
 from app.settings_store import knockout_predictions_open
 from app.timeutils import (
     DISPLAY_TZ,
+    format_sporting_day_fr,
     local_today,
     match_kickoff_utc,
     minutes_until_match,
     now_utc,
     now_utc_iso,
     parse_utc_iso,
-    utc_day_bounds_for_local_date,
     utc_iso,
 )
 
@@ -48,8 +47,7 @@ logger = logging.getLogger(__name__)
 
 # Heures locales (Brussels) d'envoi
 MORNING_REMINDER_HOUR = 9       # rappel d'encodage du matin
-RECAP_FROM_HOUR = 9             # récap de la veille le matin
-RECAP_FORCE_HOUR = 13           # envoyé / capturé même si tout n'est pas encodé
+RECAP_FROM_HOUR = 9             # récap de la dernière journée finalisée, le matin
 ESCALATION_2H_MINUTES = 120     # fenêtre haute de l'escalade
 ESCALATION_1H_MINUTES = 60      # bascule en mode urgent
 
@@ -179,44 +177,6 @@ async def _job_lock_escalation(db, now_local: datetime):
     await db.commit()
 
 
-async def _job_capture_snapshot(db, now_local: datetime):
-    """Capture le classement de fin de journée sportive dans ranking_snapshots.
-
-    Idempotent et forward-only : une ligne par participant et par journée
-    (snapshot_date = date locale de la veille). On n'écrit qu'une fois la
-    journée stabilisée (tous les résultats encodés, ou après 13 h), comme le
-    récap, afin d'absorber les encodages tardifs.
-    """
-    if now_local.hour < RECAP_FROM_HOUR:
-        return
-    yesterday = local_today(-1)
-    snapshot_date = yesterday.isoformat()
-    start, end = utc_day_bounds_for_local_date(yesterday)
-    counts_row = await db.execute(
-        """SELECT COUNT(*) AS total,
-                  SUM(CASE WHEN result IS NOT NULL THEN 1 ELSE 0 END) AS encoded
-           FROM matches
-           WHERE datetime(match_date || 'T' || kickoff_time) >= datetime(?)
-             AND datetime(match_date || 'T' || kickoff_time) <= datetime(?)""",
-        (start, end),
-    )
-    counts = await counts_row.fetchone()
-    total, encoded = counts["total"], counts["encoded"] or 0
-    if total == 0 or encoded == 0:
-        return
-    if encoded < total and now_local.hour < RECAP_FORCE_HOUR:
-        return  # journée pas encore stabilisée : attendre l'encodage complet
-    rankings = await get_rankings(db)
-    for r in rankings:
-        await db.execute(
-            """INSERT INTO ranking_snapshots (snapshot_date, participant_id, rank, total_points)
-               VALUES (?,?,?,?)
-               ON CONFLICT(snapshot_date, participant_id) DO NOTHING""",
-            (snapshot_date, r["id"], r["rank"], r["total_points"]),
-        )
-    await db.commit()
-
-
 async def _job_pre_tournament_reminder(db, now_iso: str):
     deadline = await get_pre_tournament_deadline(db)
     try:
@@ -276,51 +236,40 @@ async def _job_bonus_reminders(db, now_iso: str):
 async def _job_daily_recap(db, now_local: datetime):
     if now_local.hour < RECAP_FROM_HOUR:
         return
-    yesterday = local_today(-1)
-    ref = yesterday.isoformat()
-    start, end = utc_day_bounds_for_local_date(yesterday)
-    counts_row = await db.execute(
-        """SELECT COUNT(*) AS total,
-                  SUM(CASE WHEN result IS NOT NULL THEN 1 ELSE 0 END) AS encoded
-           FROM matches
-           WHERE datetime(match_date || 'T' || kickoff_time) >= datetime(?)
-             AND datetime(match_date || 'T' || kickoff_time) <= datetime(?)""",
-        (start, end),
+    day_row = await db.execute(
+        "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
     )
-    counts = await counts_row.fetchone()
-    total, encoded = counts["total"], counts["encoded"] or 0
-    if total == 0 or encoded == 0:
+    ref = (await day_row.fetchone())["day"]
+    if not ref:
         return
-    if encoded < total and now_local.hour < RECAP_FORCE_HOUR:
-        return  # attendre l'encodage complet jusqu'en début d'après-midi
-    rankings = await get_rankings(db)
-    evolution = (await get_rank_evolution(db))["deltas"]
-    rank_by_id = {r["id"]: r for r in rankings}
-    top3 = [(r["name"], r["total_points"]) for r in rankings[:3]]
-    pts_rows = await db.execute(
-        """SELECT s.participant_id, COALESCE(SUM(s.points), 0) AS pts
-           FROM scores s
-           JOIN matches m ON m.id = s.match_id
-           WHERE m.result IS NOT NULL
-             AND datetime(m.match_date || 'T' || m.kickoff_time) >= datetime(?)
-             AND datetime(m.match_date || 'T' || m.kickoff_time) <= datetime(?)
-           GROUP BY s.participant_id""",
-        (start, end),
+    evo_rows = await db.execute(
+        """SELECT e.*, COALESCE(NULLIF(p.nickname, ''), p.name) AS display_name
+           FROM sporting_day_rank_evolutions e
+           JOIN participants p ON p.id=e.participant_id
+           WHERE e.sporting_day=?
+           ORDER BY e.rank_after, e.points_after DESC, display_name""",
+        (ref,),
     )
-    points_by_id = {r["participant_id"]: r["pts"] for r in await pts_rows.fetchall()}
-    date_label = yesterday.strftime("%d/%m")
+    evolution_rows = [dict(r) for r in await evo_rows.fetchall()]
+    if not evolution_rows:
+        return
+    evolution_by_id = {r["participant_id"]: r for r in evolution_rows}
+    top3 = [(r["display_name"], r["points_after"]) for r in evolution_rows[:3]]
+    states = await get_sporting_day_states(db)
+    match_count = states.get(ref, {}).get("match_count", 0)
+    date_label = format_sporting_day_fr(ref)
     for p in await _opted_in_participants(db):
         if await _already_sent(db, p["id"], "daily_recap", ref):
             continue
-        rank_data = rank_by_id.get(p["id"])
+        rank_data = evolution_by_id.get(p["id"])
         if not rank_data:
             continue
         recap = {
             "date_label": date_label,
-            "points": points_by_id.get(p["id"], 0),
-            "match_count": encoded,
-            "rank": rank_data["rank"],
-            "evolution": evolution.get(p["id"]),
+            "points": rank_data["day_points"],
+            "match_count": match_count,
+            "rank": rank_data["rank_after"],
+            "evolution": rank_data["delta"],
             "top3": top3,
         }
         await notify_daily_recap(db, p, recap)
@@ -339,7 +288,6 @@ async def run_pending_notifications(now_local: datetime | None = None):
         await _job_morning_encoding_reminder(db, now_local)
         await _job_lock_escalation(db, now_local)
         await _job_daily_recap(db, now_local)
-        await _job_capture_snapshot(db, now_local)
 
 
 async def scheduler_loop():
