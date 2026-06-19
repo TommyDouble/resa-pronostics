@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth import set_participant_cookie
 from app.config import settings
-from app.database import init_db
+from app.database import get_db, init_db
 from app.routers import admin, api, pages
 from app.templating import create_templates
 
@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Initialize database and background reminders on startup."""
     await init_db()
+    from app.scoring import sync_finalized_evolution_history
+    async with get_db() as db:
+        await sync_finalized_evolution_history(db)
+        await db.commit()
     logger.info("Database initialized.")
     reminder_task = None
     if settings.SCHEDULER_ENABLED:

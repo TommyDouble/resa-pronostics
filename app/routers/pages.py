@@ -1,6 +1,6 @@
 """Participant-facing HTML page routes."""
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 import io
 import logging
 import os
@@ -43,6 +43,7 @@ from app.prizes import get_prize_info
 from app.settings_store import knockout_predictions_open
 from app.scoring import (
     get_department_rankings,
+    get_latest_finalized_climbers,
     get_rank_evolution,
     get_rankings,
     get_remontada,
@@ -53,7 +54,9 @@ from app.scoring import (
 from app.templating import create_templates
 from app.timeutils import (
     DISPLAY_TZ,
+    current_sporting_day,
     format_match_local_date,
+    format_sporting_day_fr,
     is_match_locked,
     local_today,
     match_kickoff_utc,
@@ -61,7 +64,7 @@ from app.timeutils import (
     minutes_until_match,
     now_utc_iso,
     sporting_day,
-    utc_day_bounds_for_local_date,
+    sporting_day_bounds,
 )
 
 # Whitelist stricte des templates de story (registre central app.news) :
@@ -182,6 +185,13 @@ def _live_state(match: dict) -> str:
 
 def _minutes_until(match: dict) -> int:
     return minutes_until_match(match)
+
+
+def _enrich_sporting_day_match(match: dict, day: str) -> None:
+    """Ajoute les repères lisibles des matchs joués après minuit."""
+    calendar_day = format_match_local_date(match)
+    match["is_overnight"] = calendar_day != day
+    match["calendar_day_label"] = format_sporting_day_fr(calendar_day).split(" ", 1)[0]
 
 
 def _prediction_short(prediction: str | None) -> str:
@@ -346,7 +356,8 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
     }
 
 
-async def _reveal_rank_evolution(db, participant_id: int, window_ids: list) -> dict:
+async def _reveal_rank_evolution(db, participant_id: int, window_ids: list,
+                                 through_day: str | None = None) -> dict:
     """Évolution de rang provoquée par les matchs du périmètre, focus participant.
 
     Avant = classement actuel privé des points gagnés sur ces matchs (déterministe,
@@ -362,12 +373,26 @@ async def _reveal_rank_evolution(db, participant_id: int, window_ids: list) -> d
         window_ids,
     )
     win_pts = {r["participant_id"]: r["pts"] for r in await pts_rows.fetchall()}
-    baseline_points = {r["id"]: r["total_points"] - win_pts.get(r["id"], 0) for r in current}
+    after_points = {r["id"]: r["total_points"] for r in current}
+    if through_day:
+        future_rows = await db.execute(
+            """SELECT s.participant_id, s.points, m.match_date, m.kickoff_time
+               FROM scores s JOIN matches m ON m.id=s.match_id
+               WHERE s.match_id IS NOT NULL"""
+        )
+        for row in await future_rows.fetchall():
+            item = dict(row)
+            if sporting_day(item) > through_day and item["participant_id"] in after_points:
+                after_points[item["participant_id"]] -= item["points"]
+    baseline_points = {pid: points - win_pts.get(pid, 0) for pid, points in after_points.items()}
     all_bp = sorted(baseline_points.values(), reverse=True)
     before_rank = {pid: 1 + sum(1 for p in all_bp if p > bp) for pid, bp in baseline_points.items()}
 
     pos = {r["id"]: i for i, r in enumerate(current)}
     before_order = sorted(current, key=lambda r: (-baseline_points[r["id"]], pos[r["id"]]))
+    all_ap = sorted(after_points.values(), reverse=True)
+    after_rank = {pid: 1 + sum(1 for p in all_ap if p > ap) for pid, ap in after_points.items()}
+    after_order = sorted(current, key=lambda r: (-after_points[r["id"]], pos[r["id"]]))
 
     def extract(order, rank_of, points_of):
         idx = next((k for k, r in enumerate(order) if r["id"] == participant_id), None)
@@ -386,9 +411,9 @@ async def _reveal_rank_evolution(db, participant_id: int, window_ids: list) -> d
         }
 
     before = extract(before_order, lambda r: before_rank[r["id"]], lambda r: baseline_points[r["id"]])
-    after = extract(current, lambda r: r["rank"], lambda r: r["total_points"])
+    after = extract(after_order, lambda r: after_rank[r["id"]], lambda r: after_points[r["id"]])
     me_before = before_rank.get(participant_id)
-    me_after = next((r["rank"] for r in current if r["id"] == participant_id), None)
+    me_after = after_rank.get(participant_id)
     moved = me_before is not None and me_after is not None and me_before != me_after
 
     # Contexte 5 slots (2 dessus + MOI + 2 dessous) avant et après le mouvement.
@@ -411,10 +436,10 @@ async def _reveal_rank_evolution(db, participant_id: int, window_ids: list) -> d
                 result.append(None)
         return result
 
-    current_rank_map = {r["id"]: r["rank"] for r in current}
-    current_pts_map  = {r["id"]: r["total_points"] for r in current}
+    current_rank_map = after_rank
+    current_pts_map = after_points
     before_ctx = get_ctx(before_order, lambda r: before_rank[r["id"]], lambda r: baseline_points[r["id"]])
-    after_ctx  = get_ctx(current,      lambda r: current_rank_map[r["id"]], lambda r: current_pts_map[r["id"]])
+    after_ctx  = get_ctx(after_order, lambda r: current_rank_map[r["id"]], lambda r: current_pts_map[r["id"]])
     me_before_points = baseline_points.get(participant_id, 0)
     me_after_points  = current_pts_map.get(participant_id, 0)
 
@@ -428,41 +453,71 @@ async def _reveal_rank_evolution(db, participant_id: int, window_ids: list) -> d
     }
 
 
-async def _reveal_window_data(db, participant_id: int) -> dict | None:
-    """« Reveal du jour » v2 : périmètre = matchs encodés depuis le dernier reveal.
+async def _register_daily_connection(db, participant_id: int) -> str:
+    """Fige la connexion précédente au premier accueil de la journée sportive."""
+    day = current_sporting_day()
+    row = await (await db.execute(
+        """SELECT last_connected_sporting_day, reveal_connection_baseline_day,
+                  last_revealed_date
+           FROM participants WHERE id=?""",
+        (participant_id,),
+    )).fetchone()
+    if not row:
+        return day
+    if row["last_connected_sporting_day"] == day:
+        return row["reveal_connection_baseline_day"] or row["last_revealed_date"] or day
+    baseline = row["last_connected_sporting_day"] or row["last_revealed_date"] or day
+    await db.execute(
+        """UPDATE participants
+           SET reveal_connection_baseline_day=?, last_connected_sporting_day=?
+           WHERE id=?""",
+        (baseline, day, participant_id),
+    )
+    await db.commit()
+    return baseline
 
-    Regroupe par journée sportive (cf. sporting_day). Disponible seulement quand la
-    nuit la plus récente est terminée ET que tous ses matchs joués sont encodés.
-    None sinon (rien à révéler / on attend l'encodage).
-    """
+
+async def _reveal_window_data(db, participant_id: int) -> dict | None:
+    """Journées finalisées depuis la connexion précédente, dernière garantie."""
     prow = await (await db.execute(
-        "SELECT last_revealed_date FROM participants WHERE id=?", (participant_id,)
+        """SELECT last_revealed_date, reveal_connection_baseline_day,
+                  last_connected_sporting_day
+           FROM participants WHERE id=?""",
+        (participant_id,),
     )).fetchone()
     last_revealed = (prow["last_revealed_date"] if prow else None) or ""
+    baseline = (prow["reveal_connection_baseline_day"] if prow else None) or last_revealed
 
     rows = await db.execute("SELECT * FROM matches ORDER BY match_date, kickoff_time")
     all_matches = [dict(m) for m in await rows.fetchall()]
     for m in all_matches:
         m["sd"] = sporting_day(m)
-        m["kicked_off"] = is_match_locked(m)
 
-    # Périmètre : journées sportives strictement postérieures au dernier reveal.
-    pending = [m for m in all_matches if m["sd"] > last_revealed]
-    encoded = [m for m in pending if m["result"] is not None]
-    if not encoded:
+    by_day = defaultdict(list)
+    for match in all_matches:
+        by_day[match["sd"]].append(match)
+    finalized_days = sorted(
+        day for day, matches in by_day.items()
+        if matches and all(m["result"] is not None for m in matches)
+    )
+    if not finalized_days:
         return None
-    # Aucun match déjà joué du périmètre ne doit rester en attente de résultat.
-    if any(m["kicked_off"] and m["result"] is None for m in pending):
-        return None
-    started = [m for m in pending if m["kicked_off"]]
-    if not started:
-        return None
-    # La nuit la plus récente doit être terminée (aucun de ses matchs encore à jouer).
-    latest_sd = max(m["sd"] for m in started)
-    if any(m["sd"] == latest_sd and not m["kicked_off"] for m in pending):
+    latest_sd = finalized_days[-1]
+    selected_days = [
+        day for day in finalized_days
+        if day > baseline and day > last_revealed
+    ]
+    # Le dernier Reveal finalisé reste disponible jusqu'au suivant, sauf s'il a été vu.
+    if latest_sd > last_revealed and latest_sd not in selected_days:
+        selected_days.append(latest_sd)
+    selected_days.sort()
+    if not selected_days:
         return None
 
-    window = sorted(encoded, key=lambda m: (m["match_date"], m["kickoff_time"], m["match_number"]))
+    window = sorted(
+        [m for m in all_matches if m["sd"] in selected_days],
+        key=lambda m: (m["match_date"], m["kickoff_time"], m["match_number"]),
+    )
     window_ids = [m["id"] for m in window]
     placeholders = ",".join("?" for _ in window_ids)
     mrows = await db.execute(
@@ -486,20 +541,38 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
             e.get("prediction") is not None or e.get("exact_score_team1") is not None
         )
         row["tier"] = _prediction_tier(row, row)
+        _enrich_sporting_day_match(row, row["sd"])
         matches.append(row)
         total += row["points"]
         if row["tier"] == "exact":
             exact_count += 1
 
-    reveal_sd = max(m["sd"] for m in window)
+    day_groups = []
+    for day in selected_days:
+        day_matches = [m for m in matches if m["sd"] == day]
+        day_groups.append({
+            "sporting_day": day,
+            "day_label": format_sporting_day_fr(day),
+            "matches": day_matches,
+            "match_count": len(day_matches),
+            "total_points": sum(m["points"] for m in day_matches),
+            "exact_count": sum(1 for m in day_matches if m["tier"] == "exact"),
+        })
+    reveal_sd = selected_days[-1]
+    is_catchup = len(selected_days) > 1
     return {
         "sporting_day": reveal_sd,
-        "day_label": _format_day_fr(reveal_sd),
+        "day_label": "Depuis ta dernière visite" if is_catchup else format_sporting_day_fr(reveal_sd),
+        "days": day_groups,
+        "day_count": len(day_groups),
+        "is_catchup": is_catchup,
         "matches": matches,
         "total_points": total,
         "exact_count": exact_count,
         "match_count": len(matches),
-        "evolution": await _reveal_rank_evolution(db, participant_id, window_ids),
+        "evolution": await _reveal_rank_evolution(
+            db, participant_id, window_ids, through_day=reveal_sd
+        ),
     }
 
 
@@ -657,6 +730,10 @@ async def register_post(
         return register_error("Les deux mots de passe ne correspondent pas.")
 
     token = str(uuid.uuid4())
+    registration_day = current_sporting_day()
+    registration_previous_day = (
+        date.fromisoformat(registration_day) - timedelta(days=1)
+    ).isoformat()
     async with get_db() as db:
         existing = await (await db.execute(
             "SELECT id FROM participants WHERE email=?", (email,)
@@ -670,10 +747,12 @@ async def register_post(
             await db.execute(
                 """INSERT INTO participants
                    (name, first_name, last_name, email, token, is_confirmed,
-                    password_hash, department)
-                   VALUES (?,?,?,?,?,1,?,?)""",
+                    password_hash, department, last_connected_sporting_day,
+                    reveal_connection_baseline_day, last_revealed_date)
+                   VALUES (?,?,?,?,?,1,?,?,?,?,?)""",
                 (name, first_name, last_name, email, token,
-                 hash_password(password), department)
+                 hash_password(password), department,
+                 registration_day, registration_day, registration_previous_day)
             )
             await db.commit()
         except Exception:
@@ -691,12 +770,15 @@ async def participant_home(request: Request, token: str):
         })
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "home")
+        await _register_daily_connection(db, p["id"])
         # Reveal du jour : proposé seulement quand le lot/nuit est complet (cf.
         # _reveal_window_data, qui renvoie None tant qu'on attend l'encodage).
         reveal = await _reveal_window_data(db, p["id"])
         ctx["reveal_available"] = reveal is not None
         ctx["reveal_points"] = reveal["total_points"] if reveal else 0
         ctx["reveal_day_label"] = reveal["day_label"] if reveal else ""
+        ctx["reveal_day_count"] = reveal["day_count"] if reveal else 0
+        ctx["reveal_is_catchup"] = reveal["is_catchup"] if reveal else False
         # Encart récap = miroir EXACT du Reveal (même fenêtre journée sportive et
         # même baseline) : points, compte et flèche dérivent du même objet, donc
         # toujours cohérents. Se cache en même temps que le Reveal (reveal_available).
@@ -706,8 +788,9 @@ async def participant_home(request: Request, token: str):
             if reveal and reveal.get("evolution") and reveal["evolution"].get("after")
             else None
         )
-        # Upcoming/today matches
-        today_start_utc, today_end_utc = utc_day_bounds_for_local_date()
+        # Matchs de la journée sportive locale (9 h → lendemain 8 h 59).
+        home_sporting_day = current_sporting_day()
+        today_start_utc, today_end_utc = sporting_day_bounds(home_sporting_day)
         rows = await db.execute(
             """SELECT m.*,
                  p.prediction, p.exact_score_team1, p.exact_score_team2,
@@ -716,7 +799,7 @@ async def participant_home(request: Request, token: str):
                LEFT JOIN predictions p ON p.match_id = m.id AND p.participant_id = ?
                LEFT JOIN scores s ON s.match_id = m.id AND s.participant_id = ?
                WHERE datetime(m.match_date || 'T' || m.kickoff_time) >= datetime(?)
-                 AND datetime(m.match_date || 'T' || m.kickoff_time) <= datetime(?)
+                 AND datetime(m.match_date || 'T' || m.kickoff_time) < datetime(?)
                ORDER BY m.match_date, m.kickoff_time""",
             (p["id"], p["id"], today_start_utc, today_end_utc)
         )
@@ -724,6 +807,7 @@ async def participant_home(request: Request, token: str):
         for m in today_matches:
             m["is_locked"] = _is_locked(m)
             m["live_state"] = _live_state(m)
+            _enrich_sporting_day_match(m, home_sporting_day)
         # Urgency match: next unpredicted/locked-soon match
         urgency = None
         for m in today_matches:
@@ -779,6 +863,11 @@ async def participant_home(request: Request, token: str):
         )
         ctx.update({
             "today_matches": today_matches,
+            "sporting_day_label": format_sporting_day_fr(home_sporting_day),
+            "sporting_day_help": (
+                f"Du {format_sporting_day_fr(home_sporting_day)} à 9 h au "
+                f"{format_sporting_day_fr((date.fromisoformat(home_sporting_day) + timedelta(days=1)).isoformat())} à 8 h 59"
+            ),
             "urgency": urgency,
             "unpredicted_today": unpredicted_today,
             "next_match": next_match,
@@ -806,12 +895,20 @@ async def confirm_onboarding(request: Request, token: str,
     if department not in DEPARTMENTS:
         department = ""
     async with get_db() as db:
+        onboarding_day = current_sporting_day()
+        onboarding_previous_day = (
+            date.fromisoformat(onboarding_day) - timedelta(days=1)
+        ).isoformat()
         await db.execute(
             """UPDATE participants
                SET name = ?, first_name = ?, last_name = ?, is_confirmed = 1,
-                   department = COALESCE(NULLIF(?, ''), department)
+                   department = COALESCE(NULLIF(?, ''), department),
+                   last_connected_sporting_day=COALESCE(last_connected_sporting_day, ?),
+                   reveal_connection_baseline_day=COALESCE(reveal_connection_baseline_day, ?),
+                   last_revealed_date=COALESCE(last_revealed_date, ?)
                WHERE token = ?""",
-            (name, first_name, last_name, department, token)
+            (name, first_name, last_name, department, onboarding_day,
+             onboarding_day, onboarding_previous_day, token)
         )
         await db.commit()
     return RedirectResponse(url=f"/p/{token}", status_code=303)
@@ -1015,17 +1112,31 @@ RANKING_VIEWS = {
 }
 
 
-FR_WEEKDAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
-FR_MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
-             "août", "septembre", "octobre", "novembre", "décembre"]
-
-
 def _format_day_fr(value: str) -> str:
-    try:
-        d = date.fromisoformat(value)
-    except (TypeError, ValueError):
-        return value or ""
-    return f"{FR_WEEKDAYS[d.weekday()]} {d.day} {FR_MONTHS[d.month - 1]}"
+    return format_sporting_day_fr(value)
+
+
+async def _sporting_day_match_labels(db, day: str) -> list[str]:
+    """Libellés locaux des matchs inclus dans une journée sportive."""
+    start_utc, end_utc = sporting_day_bounds(day)
+    rows = await db.execute(
+        """SELECT team1_name, team2_name, match_date, kickoff_time
+           FROM matches
+           WHERE datetime(match_date || 'T' || kickoff_time) >= datetime(?)
+             AND datetime(match_date || 'T' || kickoff_time) < datetime(?)
+           ORDER BY match_date, kickoff_time""",
+        (start_utc, end_utc),
+    )
+    labels = []
+    for row in await rows.fetchall():
+        match = dict(row)
+        local_kickoff = match_kickoff_utc(match).astimezone(DISPLAY_TZ)
+        weekday = format_sporting_day_fr(local_kickoff.date().isoformat()).split(" ", 1)[0]
+        labels.append(
+            f"{weekday} {local_kickoff:%H:%M} · "
+            f"{match['team1_name']} – {match['team2_name']}"
+        )
+    return labels
 
 
 @router.get("/p/{token}/classement", response_class=HTMLResponse)
@@ -1039,6 +1150,9 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
         departments = []
         evolution = {}
         evolution_day = None
+        evolution_status = None
+        evolution_match_count = 0
+        evolution_encoded_count = 0
         if view == "remontada":
             rankings = await get_remontada(db)
         elif view == "departments":
@@ -1049,18 +1163,35 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
                 evo = await get_rank_evolution(db)
                 evolution = evo["deltas"]
                 evolution_day = evo["day"]
-        # Grimpeur du jour : plus forte montée de la dernière journée jouée
-        # (au moins 2 places pour mériter la fusée — les ex æquo la partagent).
-        climber_delta = max(evolution.values(), default=0)
-        climber_ids = (
-            {pid for pid, d in evolution.items() if d == climber_delta}
-            if climber_delta >= 2 else set()
-        )
+                evolution_status = evo["status"]
+                evolution_match_count = evo["match_count"]
+                evolution_encoded_count = evo["encoded_count"]
+        # Le titre reste celui de la dernière journée entièrement finalisée.
+        finalized_climbers = await get_latest_finalized_climbers(db)
+        climber_delta = finalized_climbers["delta"]
+        climber_day = finalized_climbers["day"]
+        climber_day_help = ""
+        if view == "general" and climber_day:
+            match_labels = await _sporting_day_match_labels(db, climber_day)
+            climber_day_help = (
+                "Une journée sportive commence à 9 h et se termine juste avant 9 h "
+                "le lendemain."
+            )
+            if match_labels:
+                climber_day_help += "\nMatchs concernés :\n" + "\n".join(
+                    f"• {label}" for label in match_labels
+                )
+        climber_by_id = {r["participant_id"]: r for r in finalized_climbers["climbers"]}
+        climber_ids = set(climber_by_id)
         for r in rankings:
             r["is_me"] = (r["id"] == p["id"])
             r["color_class"] = f"c{((r['id'] - 1) % 8) + 1}"
             r["evolution"] = evolution.get(r["id"])
             r["is_climber"] = r["id"] in climber_ids
+            if r["is_climber"]:
+                r["climber_tip"] = (
+                    f"Grimpeur de la journée sportive du {_format_day_fr(climber_day)}"
+                )
         climbers = [r for r in rankings if r.get("is_climber")]
         # La remontada n'a de sens qu'une fois la phase finale entamée.
         ko_row = await db.execute(
@@ -1076,8 +1207,13 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
             "view": view,
             "ranking_views": RANKING_VIEWS,
             "evolution_day_label": _format_day_fr(evolution_day) if evolution_day else "",
+            "evolution_status": evolution_status,
+            "evolution_match_count": evolution_match_count,
+            "evolution_encoded_count": evolution_encoded_count,
             "climbers": climbers,
             "climber_delta": climber_delta,
+            "climber_day_label": _format_day_fr(climber_day) if climber_day else "",
+            "climber_day_help": climber_day_help,
             "knockout_started": knockout_started,
             "prize_info": prize_info,
         })

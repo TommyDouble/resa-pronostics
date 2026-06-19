@@ -134,19 +134,27 @@ async def news_seen(body: NewsSeenIn, token: str = Query(...)):
 
 
 @router.post("/reveal/seen")
-async def reveal_seen(token: str = Query(...)):
+async def reveal_seen(token: str = Query(...), sporting_day: str = Query(default="")):
     """Marque le reveal comme vu : avance last_revealed_date à la journée
     sportive la plus récente du périmètre (recalculé serveur, pas de valeur client)."""
     p = await get_participant_by_token(token)
     if not p:
         raise HTTPException(403, "Token invalide")
     from app.routers.pages import _reveal_window_data
+    from app.scoring import get_sporting_day_states
     async with get_db() as db:
         reveal = await _reveal_window_data(db, p["id"])
         if reveal:
+            states = await get_sporting_day_states(db)
+            requested_is_finalized = bool(
+                sporting_day and states.get(sporting_day, {}).get("finalized")
+            )
+            revealed_through = sporting_day if requested_is_finalized else reveal["sporting_day"]
             await db.execute(
-                "UPDATE participants SET last_revealed_date=? WHERE id=?",
-                (reveal["sporting_day"], p["id"]),
+                """UPDATE participants
+                   SET last_revealed_date=MAX(COALESCE(last_revealed_date, ''), ?)
+                   WHERE id=?""",
+                (revealed_through, p["id"]),
             )
             await db.commit()
     return {"success": True}

@@ -183,7 +183,7 @@ async def send_bonus_reminder(participant: dict, question: dict, deadline_label:
 
 
 async def send_daily_recap(participant: dict, recap: dict):
-    """Récap de la veille: points gagnés, rang, top 3.
+    """Récap d'une journée sportive finalisée: points, rang, top 3.
 
     OBSOLÈTE : le récap quotidien est désormais push only (plus de repli
     email). Le récap *hebdomadaire* (W2) gardera, lui, un repli email.
@@ -198,14 +198,14 @@ async def send_daily_recap(participant: dict, recap: dict):
         evo_txt = f" — tu gagnes {evolution} place{'s' if evolution > 1 else ''} 📈"
     else:
         evo_txt = f" — tu perds {-evolution} place{'s' if evolution < -1 else ''}"
-    subject = f"RESA Pronostics — Hier: +{recap['points']} pts{evo_txt}"
+    subject = f"RESA Pronostics — {recap['date_label'].capitalize()}: +{recap['points']} pts{evo_txt}"
     top3_html = "".join(
         f"<li>{name} — {pts} pts</li>" for name, pts in recap.get("top3", [])
     )
     html = f"""
     <h2>Ton récap du {recap['date_label']}</h2>
     <p>Bonjour {participant['name']},</p>
-    <p>Hier tu as gagné <strong>+{recap['points']} points</strong>
+    <p>Sur cette journée sportive, tu as gagné <strong>+{recap['points']} points</strong>
        sur {recap['match_count']} match{'s' if recap['match_count'] > 1 else ''}.
        Tu es maintenant <strong>{recap['rank']}e</strong> au classement général{evo_txt}.</p>
     <p>Le podium du moment :</p>
@@ -216,7 +216,7 @@ async def send_daily_recap(participant: dict, recap: dict):
     """
     text = (
         f"Bonjour {participant['name']},\n\n"
-        f"Hier: +{recap['points']} pts sur {recap['match_count']} matchs. "
+        f"{recap['date_label'].capitalize()}: +{recap['points']} pts sur {recap['match_count']} matchs. "
         f"Tu es {recap['rank']}e{evo_txt}.\n{link}\n"
     )
     return await send_email(participant["email"], subject, html, text)

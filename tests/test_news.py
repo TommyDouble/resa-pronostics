@@ -59,6 +59,27 @@ def test_news_seen_rejects_bad_token(client):
     assert res.status_code == 403
 
 
+def test_sporting_day_story_is_seeded_as_draft_with_four_guided_screens(admin_client):
+    async def _find():
+        async with get_db() as db:
+            row = await db.execute(
+                """SELECT id, is_published, template_key FROM news_items
+                   WHERE slug='journees-sportives-apres-minuit'"""
+            )
+            return dict(await row.fetchone())
+
+    item = run(_find())
+    assert item["is_published"] == 0
+    assert item["template_key"] == "sporting_day_update"
+    listing = admin_client.get("/admin/nouveautes").text
+    assert "Tes journées, même après minuit" in listing
+    assert "Brouillon" in listing
+    html = admin_client.get(f"/admin/nouveautes/{item['id']}/preview").text
+    assert html.count('class="story-screen"') == 4
+    assert "Une journée sportive ne s'arrête pas à minuit" in html
+    assert "Depuis ta visite : +16" in html
+
+
 def test_admin_news_crud(admin_client):
     # Création
     res = admin_client.post(

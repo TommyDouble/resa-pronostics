@@ -230,6 +230,7 @@ body.tooltip-floating .tip[data-tip]::after {
   line-height: 1.35;
   letter-spacing: 0;
   text-transform: none;
+  white-space: pre-line;
   box-shadow: var(--sh2);
   opacity: 0;
   pointer-events: none;
@@ -1825,6 +1826,19 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
   font-size: 24px; line-height: 1.05;
   overflow-wrap: break-word;
 }
+.ch-day {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.ch-day .help-tip {
+  width: 16px;
+  height: 16px;
+  color: rgba(255,255,255,.85);
+  font-size: 10px;
+  flex: none;
+}
+.climber-day-help::after { white-space: pre-line; }
 .ch-delta {
   flex: none;
   font-family: var(--display); font-weight: 800; font-size: 26px;
@@ -1990,6 +2004,7 @@ body.story-locked { overflow: hidden; }
 }
 .news-story .story-nav.prev { left: 0; }
 .news-story .story-nav.next { right: 0; width: 60%; }
+.news-story .story-nav:focus { outline: none; }
 
 /* Maquette "mini-accueil" pour montrer le nouveau CTA. */
 .sm-frame {

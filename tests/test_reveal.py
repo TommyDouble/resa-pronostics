@@ -2,13 +2,14 @@
 from datetime import timedelta
 
 from app.database import get_db, _migrate_reveal_sporting_day
-from app.routers.pages import _reveal_window_data
+import app.routers.pages as pages
+from app.routers.pages import _register_daily_connection, _reveal_window_data
 from app.timeutils import now_utc, sporting_day
 from tests.conftest import run
 
 
 def _reset_matches():
-    """Isole le scénario : la fenêtre du reveal cible tout depuis le dernier reveal,
+    """Isole le scénario : la fenêtre du reveal cible les journées finalisées,
     donc on repart d'une table matches vide (cascade scores/predictions)."""
     async def _c():
         async with get_db() as db:
@@ -82,6 +83,33 @@ def _window(pid):
         async with get_db() as db:
             return await _reveal_window_data(db, pid)
     return run(_g())
+
+
+def _connection_state(pid):
+    async def _g():
+        async with get_db() as db:
+            row = await (await db.execute(
+                """SELECT last_connected_sporting_day, reveal_connection_baseline_day,
+                          last_revealed_date FROM participants WHERE id=?""",
+                (pid,),
+            )).fetchone()
+            return dict(row)
+    return run(_g())
+
+
+def _explicit_result_match(number, day):
+    async def _c():
+        async with get_db() as db:
+            cur = await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time, team1_name, team2_name,
+                    weight, score_team1, score_team2, result)
+                   VALUES (?, 'group', ?, '12:00:00', 'France', 'Brésil', 1, 1, 0, 'team1')""",
+                (number, day),
+            )
+            await db.commit()
+            return cur.lastrowid
+    return run(_c())
 
 
 def test_sporting_day_groups_overnight():
@@ -198,3 +226,82 @@ def test_migration_reveal_sporting_day_rolls_back_one_day(participant):
     first, second = run(_c())
     assert first == "2026-06-12"   # reculé d'un jour
     assert second == "2026-06-12"  # idempotent : pas de second recul
+
+
+def test_connection_baseline_moves_only_on_first_home_of_sporting_day(
+    client, participant, monkeypatch
+):
+    async def _seed():
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE participants
+                   SET last_connected_sporting_day='2035-01-01',
+                       reveal_connection_baseline_day='2034-12-31',
+                       last_revealed_date='2034-12-30'
+                   WHERE id=?""",
+                (participant["id"],),
+            )
+            await db.commit()
+    run(_seed())
+    monkeypatch.setattr(pages, "current_sporting_day", lambda: "2035-01-02")
+
+    async def _register():
+        async with get_db() as db:
+            return await _register_daily_connection(db, participant["id"])
+
+    assert run(_register()) == "2035-01-01"
+    assert run(_register()) == "2035-01-01"
+    state = _connection_state(participant["id"])
+    assert state["last_connected_sporting_day"] == "2035-01-02"
+    assert state["reveal_connection_baseline_day"] == "2035-01-01"
+
+    monkeypatch.setattr(pages, "current_sporting_day", lambda: "2035-01-03")
+    assert run(_register()) == "2035-01-02"
+
+
+def test_reveal_uses_connection_baseline_but_guarantees_latest_finalized_day(
+    client, participant
+):
+    _reset_matches()
+    mids = [
+        _explicit_result_match(962001, "2035-02-01"),
+        _explicit_result_match(962002, "2035-02-02"),
+        _explicit_result_match(962003, "2035-02-03"),
+    ]
+    for mid in mids:
+        _pred_score(participant["id"], mid, 1, 0, 2)
+
+    async def _set(baseline, seen="2035-01-31"):
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE participants
+                   SET reveal_connection_baseline_day=?, last_revealed_date=?
+                   WHERE id=?""",
+                (baseline, seen, participant["id"]),
+            )
+            await db.commit()
+
+    run(_set("2035-01-31"))
+    catchup = _window(participant["id"])
+    assert catchup["day_count"] == 3
+    assert catchup["is_catchup"] is True
+    assert catchup["match_count"] == 3
+
+    # Connexion quotidienne : seule la dernière journée reste dans la fenêtre.
+    run(_set("2035-02-03"))
+    latest = _window(participant["id"])
+    assert latest["day_count"] == 1
+    assert latest["sporting_day"] == "2035-02-03"
+
+    # Si une nouvelle journée se finalise pendant la lecture, le client ne
+    # marque comme vu que le périmètre réellement affiché.
+    run(_set("2035-02-02"))
+    res = client.post(
+        f"/api/reveal/seen?token={participant['token']}&sporting_day=2035-02-02"
+    )
+    assert res.status_code == 200
+    assert _last_revealed(participant["id"]) == "2035-02-02"
+
+    # Une fois réellement vue, elle disparaît.
+    run(_set("2035-02-03", seen="2035-02-03"))
+    assert _window(participant["id"]) is None

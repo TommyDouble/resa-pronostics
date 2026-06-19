@@ -97,6 +97,40 @@ def sporting_day(match: dict) -> str:
         return match.get("match_date") or ""
 
 
+def current_sporting_day() -> str:
+    """Journée sportive locale courante (borne à 9 h Europe/Brussels)."""
+    local = now_utc().astimezone(DISPLAY_TZ) - timedelta(hours=SPORTING_DAY_CUTOFF_HOUR)
+    return local.date().isoformat()
+
+
+def sporting_day_bounds(day: str | date) -> tuple[str, str]:
+    """Bornes UTC [début, fin[ d'une journée sportive locale."""
+    value = date.fromisoformat(day) if isinstance(day, str) else day
+    local_start = datetime.combine(
+        value, time(SPORTING_DAY_CUTOFF_HOUR, 0), tzinfo=DISPLAY_TZ
+    )
+    local_end = datetime.combine(
+        value + timedelta(days=1), time(SPORTING_DAY_CUTOFF_HOUR, 0), tzinfo=DISPLAY_TZ
+    )
+    return utc_iso(local_start), utc_iso(local_end)
+
+
+_FR_WEEKDAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+_FR_MONTHS = [
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+]
+
+
+def format_sporting_day_fr(value: str) -> str:
+    """Libellé français d'une journée sportive YYYY-MM-DD."""
+    try:
+        parsed = date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return value or ""
+    return f"{_FR_WEEKDAYS[parsed.weekday()]} {parsed.day} {_FR_MONTHS[parsed.month - 1]}"
+
+
 def utc_day_bounds_for_local_date(day: date | None = None) -> tuple[str, str]:
     local_day = day or now_utc().astimezone(DISPLAY_TZ).date()
     local_start = datetime.combine(local_day, time.min, tzinfo=DISPLAY_TZ)
