@@ -390,7 +390,7 @@ async def ensure_news_defaults(db):
     for item in NEWS_DEFAULTS:
         await db.execute(
             """INSERT INTO news_items (slug, title, body, icon, template_key, sort_order, is_published)
-               VALUES (:slug, :title, :body, :icon, :template_key, :sort_order, 1)
+               VALUES (:slug, :title, :body, :icon, :template_key, :sort_order, :is_published)
                ON CONFLICT(slug) DO NOTHING""",
             item,
         )

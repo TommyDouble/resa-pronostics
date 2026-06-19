@@ -59,7 +59,7 @@ def test_news_seen_rejects_bad_token(client):
     assert res.status_code == 403
 
 
-def test_sporting_day_story_is_published_with_four_guided_screens(admin_client):
+def test_sporting_day_story_is_seeded_as_draft_with_four_guided_screens(admin_client):
     async def _find():
         async with get_db() as db:
             row = await db.execute(
@@ -69,7 +69,7 @@ def test_sporting_day_story_is_published_with_four_guided_screens(admin_client):
             return dict(await row.fetchone())
 
     item = run(_find())
-    assert item["is_published"] == 1
+    assert item["is_published"] == 0
     assert item["template_key"] == "sporting_day_update"
     html = admin_client.get(f"/admin/nouveautes/{item['id']}/preview").text
     assert html.count('class="story-screen"') == 4
