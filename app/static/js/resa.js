@@ -339,7 +339,7 @@ function initCountdown() {
     var target = parseInt(el.dataset.countdown);
     function update() {
       var diff = target - Math.floor(Date.now() / 1000);
-      if (diff <= 0) { el.textContent = 'Commencé !'; return; }
+      if (diff <= 0) { el.textContent = 'Coup d’envoi !'; return; }
       var d = Math.floor(diff / 86400);
       var h = Math.floor((diff % 86400) / 3600);
       var m = Math.floor((diff % 3600) / 60);
@@ -347,8 +347,11 @@ function initCountdown() {
       if (d > 0) {
         el.textContent = d + 'j ' + h + 'h ' + pad(m) + 'min';
         setTimeout(update, 30000);
+      } else if (h > 0) {
+        el.textContent = h + 'h ' + pad(m) + 'min';
+        setTimeout(update, (s + 1) * 1000);
       } else {
-        el.textContent = (h > 0 ? h + 'h ' : '') + pad(m) + 'min ' + pad(s) + 's';
+        el.textContent = pad(m) + 'min ' + pad(s) + 's';
         setTimeout(update, 1000);
       }
     }

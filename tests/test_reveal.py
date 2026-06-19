@@ -173,28 +173,29 @@ def test_home_entry_and_story_promo(client, participant):
     html = client.get(f"/p/{participant['token']}").text
     assert "reveal-entry" in html
     assert "Le Reveal du jour est prêt" in html
+    assert "1 match" in html
+    assert "re-go" not in html
     # La story promo (parcours multi-écrans) reste rendue indépendamment.
     assert "data-story-feature" in html
     assert "rp-demo" in html
 
 
 def test_home_recap_mirrors_reveal(client, participant):
-    """L'encart récap reflète la fenêtre du Reveal (journée sportive) et disparaît
-    une fois le Reveal vu — pas de chiffre « jour calendaire » divergent."""
+    """Le CTA fusionné reflète la fenêtre Reveal puis disparaît après lecture."""
     _reset_matches()
     a = _yesterday_match(961040, 20, result="team1", s1=2, s2=0)
     _pred_score(participant["id"], a, 2, 0, 5)  # score exact
     win = _window(participant["id"])
 
     html = client.get(f"/p/{participant['token']}").text
-    assert "yesterday-card" in html
+    assert html.count("data-home-reveal") == 1
+    assert "yesterday-card" not in html
     assert f"+{win['total_points']} pts" in html  # mêmes points que le Reveal
 
-    # Miroir exact : une fois le Reveal vu, l'encart (et le CTA) disparaissent.
+    # Une fois le Reveal vu, l'unique bloc fusionné disparaît.
     client.post(f"/api/reveal/seen?token={participant['token']}")
     html2 = client.get(f"/p/{participant['token']}").text
-    assert "yesterday-card" not in html2
-    assert "reveal-entry" not in html2
+    assert "data-home-reveal" not in html2
 
 
 def test_migration_reveal_sporting_day_rolls_back_one_day(participant):

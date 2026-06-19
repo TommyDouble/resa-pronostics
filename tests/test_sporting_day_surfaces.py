@@ -48,8 +48,9 @@ def test_home_and_admin_show_same_sporting_day_window(
     try:
         home = client.get(f"/p/{participant['token']}").text
         dashboard = admin_client.get("/admin/dashboard").text
+        assert "Aujourd’hui" in home
+        assert "Matchs de la journée sportive" in dashboard
         for html in (home, dashboard):
-            assert "Matchs de la journée sportive" in html
             assert "Dans la journée" in html
             assert "Après minuit" in html
             assert "Hors fenêtre" not in html
