@@ -794,6 +794,7 @@ async def participant_home(request: Request, token: str):
         rows = await db.execute(
             """SELECT m.*,
                  p.prediction, p.exact_score_team1, p.exact_score_team2,
+                 p.qualifier_prediction,
                  s.points
                FROM matches m
                LEFT JOIN predictions p ON p.match_id = m.id AND p.participant_id = ?
@@ -807,6 +808,7 @@ async def participant_home(request: Request, token: str):
         for m in today_matches:
             m["is_locked"] = _is_locked(m)
             m["live_state"] = _live_state(m)
+            m["tier"] = _prediction_tier(m, m)
             _enrich_sporting_day_match(m, home_sporting_day)
         # Urgency match: next unpredicted/locked-soon match
         urgency = None

@@ -48,6 +48,10 @@ class TestMatchScore:
     def test_weighted_match(self):
         assert calculate_match_score(make_prediction(), make_match(weight=2)) == 6
 
+    def test_weighted_correct_outcome_wrong_score(self):
+        pred = make_prediction(exact_score_team1=1, exact_score_team2=0)
+        assert calculate_match_score(pred, make_match(weight=2)) == 4
+
     def test_no_result(self):
         assert calculate_match_score(make_prediction(), make_match(result=None)) == 0
 
