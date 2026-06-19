@@ -2,12 +2,45 @@
 import uuid
 from datetime import datetime, timedelta
 
+import pytest
+
 import app.scheduler as scheduler
 from app.database import get_db
 from app.scheduler import run_pending_notifications
 from app.scoring import sync_finalized_evolution_history
 from app.timeutils import DISPLAY_TZ, local_today, now_utc
 from tests.conftest import run
+
+
+@pytest.fixture(autouse=True)
+def _clean_scheduler_state(client):
+    """Isole chaque test : vide les tables créées par les helpers du fichier."""
+    _purge()
+    yield
+    _purge()
+
+
+def _purge():
+    async def _do():
+        async with get_db() as db:
+            for table in (
+                "notification_log",
+                "push_subscriptions",
+                "sporting_day_rank_evolutions",
+                "scores",
+                "predictions",
+                "bonus_answers",
+                "bonus_questions",
+                "matches",
+                "participants",
+            ):
+                await db.execute(f"DELETE FROM {table}")
+            await db.execute(
+                "DELETE FROM app_settings WHERE key='pre_tournament_deadline'"
+            )
+            await db.commit()
+
+    run(_do())
 
 
 def make_participant(opt_in=1):
@@ -229,15 +262,6 @@ def test_daily_recap_uses_one_finalized_sporting_day(client, monkeypatch):
     assert captured["match_count"] >= 1
     assert captured["date_label"]
     assert [row["ref"] for row in get_log(p["id"], "daily_recap")] == [recap_day]
-
-    async def _cleanup():
-        async with get_db() as db:
-            await db.execute("DELETE FROM matches WHERE match_number=910021")
-            await db.execute(
-                "DELETE FROM sporting_day_rank_evolutions WHERE sporting_day=?", (recap_day,)
-            )
-            await db.commit()
-    run(_cleanup())
 
 def test_pre_tournament_reminder_when_deadline_close(client):
     p = make_participant()
