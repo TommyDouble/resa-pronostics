@@ -2,6 +2,7 @@
    accroche → le teaser accueil → le cabinet sur le profil → un déblocage célébré.
    Maquettes HTML/CSS, données d'exemple, thème clair manuscrit, reduced-motion safe. #}
 {% from "partials/glyphs.html" import glyph %}
+{% from "partials/trophy_emblems.html" import tier_badge %}
 
 {# ① Accroche #}
 <div class="story-screen" data-story-screen>
@@ -18,7 +19,7 @@
       <span class="sm-trophy-ico">🏆</span>
       <div class="sm-trophy-body">
         <b>Cabinet à trophées</b>
-        <small>7 débloqués · Sniper bientôt 🥈</small>
+        <small>7 débloqués · Sniper bientôt argent</small>
       </div>
       <span class="sm-trophy-go">Ouvrir</span>
     </div>
@@ -34,7 +35,7 @@
     <div class="sm-troph-row">
       <div class="trophy on tier-or">
         <div class="t-ic">{{ glyph('sniper') }}</div><div class="t-nm">Sniper</div>
-        <span class="t-medal">🥇</span>
+        {{ tier_badge('or') }}
       </div>
       <div class="trophy off">
         <div class="t-ic">{{ glyph('so_close') }}</div><div class="t-nm">Si près !</div>
@@ -55,7 +56,7 @@
     <span class="rp-confetti"><i></i><i></i><i></i><i></i><i></i><i></i></span>
     <div class="trophy on tier-or" style="transform:rotate(-2deg);">
       <div class="t-ic">{{ glyph('streak') }}</div><div class="t-nm">En série</div>
-      <span class="t-medal">🥇</span>
+      {{ tier_badge('or') }}
     </div>
     <div class="sm-unlock-tag">🏆 Débloqué !</div>
   </div>

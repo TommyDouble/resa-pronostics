@@ -13,7 +13,7 @@ def _by_key(trophies):
 def _empty_metrics():
     return {
         "match_count": 0, "present_streak": 0, "total_played": 0, "total_results": 0,
-        "exact": 0, "bonus_king": False, "near_miss": 0, "longest_streak": 0,
+        "exact": 0, "bonus_points": 0, "near_miss": 0, "longest_streak": 0,
         "draw_correct": 0, "last_minute_count": 0, "perfect_day": False,
     }
 
@@ -94,10 +94,10 @@ def test_all_tiered_reach_diamant_and_chocolate_order():
     # Métriques très hautes → chaque trophée à paliers doit atteindre "diamant".
     m = {"match_count": 999, "total_matches": 104, "exact": 999, "present_streak": 999,
          "longest_streak": 999, "draw_correct": 999, "last_minute_count": 999,
-         "total_played": 0, "total_results": 0, "bonus_king": False, "near_miss": 0,
+         "total_played": 0, "total_results": 0, "bonus_points": 999, "near_miss": 0,
          "perfect_day": False}
     for t in _by_key(evaluate(m)).values():
-        if t["key"] in ("sniper", "present", "marathon", "streak", "draw_king", "last_minute"):
+        if t["key"] in ("sniper", "present", "marathon", "streak", "draw_king", "last_minute", "bonus_king"):
             assert t["tier"] == "diamant", t["key"]
 
 

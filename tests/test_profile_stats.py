@@ -173,8 +173,8 @@ def test_trophy_cabinet_uses_stable_svg_emblems_without_tier_emoji(client):
     assert 'class="t-glyph' not in cabinet
     assert 't-medal--chocolat' in cabinet and ">Ch<" in cabinet
     assert "Progression : 2/5 vers bronze" in cabinet
-    assert 'class="t-bar"' not in cabinet
-    assert 'class="t-pips"' not in cabinet
+    assert 'class="t-bar"' in cabinet
+    assert 'class="t-pips"' in cabinet
     assert not any(mark in cabinet for mark in ("🥉", "🥈", "🥇", "💎", "🍫", "🏅"))
     assert "\ufe0f" not in cabinet
 

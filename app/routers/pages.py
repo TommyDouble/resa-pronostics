@@ -808,7 +808,10 @@ async def participant_home(request: Request, token: str):
             and (not pt_status["open"] or pt_status["complete"])
             and ctx["pending_bonus"] == 0
         )
+        raw_seen = dict(p).get("seen_trophies") or ""
+        trophy_unlocked_count = len([k for k in raw_seen.split(",") if k])
         ctx.update({
+            "trophy_unlocked_count": trophy_unlocked_count,
             "today_matches": today_matches,
             "urgency": urgency,
             "unpredicted_today": unpredicted_today,
@@ -1621,13 +1624,10 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         1 for r in played_predictions
         if r["phase"] == "group" and r["prediction"] == "draw" and r["result"] == "draw"
     )
-    # Roi des bonus: 1er du classement bonus avec des points
+    # Roi des bonus: points bonus cumulés du participant
     bonus_rankings = await get_rankings(db, scope="bonus")
-    bonus_king = bool(
-        bonus_rankings
-        and bonus_rankings[0]["total_points"] > 0
-        and bonus_rankings[0]["rank"] == 1
-        and bonus_rankings[0]["id"] == participant_id
+    bonus_points = next(
+        (r["total_points"] for r in bonus_rankings if r["id"] == participant_id), 0
     )
     # Cabinet à trophées (W7) — source unique app.trophies, dérivée sans état.
     show_trophy_cabinet = not is_limited_view
@@ -1645,7 +1645,7 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
             "total_played": total_played,
             "total_results": total_results,
             "exact": exact,
-            "bonus_king": bonus_king,
+            "bonus_points": bonus_points,
             "near_miss": near_miss,
             "longest_streak": longest_streak,
             "draw_correct": draw_correct,

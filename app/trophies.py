@@ -93,7 +93,7 @@ def evaluate(m: dict) -> list[dict]:
     """Construit la liste des trophées v1 (~11) à partir des métriques.
 
     Métriques attendues : match_count, present_streak, total_played, total_results,
-    exact, bonus_king, near_miss, longest_streak, draw_correct, last_minute_count,
+    exact, bonus_points, near_miss, longest_streak, draw_correct, last_minute_count,
     perfect_day.
     """
     g = lambda k, d=0: m.get(k, d)
@@ -123,8 +123,10 @@ def evaluate(m: dict) -> list[dict]:
                 g("exact"),
                 [(2, "chocolat"), (5, "bronze"), (10, "argent"), (20, "or"), (35, "diamant")],
                 "scores exacts trouvés"),
-        _simple("bonus_king", "⭐", "Roi des bonus", "adresse",
-                g("bonus_king"), "1er au classement bonus"),
+        _tiered("bonus_king", "⭐", "Roi des bonus", "adresse",
+                g("bonus_points"),
+                [(5, "chocolat"), (15, "bronze"), (30, "argent"), (50, "or"), (80, "diamant")],
+                "points bonus accumulés"),
         _simple("so_close", "😬", "Si près !", "adresse",
                 g("near_miss") >= 3,
                 "3 scores exacts ratés à un seul but près",

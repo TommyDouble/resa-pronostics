@@ -226,10 +226,14 @@
   </div>
 
   {# Teaser passif vers le cabinet (pas une action prioritaire) #}
-  <a href="/p/{{ token }}/profil" class="card rules-entry" style="text-decoration:none;color:inherit;">
+  <a href="/p/{{ token }}/profil#cabinet" class="card rules-entry" style="text-decoration:none;color:inherit;">
     <div>
       <div class="lbl">🏆 Cabinet à trophées</div>
+      {% if trophy_unlocked_count is defined and trophy_unlocked_count > 0 %}
+      <p>{{ trophy_unlocked_count }}/11 trophées débloqués — continue à jouer pour en décrocher d'autres !</p>
+      {% else %}
       <p>Tes trophées débloqués et ceux à portée de main — va voir où tu en es.</p>
+      {% endif %}
     </div>
     <span class="btn ghost sm">Ouvrir</span>
   </a>
