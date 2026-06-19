@@ -99,6 +99,7 @@ def _evolution_header(html):
     return html[start:html.index("</div>", start)]
 
 
+
 def _make_match(number, match_date, kickoff="18:00", encoded=True,
                 team1="France", team2="Brésil"):
     async def _create():
@@ -255,6 +256,7 @@ def test_climber_stays_on_last_finalized_day_while_next_day_is_live(client):
         assert "1–0" in evolution_header
         assert "résultats encodés" not in evolution_header
         assert "evo-ref-day" not in evolution_header
+
 
         async def _finish():
             async with get_db() as db:

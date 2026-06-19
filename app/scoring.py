@@ -129,6 +129,8 @@ async def recalculate_match_scores(match_id: int):
             )
 
         await sync_finalized_evolution_history(db, from_day=sporting_day(match_dict))
+        from app.trophies import refresh_trophy_awards
+        await refresh_trophy_awards(db)
         await db.commit()
 
 
@@ -499,6 +501,8 @@ async def calculate_bonus_scores(question_id: int):
                 )
 
         await sync_finalized_evolution_history(db)
+        from app.trophies import refresh_trophy_awards
+        await refresh_trophy_awards(db)
         await db.commit()
 
 
@@ -596,4 +600,6 @@ async def recalculate_pre_tournament_scores():
                 )
 
         await sync_finalized_evolution_history(db)
+        from app.trophies import refresh_trophy_awards
+        await refresh_trophy_awards(db)
         await db.commit()

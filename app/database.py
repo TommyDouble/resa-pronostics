@@ -243,6 +243,17 @@ CREATE INDEX IF NOT EXISTS idx_predictions_participant ON predictions(participan
 CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
 CREATE INDEX IF NOT EXISTS idx_sporting_evo_climber
   ON sporting_day_rank_evolutions(sporting_day, is_climber);
+
+CREATE TABLE IF NOT EXISTS trophy_awards (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  trophy_key     TEXT    NOT NULL,
+  tier           TEXT    NOT NULL DEFAULT '_',
+  awarded_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(participant_id, trophy_key, tier)
+);
+CREATE INDEX IF NOT EXISTS idx_trophy_awards_participant
+  ON trophy_awards(participant_id);
         """)
         await db.commit()
 
@@ -261,6 +272,10 @@ CREATE INDEX IF NOT EXISTS idx_sporting_evo_climber
             "is_favorite INTEGER NOT NULL DEFAULT 0",
             "last_seen_news_id INTEGER NOT NULL DEFAULT 0",
             "last_revealed_date TEXT",
+            "seen_trophies TEXT",
+            "last_visit_date TEXT",
+            "visit_streak INTEGER NOT NULL DEFAULT 0",
+            "best_visit_streak INTEGER NOT NULL DEFAULT 0",
             "last_connected_sporting_day TEXT",
             "reveal_connection_baseline_day TEXT",
         ]
@@ -354,6 +369,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await ensure_default_settings(db)
         await ensure_news_defaults(db)
         await _migrate_reveal_sporting_day(db)
+        await _backfill_trophy_awards(db)
         await db.commit()
 
 
@@ -378,6 +394,22 @@ async def _migrate_reveal_sporting_day(db):
            SET last_revealed_date = date(last_revealed_date, '-1 day')
            WHERE last_revealed_date IS NOT NULL AND last_revealed_date <> ''"""
     )
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
+async def _backfill_trophy_awards(db):
+    """One-shot : peuple trophy_awards depuis les données existantes."""
+    key = "migr_backfill_trophy_awards_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+    from app.trophies import refresh_trophy_awards
+    await refresh_trophy_awards(db)
     await db.execute(
         "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
         (key,),

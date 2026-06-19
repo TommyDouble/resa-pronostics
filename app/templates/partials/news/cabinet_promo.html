@@ -1,0 +1,74 @@
+{# Parcours « Cabinet à trophées » — une vue par écran réel :
+   accroche → le teaser accueil → le cabinet sur le profil → un déblocage célébré.
+   Maquettes HTML/CSS, données d'exemple, thème clair manuscrit, reduced-motion safe. #}
+{% from "partials/glyphs.html" import glyph %}
+{% from "partials/trophy_emblems.html" import tier_badge %}
+
+{# ① Accroche #}
+<div class="story-screen" data-story-screen>
+  <div class="story-hero-ico">🏆</div>
+  <p class="story-lead">Tes exploits deviennent des trophées.</p>
+  <p class="story-cap">Assiduité, scores exacts, séries… chaque réussite remplit ta vitrine.</p>
+</div>
+
+{# ② Le teaser passif sur l'accueil #}
+<div class="story-screen" data-story-screen>
+  <div class="sm-frame sm-home-trophy" aria-hidden="true">
+    <div class="sm-head"><b>Salut Alex 👋</b><span>4e · 18 pts</span></div>
+    <div class="sm-trophy-entry">
+      <span class="sm-trophy-ico">🏆</span>
+      <div class="sm-trophy-body">
+        <b>Cabinet à trophées</b>
+        <small>7 débloqués · Sniper bientôt argent</small>
+      </div>
+      <span class="sm-trophy-go">Ouvrir</span>
+    </div>
+    <div class="sm-row short"></div>
+  </div>
+  <p class="story-cap">① Sur l'accueil, une entrée discrète t'emmène vers ta collection.</p>
+</div>
+
+{# ③ Le cabinet sur le profil #}
+<div class="story-screen" data-story-screen>
+  <div class="sm-frame sm-cabinet" aria-hidden="true">
+    <div class="sm-shelf-lbl">Adresse</div>
+    <div class="sm-troph-row">
+      <div class="trophy on tier-or">
+        <div class="t-ic">{{ glyph('sniper') }}</div><div class="t-nm">Sniper</div>
+        {{ tier_badge('or') }}
+      </div>
+      <div class="trophy off">
+        <div class="t-ic">{{ glyph('so_close') }}</div><div class="t-nm">Si près !</div>
+        <div class="t-bar"><i style="width:66%;"></i></div>
+        <div class="t-prog">2/3</div>
+      </div>
+      <div class="trophy off secret">
+        <div class="t-ic">{{ glyph('inconnu') }}</div><div class="t-nm">???</div>
+      </div>
+    </div>
+  </div>
+  <p class="story-cap">② Sur ton profil, le cabinet remplit ses étagères, catégorie par catégorie.</p>
+</div>
+
+{# ④ Un déblocage célébré #}
+<div class="story-screen" data-story-screen>
+  <div class="sm-unlock" aria-hidden="true">
+    <span class="rp-confetti"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+    <div class="trophy on tier-or" style="transform:rotate(-2deg);">
+      <div class="t-ic">{{ glyph('streak') }}</div><div class="t-nm">En série</div>
+      {{ tier_badge('or') }}
+    </div>
+    <div class="sm-unlock-tag">🏆 Débloqué !</div>
+  </div>
+  <p class="story-cap">③ Chaque trophée se débloque avec sa petite fête. 🎉</p>
+</div>
+
+{# ⑤ Le badge trophées dans le classement #}
+<div class="story-screen" data-story-screen>
+  <div class="sm-frame sm-rank" aria-hidden="true">
+    <div class="sm-rrow"><span class="sm-rk">🥇</span> <span class="sm-nm">Alice <span class="trophy-pill">🏆9</span></span> <b>24</b></div>
+    <div class="sm-rrow me"><span class="sm-rk">2</span> <span class="sm-nm">Toi <span class="trophy-pill">🏆7</span></span> <b>18</b></div>
+    <div class="sm-rrow"><span class="sm-rk">3</span> <span class="sm-nm">Bob</span> <b>15</b></div>
+  </div>
+  <p class="story-cap">④ Dans le classement, repère les trophées de chacun. Qui aura le plus ? À toi de tous les collectionner !</p>
+</div>

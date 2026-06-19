@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+
 import app.scheduler as scheduler
 from app.database import get_db
 from app.scheduler import run_pending_notifications

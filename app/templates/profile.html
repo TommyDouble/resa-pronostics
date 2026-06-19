@@ -1,7 +1,10 @@
 {% extends "participant_base.html" %}
 {% from "_macros.html" import avatar %}
+{% from "partials/trophy_emblems.html" import trophy_sprite, trophy_frame, trophy_symbol, tier_badge %}
 {% block title %}{{ profile.name }} — Profil{% endblock %}
 {% block page_content %}
+
+{{ trophy_sprite() }}
 
 <div class="page-head">
   <div class="row1">
@@ -132,18 +135,54 @@
   </div>
   {% endif %}
 
-  <!-- Badges -->
-  <div class="card">
-    <div class="lbl" style="margin-bottom:12px;">Badges</div>
-    <div class="badges">
-      {% for b in profile.badges %}
-      <div class="bdg {{ '' if b.unlocked else 'off' }} tip" tabindex="0" data-tip="{{ b.desc }}{{ ' — débloqué !' if b.unlocked else '' }}">
-        <div class="ic">{{ b.icon }}</div>
-        <div class="nm">{{ b.label }}</div>
-      </div>
-      {% endfor %}
+  {% if profile.show_trophy_cabinet %}
+  <!-- Cabinet à trophées -->
+  <div class="card cabinet" role="region" aria-label="Cabinet à trophées" data-cabinet{% if profile.trophies_just_unlocked %} data-confetti{% endif %}>
+    <div class="cab-head">
+      <div class="lbl">Cabinet à trophées</div>
+      <span class="cab-count">{{ profile.trophy_summary.unlocked_count }}/{{ profile.trophy_summary.total }}</span>
     </div>
+    {% for grp in profile.trophy_groups %}
+    {# Étagère par catégorie : débloqués d'abord, puis les plus proches. #}
+    {% set ordered = grp['items']|sort(attribute='progress', reverse=true)|sort(attribute='unlocked', reverse=true) %}
+    {% set grp_unlocked = ordered|selectattr('unlocked')|list|length %}
+    <div class="shelf" role="group" aria-label="{{ grp.label }} — {{ grp_unlocked }}/{{ ordered|length }}">
+      <div class="shelf-lbl">{{ grp.label }} <span class="shelf-count">{{ grp_unlocked }}/{{ ordered|length }}</span></div>
+      <div class="shelf-row" role="list">
+        {% for t in ordered %}
+        {% set hidden = t.secret and not t.unlocked %}
+        {% set symbol_key = 'lock' if hidden else t.key %}
+        {% set emblem_uid = 'te-' ~ grp.key ~ '-' ~ loop.index ~ '-' ~ t.key|replace('_', '-') %}
+        {% set aria_desc %}{% if hidden %}Trophée secret — continue à jouer pour le découvrir.{% else %}{{ t.label }}{% if t.unlocked %}, débloqué{% endif %}{% if t.tier %}, palier {{ t.tier }}{% endif %}.{{ ' ' ~ t.desc }}{% if t.target %} ({{ t.current }}/{{ t.target }}){% endif %}{% endif %}{% endset %}
+        <div class="trophy {{ 'on' if t.unlocked else 'off' }}{{ ' secret' if hidden else '' }}{{ ' trophy--prestige' if t.key == 'perfect_day' and t.unlocked else '' }}{{ ' tier-' ~ t.tier if t.tier else '' }}{{ ' just-unlocked' if t.just_unlocked else '' }} tip"
+             role="listitem"
+             tabindex="0"
+             aria-label="{{ aria_desc|trim }}"
+             data-tip="{% if hidden %}Trophée secret — continue à jouer pour le découvrir.{% else %}{{ t.desc }}{{ ' — débloqué !' if t.unlocked else '' }}{% if t.tier and t.unlocked %} Palier : {{ t.tier }}.{% endif %}{% if t.target %} Progression : {{ t.current }}/{{ t.target }}{% if t.next_tier %} vers {{ t.next_tier }}{% endif %}.{% endif %}{% endif %}">
+          <div class="t-ic">
+            {{ trophy_frame(emblem_uid) }}
+            {{ trophy_symbol(symbol_key) }}
+          </div>
+          <div class="t-nm">{% if hidden %}???{% else %}{{ t.label }}{% endif %}</div>
+          {% if t.tier and t.unlocked %}{{ tier_badge(t.tier) }}{% endif %}
+          {% if t.tier_count > 0 and not hidden %}
+          <div class="t-pips" aria-hidden="true">
+            {% for i in range(t.tier_count) %}<span{{ ' class=on' if i < t.tier_index else '' }}></span>{% endfor %}
+          </div>
+          {% else %}
+          <div class="t-pips" aria-hidden="true"></div>
+          {% endif %}
+          {% if not t.unlocked and not hidden and t.target and t.progress > 0 %}
+          <div class="t-bar" aria-hidden="true"><i style="width:{{ (t.progress * 100)|int }}%;"></i></div>
+          <div class="t-prog">{{ t.current }}/{{ t.target }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
   </div>
+  {% endif %}
 
   <!-- Stats fun -->
   {% if profile.fun_stats %}
