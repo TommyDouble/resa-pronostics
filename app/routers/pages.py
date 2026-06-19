@@ -1118,27 +1118,29 @@ def _format_day_fr(value: str) -> str:
     return format_sporting_day_fr(value)
 
 
-async def _sporting_day_match_labels(db, day: str) -> list[str]:
-    """Libellés locaux des matchs inclus dans une journée sportive."""
+async def _sporting_day_match_details(db, day: str) -> list[dict]:
+    """Résultats officiels inclus dans une journée sportive, par kickoff."""
     start_utc, end_utc = sporting_day_bounds(day)
     rows = await db.execute(
-        """SELECT team1_name, team2_name, match_date, kickoff_time
+        """SELECT team1_name, team2_name, match_date, kickoff_time, phase,
+                  score_team1, score_team2, result, qualifier_winner
            FROM matches
            WHERE datetime(match_date || 'T' || kickoff_time) >= datetime(?)
              AND datetime(match_date || 'T' || kickoff_time) < datetime(?)
+             AND result IS NOT NULL
            ORDER BY match_date, kickoff_time""",
         (start_utc, end_utc),
     )
-    labels = []
+    matches = []
     for row in await rows.fetchall():
         match = dict(row)
-        local_kickoff = match_kickoff_utc(match).astimezone(DISPLAY_TZ)
-        weekday = format_sporting_day_fr(local_kickoff.date().isoformat()).split(" ", 1)[0]
-        labels.append(
-            f"{weekday} {local_kickoff:%H:%M} · "
-            f"{match['team1_name']} – {match['team2_name']}"
+        match["qualifier_name"] = (
+            match["team1_name"] if match.get("qualifier_winner") == "team1"
+            else match["team2_name"] if match.get("qualifier_winner") == "team2"
+            else ""
         )
-    return labels
+        matches.append(match)
+    return matches
 
 
 @router.get("/p/{token}/classement", response_class=HTMLResponse)
@@ -1155,6 +1157,7 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
         evolution_status = None
         evolution_match_count = 0
         evolution_encoded_count = 0
+        evolution_last_match = None
         if view == "remontada":
             rankings = await get_remontada(db)
         elif view == "departments":
@@ -1168,21 +1171,24 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
                 evolution_status = evo["status"]
                 evolution_match_count = evo["match_count"]
                 evolution_encoded_count = evo["encoded_count"]
+                if evolution_status == "in_progress" and evolution_day:
+                    encoded_matches = await _sporting_day_match_details(db, evolution_day)
+                    evolution_last_match = encoded_matches[-1] if encoded_matches else None
         # Le titre reste celui de la dernière journée entièrement finalisée.
         finalized_climbers = await get_latest_finalized_climbers(db)
         climber_delta = finalized_climbers["delta"]
         climber_day = finalized_climbers["day"]
-        climber_day_help = ""
+        climber_matches = []
+        climber_period_label = ""
         if view == "general" and climber_day:
-            match_labels = await _sporting_day_match_labels(db, climber_day)
-            climber_day_help = (
-                "Une journée sportive commence à 9 h et se termine juste avant 9 h "
-                "le lendemain."
+            climber_matches = await _sporting_day_match_details(db, climber_day)
+            climber_next_day = (
+                date.fromisoformat(climber_day) + timedelta(days=1)
+            ).isoformat()
+            climber_period_label = (
+                f"Du {format_sporting_day_fr(climber_day)} à 9 h au "
+                f"{format_sporting_day_fr(climber_next_day)} à 8 h 59"
             )
-            if match_labels:
-                climber_day_help += "\nMatchs concernés :\n" + "\n".join(
-                    f"• {label}" for label in match_labels
-                )
         climber_by_id = {r["participant_id"]: r for r in finalized_climbers["climbers"]}
         climber_ids = set(climber_by_id)
         for r in rankings:
@@ -1212,10 +1218,12 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
             "evolution_status": evolution_status,
             "evolution_match_count": evolution_match_count,
             "evolution_encoded_count": evolution_encoded_count,
+            "evolution_last_match": evolution_last_match,
             "climbers": climbers,
             "climber_delta": climber_delta,
             "climber_day_label": _format_day_fr(climber_day) if climber_day else "",
-            "climber_day_help": climber_day_help,
+            "climber_matches": climber_matches,
+            "climber_period_label": climber_period_label,
             "knockout_started": knockout_started,
             "prize_info": prize_info,
         })
