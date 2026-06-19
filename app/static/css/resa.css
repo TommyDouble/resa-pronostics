@@ -2009,10 +2009,12 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 }
 .ch-name {
   min-width: 0;
-  font-family: var(--sketch);
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.05;
+  color: var(--n900);
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -.01em;
   overflow-wrap: break-word;
 }
 .ch-day {
