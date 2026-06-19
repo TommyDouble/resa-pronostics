@@ -41,7 +41,7 @@ NEWS_DEFAULTS = [
         "icon": "🌙",
         "template_key": "sporting_day_update",
         "sort_order": 20,
-        # Disponible dans l'écran Communications, mais laissée au choix du PO.
+        # Disponible dans l'écran Nouveautés, mais laissée au choix du PO.
         "is_published": 0,
     },
 ]
