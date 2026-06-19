@@ -9,6 +9,7 @@ get_rank_evolution est global (tous les matchs de la base). La base de test
 pronostics le temps du test, puis on les restaure.
 """
 import contextlib
+from pathlib import Path
 import uuid
 
 from app.database import get_db
@@ -79,6 +80,17 @@ def _make_participant(name):
             return cursor.lastrowid
 
     return run(_create())
+
+
+def _participant_token(participant_id):
+    async def _query():
+        async with get_db() as db:
+            row = await db.execute(
+                "SELECT token FROM participants WHERE id=?", (participant_id,)
+            )
+            return (await row.fetchone())["token"]
+
+    return run(_query())
 
 
 def _make_match(number, match_date, kickoff="18:00", encoded=True,
@@ -228,6 +240,12 @@ def test_climber_stays_on_last_finalized_day_while_next_day_is_live(client):
         assert evo["encoded_count"] == 1 and evo["match_count"] == 2
         assert _sync_history()["day"] == "2035-05-01"
 
+        html = client.get(f"/p/{_participant_token(a)}/classement").text
+        assert 'class="evo-ref is-progress"' in html
+        assert 'class="evo-ref-status"' in html
+        assert 'class="evo-ref-day"' in html
+        assert 'class="evo-ref-progress">1/2 résultats encodés' in html
+
         async def _finish():
             async with get_db() as db:
                 await db.execute(
@@ -264,18 +282,50 @@ def test_climber_banner_lists_its_sporting_day_matches(client):
         title = _sync_history()
         assert title["day"] == "2035-06-01"
 
-        async def _token():
-            async with get_db() as db:
-                row = await db.execute("SELECT token FROM participants WHERE id=?", (a,))
-                return (await row.fetchone())["token"]
-
-        html = client.get(f"/p/{run(_token())}/classement").text
-        assert "Journée sportive du vendredi 1 juin" in html
+        html = client.get(f"/p/{_participant_token(a)}/classement").text
+        assert "Grimpeur · dernière journée finalisée" in html
+        assert "Fusée Liste" in html
+        assert "vendredi 1 juin" in html
+        assert 'class="chip up ch-delta">▲ 2 places</span>' in html
         assert "Une journée sportive commence à 9 h et se termine juste avant 9 h le lendemain." in html
         assert "• vendredi 20:00 · Canada – Qatar" in html
         assert "• samedi 04:00 · Japon – Maroc" in html
         assert "9 h–8 h 59" not in html
         assert 'data-tip="Grimpeur de la journée sportive du vendredi 1 juin"' in html
+
+
+def test_climber_card_groups_tied_names(client):
+    with isolated_match_state():
+        first = _make_participant("Alpha Longnom")
+        second = _make_participant("Beta Longnom")
+
+        async def _seed_tie():
+            async with get_db() as db:
+                for participant_id in (first, second):
+                    await db.execute(
+                        """INSERT INTO sporting_day_rank_evolutions
+                           (sporting_day, participant_id, points_before, day_points,
+                            points_after, rank_before, rank_after, delta, is_climber)
+                           VALUES ('2035-06-18', ?, 0, 10, 10, 4, 1, 3, 1)""",
+                        (participant_id,),
+                    )
+                await db.commit()
+
+        run(_seed_tie())
+        html = client.get(f"/p/{_participant_token(first)}/classement").text
+
+        assert "Grimpeurs · dernière journée finalisée" in html
+        assert "Alpha Longnom · Beta Longnom" in html
+        assert 'class="chip up ch-delta">▲ 3 places</span>' in html
+
+
+def test_ranking_responsive_css_has_small_screen_two_row_fallback():
+    source = Path("app/static/css/resa.css").read_text()
+
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in source
+    assert "@media (max-width: 340px)" in source
+    assert '"status status"' in source
+    assert '"day progress"' in source
 
 
 def test_late_correction_replaces_persisted_climber(client):

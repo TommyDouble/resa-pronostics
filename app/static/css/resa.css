@@ -1356,6 +1356,7 @@ img.av { object-fit: cover; display: block; }
 .home-to-do { color: var(--primary); font-weight: 800; }
 .home-final-score { font-family: var(--display); font-size: 16px; font-weight: 800; }
 .home-match-points { color: var(--success); font-size: 10px; font-weight: 700; }
+.home-match-verdict { font-size: 10px; white-space: nowrap; }
 .home-match-cta {
   padding: 4px 8px;
   border-radius: var(--pill);
@@ -1951,68 +1952,112 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 }
 .evo-ref b { color: var(--primary-d); font-weight: 800; }
 .evo-ref-ico { font-size: 13px; }
+.evo-ref.is-progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  column-gap: 8px;
+}
+.evo-ref-status {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.evo-ref-status span:last-child,
+.evo-ref-day,
+.evo-ref-progress {
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.evo-ref-day { text-align: center; }
+.evo-ref-progress { text-align: right; }
 
 .climber-hero {
-  display: flex; align-items: center; gap: 12px;
-  padding: 13px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
   border-radius: var(--r-card);
-  background: linear-gradient(120deg, var(--primary) 0%, #E8590C 55%, var(--warning) 130%);
-  color: #fff;
-  box-shadow: var(--sh2);
-  overflow: hidden;
-  position: relative;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primary);
+  background: var(--paper2);
+  color: var(--n900);
+  box-shadow: var(--sh);
 }
-.climber-hero::after {
-  /* Traînée décorative derrière la fusée. */
-  content: "";
-  position: absolute; inset: 0;
-  background: radial-gradient(circle at 18% 30%, rgba(255,255,255,.22), transparent 42%);
-  pointer-events: none;
+.ch-meta,
+.ch-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
+.ch-meta { flex-wrap: wrap; }
+.ch-kicker { min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
 .ch-rocket {
-  font-size: 30px; line-height: 1; flex: none;
+  font-size: 17px; line-height: 1; flex: none;
   animation: rocket-float 2.4s ease-in-out infinite;
 }
-.ch-body { flex: 1; min-width: 0; }
 .ch-label {
-  display: block;
-  font-size: 10px; font-weight: 800;
-  letter-spacing: .08em; text-transform: uppercase;
-  color: rgba(255,255,255,.75);
+  min-width: 0;
+  color: var(--n600);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  line-height: 1.25;
 }
 .ch-name {
-  display: block;
+  min-width: 0;
   font-family: var(--sketch);
-  font-size: 24px; line-height: 1.05;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.05;
   overflow-wrap: break-word;
 }
 .ch-day {
-  display: flex;
+  flex: none;
+  display: inline-flex;
   align-items: center;
   gap: 3px;
+  color: var(--n600);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 .ch-day .help-tip {
   width: 16px;
   height: 16px;
-  color: rgba(255,255,255,.85);
+  color: var(--n600);
   font-size: 10px;
   flex: none;
 }
 .climber-day-help::after { white-space: pre-line; }
 .ch-delta {
   flex: none;
-  font-family: var(--display); font-weight: 800; font-size: 26px;
-  line-height: 1; text-align: center;
-}
-.ch-delta small {
-  display: block;
-  font-family: var(--body); font-weight: 600; font-size: 9px;
-  color: rgba(255,255,255,.75);
-  letter-spacing: .05em; text-transform: uppercase; margin-top: 2px;
+  justify-content: center;
+  font-family: var(--display);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 @keyframes rocket-float {
-  0%, 100% { transform: translateY(1px) rotate(-4deg); }
-  50% { transform: translateY(-3px) rotate(4deg); }
+  0%, 100% { transform: translateY(1px) rotate(-3deg); }
+  50% { transform: translateY(-2px) rotate(3deg); }
+}
+
+@media (max-width: 340px) {
+  .evo-ref.is-progress {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "status status"
+      "day progress";
+    row-gap: 5px;
+  }
+  .evo-ref-status { grid-area: status; }
+  .evo-ref-day { grid-area: day; text-align: left; }
+  .evo-ref-progress { grid-area: progress; }
 }
 
 /* Flèches d'évolution : gabarit fixe + apparition douce */

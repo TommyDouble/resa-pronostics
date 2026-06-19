@@ -1,6 +1,8 @@
 """Contrats de rendu de l'accueil participant allégé."""
 from pathlib import Path
 
+import pytest
+
 import app.routers.pages as page_routes
 from app.database import get_db
 from tests.conftest import run
@@ -65,6 +67,18 @@ def _predict(participant_id, match_id, score=(2, 1), prediction="team1"):
                     exact_score_team1, exact_score_team2)
                    VALUES (?, ?, ?, ?, ?)""",
                 (participant_id, match_id, prediction, score[0], score[1]),
+            )
+            await db.commit()
+
+    run(_save())
+
+
+def _award(participant_id, match_id, points):
+    async def _save():
+        async with get_db() as db:
+            await db.execute(
+                "INSERT INTO scores (participant_id, match_id, points) VALUES (?, ?, ?)",
+                (participant_id, match_id, points),
             )
             await db.commit()
 
@@ -254,6 +268,56 @@ def test_live_waiting_and_final_states_keep_text_without_dots(
     assert "Terminé" in matches and "3–1" in matches
     assert 'class="dot ' not in matches
     assert f'/match/{done_id}' in matches
+
+
+@pytest.mark.parametrize(
+    ("top", "prediction_score", "points", "verdict_class", "has_top_badge"),
+    [
+        (False, (1, 0), 2, "warn", False),
+        (False, (2, 0), 4, "ok", False),
+        (True, (1, 0), 4, "warn", True),
+        (True, (2, 0), 6, "ok", True),
+    ],
+)
+def test_finished_match_verdict_uses_shared_prediction_tier(
+    client, participant, monkeypatch,
+    top, prediction_score, points, verdict_class, has_top_badge,
+):
+    _reset_matches()
+    _stable_home(monkeypatch)
+    match_id = _seed_match(
+        966020,
+        team1="États-Unis",
+        team2="Australie",
+        top=top,
+        result="team1",
+        score=(2, 0),
+    )
+    _predict(participant["id"], match_id, score=prediction_score)
+    _award(participant["id"], match_id, points)
+    monkeypatch.setattr(page_routes, "_is_locked", lambda match: True)
+    monkeypatch.setattr(page_routes, "_live_state", lambda match: "done")
+
+    html = client.get(f"/p/{participant['token']}").text
+    matches = _match_list(html)
+
+    assert "Terminé" in matches
+    assert f'class="chip {verdict_class} home-match-verdict">+{points} pts</span>' in matches
+    assert ("★ ×2" in matches) is has_top_badge
+
+
+def test_finished_wrong_prediction_is_neutral(client, participant, monkeypatch):
+    _reset_matches()
+    _stable_home(monkeypatch)
+    match_id = _seed_match(966021, result="team1", score=(2, 0))
+    _predict(participant["id"], match_id, score=(0, 1), prediction="team2")
+    _award(participant["id"], match_id, 0)
+    monkeypatch.setattr(page_routes, "_is_locked", lambda match: True)
+    monkeypatch.setattr(page_routes, "_live_state", lambda match: "done")
+
+    matches = _match_list(client.get(f"/p/{participant['token']}").text)
+
+    assert 'class="chip gr home-match-verdict">0 pt</span>' in matches
 
 
 def test_home_sections_stay_in_priority_order():

@@ -108,9 +108,9 @@
               Terminé
             {% else %}
               {% if m.is_overnight %}{{ m.calendar_day_label }} · {% endif %}<span data-local-utc="{{ m|match_utc_iso }}" data-local-format="time">{{ m|match_time }}</span>
-              {% if m.is_top_match %} · <span class="home-weight">★ ×2</span>{% elif m.weight != 1 %} · <span class="home-weight">×{{ m.weight }}</span>{% endif %}
-              {% if is_next %} · <span class="home-next-countdown">dans <span class="countdown" data-countdown="{{ next_match.kickoff_ts }}">...</span></span>{% endif %}
             {% endif %}
+            {% if m.is_top_match %} · <span class="home-weight">★ ×2</span>{% elif m.weight != 1 %} · <span class="home-weight">×{{ m.weight }}</span>{% endif %}
+            {% if not m.is_locked and is_next %} · <span class="home-next-countdown">dans <span class="countdown" data-countdown="{{ next_match.kickoff_ts }}">...</span></span>{% endif %}
           </div>
         </div>
         <div class="home-match-right">
@@ -121,8 +121,14 @@
               {% if m.qualifier_winner == 'team1' %}{{ m.team1_name }}{% else %}{{ m.team2_name }}{% endif %}
             </div>
             {% endif %}
-            {% if m.get('points') is not none %}
-            <div class="home-match-points">+{{ m.get('points', 0) }} pts</div>
+            {% if m.get('points') is not none and m.tier %}
+              {% if m.tier == 'exact' %}
+              <span class="chip ok home-match-verdict">+{{ m.get('points', 0) }} pts</span>
+              {% elif m.tier == 'correct' %}
+              <span class="chip warn home-match-verdict">+{{ m.get('points', 0) }} pts</span>
+              {% else %}
+              <span class="chip gr home-match-verdict">0 pt</span>
+              {% endif %}
             {% endif %}
           {% elif is_urgent %}
             <span class="home-match-cta">Compléter</span>
