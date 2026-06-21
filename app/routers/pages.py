@@ -70,7 +70,7 @@ from app.timeutils import (
 # Whitelist stricte des templates de story (registre central app.news) :
 # empêche tout include de chemin arbitraire depuis la BDD.
 from app.news import STORY_TEMPLATES
-from app.trophies import evaluate, summarize, CATEGORIES as TROPHY_CATEGORIES
+from app.trophies import build_cabinet, latest_ephemeral_badges
 
 router = APIRouter()
 templates = create_templates()
@@ -1225,20 +1225,15 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
             )
         climber_by_id = {r["participant_id"]: r for r in finalized_climbers["climbers"]}
         climber_ids = set(climber_by_id)
-        tc_rows = await db.execute(
-            "SELECT participant_id, COUNT(DISTINCT trophy_key) AS cnt FROM trophy_awards GROUP BY participant_id"
-        )
-        trophy_counts = {r["participant_id"]: r["cnt"] for r in await tc_rows.fetchall()}
+        # Badge éphémère : le trophée le plus récent de la dernière journée
+        # finalisée, affiché à côté du joueur jusqu'à la journée suivante.
+        ephemeral_badges = await latest_ephemeral_badges(db)
         for r in rankings:
             r["is_me"] = (r["id"] == p["id"])
             r["color_class"] = f"c{((r['id'] - 1) % 8) + 1}"
             r["evolution"] = evolution.get(r["id"])
             r["is_climber"] = r["id"] in climber_ids
-            r["trophy_count"] = trophy_counts.get(r["id"], 0)
-            if r["is_climber"]:
-                r["climber_tip"] = (
-                    f"Grimpeur de la journée sportive du {_format_day_fr(climber_day)}"
-                )
+            r["badge"] = ephemeral_badges.get(r["id"])
         climbers = [r for r in rankings if r.get("is_climber")]
         # La remontada n'a de sens qu'une fois la phase finale entamée.
         ko_row = await db.execute(
@@ -1637,7 +1632,7 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         else:
             run = 0
     streak = run  # série EN COURS = série en fin de liste chronologique
-    # (Le palier « En série » est dérivé de longest_streak par app.trophies.evaluate.)
+    # (Le trophée « La Série » est attribué depuis longest_streak par app.trophies.)
 
     # Near-miss : bon résultat mais score exact raté à un seul but près.
     near_miss = sum(
@@ -1780,67 +1775,42 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     bonus_points = next(
         (r["total_points"] for r in bonus_rankings if r["id"] == participant_id), 0
     )
-    # Cabinet à trophées (W7) — source unique app.trophies, dérivée sans état.
+    # Cabinet à trophées (W8) — archive permanente lue depuis trophy_awards.
     show_trophy_cabinet = not is_limited_view
-    trophies = []
     trophy_groups = []
-    trophy_summary = {"unlocked_count": 0, "total": 0, "nearest": None, "last_unlocked": None}
+    trophy_summary = {"unlocked_count": 0, "total": 0}
     just_unlocked = 0
     if show_trophy_cabinet:
-        tm_row = await db.execute("SELECT COUNT(*) AS cnt FROM matches")
-        total_matches = (await tm_row.fetchone())["cnt"]
-        cl_row = await db.execute(
-            "SELECT COUNT(*) AS cnt FROM sporting_day_rank_evolutions WHERE participant_id=? AND is_climber=1",
-            (participant_id,),
-        )
-        climber_count = (await cl_row.fetchone())["cnt"]
-        trophies = evaluate({
-            "match_count": match_count,
-            "total_matches": total_matches,
-            "present_streak": present_streak,
-            "total_played": total_played,
-            "total_results": total_results,
-            "exact": exact,
-            "bonus_points": bonus_points,
-            "near_miss": near_miss,
-            "longest_streak": longest_streak,
-            "draw_correct": draw_correct,
-            "last_minute_count": last_minute_count,
-            "perfect_day": perfect_day,
-            "climber_count": climber_count,
-        })
-        for t in trophies:
-            t["just_unlocked"] = False
-        trophy_groups = [
-            {"key": ck, "label": cl, "items": [t for t in trophies if t["category"] == ck]}
-            for ck, cl in TROPHY_CATEGORIES
-        ]
-        trophy_summary = summarize(trophies)
+        cabinet = await build_cabinet(db, participant_id)
+        trophy_groups = cabinet["groups"]
+        trophy_summary = {"unlocked_count": cabinet["unlocked_count"], "total": cabinet["total"]}
 
-    # Célébration : trophées nouvellement débloqués depuis la dernière visite du
-    # propriétaire. Première visite post-déploiement = initialisation silencieuse.
-    if show_trophy_cabinet and viewer_id is None:
-        raw_seen = p.get("seen_trophies")
-        unlocked_keys = {t["key"] for t in trophies if t["unlocked"]}
-        if raw_seen is None:
-            await db.execute(
-                "UPDATE participants SET seen_trophies=? WHERE id=?",
-                (",".join(sorted(unlocked_keys)), participant_id),
-            )
-            await db.commit()
-        else:
-            seen = set(raw_seen.split(",")) - {""}
-            new_keys = unlocked_keys - seen
-            for t in trophies:
-                t["just_unlocked"] = t["key"] in new_keys
-            just_unlocked = len(new_keys)
-            if new_keys:
-                seen |= unlocked_keys
+        # Célébration : trophées nouvellement débloqués depuis la dernière visite
+        # du propriétaire. Première visite post-déploiement = init silencieuse.
+        if viewer_id is None:
+            raw_seen = p.get("seen_trophies")
+            unlocked_keys = cabinet["unlocked_keys"]
+            if raw_seen is None:
                 await db.execute(
                     "UPDATE participants SET seen_trophies=? WHERE id=?",
-                    (",".join(sorted(seen)), participant_id),
+                    (",".join(sorted(unlocked_keys)), participant_id),
                 )
                 await db.commit()
+            else:
+                seen = set(raw_seen.split(",")) - {""}
+                new_keys = unlocked_keys - seen
+                if new_keys:
+                    for grp in trophy_groups:
+                        for t in grp["items"]:
+                            if t["key"] in new_keys:
+                                t["just_unlocked"] = True
+                    just_unlocked = len(new_keys)
+                    seen |= unlocked_keys
+                    await db.execute(
+                        "UPDATE participants SET seen_trophies=? WHERE id=?",
+                        (",".join(sorted(seen)), participant_id),
+                    )
+                    await db.commit()
     fun_stats = []
     if favorite_pick:
         fun_stats.append({"icon": "❤️", "label": "Équipe la plus jouée gagnante",
@@ -1894,7 +1864,6 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         "best_day_pts": best_day_pts,
         "last5": [] if is_limited_view else last5,
         "recent_form": [] if is_limited_view else recent_form,
-        "trophies": trophies,
         "trophy_groups": trophy_groups,
         "trophy_summary": trophy_summary,
         "trophies_just_unlocked": just_unlocked,

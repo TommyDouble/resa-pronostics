@@ -249,8 +249,9 @@ CREATE TABLE IF NOT EXISTS trophy_awards (
   participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
   trophy_key     TEXT    NOT NULL,
   tier           TEXT    NOT NULL DEFAULT '_',
+  detail         TEXT    NOT NULL DEFAULT '',
   awarded_at     TEXT    NOT NULL DEFAULT (datetime('now')),
-  UNIQUE(participant_id, trophy_key, tier)
+  UNIQUE(participant_id, trophy_key, detail)
 );
 CREATE INDEX IF NOT EXISTS idx_trophy_awards_participant
   ON trophy_awards(participant_id);
@@ -369,6 +370,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await ensure_default_settings(db)
         await ensure_news_defaults(db)
         await _migrate_reveal_sporting_day(db)
+        await _migrate_trophy_detail(db)
         await _backfill_trophy_awards(db)
         await db.commit()
 
@@ -398,6 +400,40 @@ async def _migrate_reveal_sporting_day(db):
         "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
         (key,),
     )
+
+
+async def _migrate_trophy_detail(db):
+    """Refonte des trophées (W8) : ajoute la colonne `detail` (discriminant
+    d'occurrence pour les trophées répétables) et passe la contrainte d'unicité à
+    (participant_id, trophy_key, detail). L'ancien contenu (système v1) est purgé
+    puis recalculé par le nouveau moteur — il ne s'agit pas d'une révocation de
+    trophées du système courant mais du remplacement d'un système entier.
+    """
+    cols = await (await db.execute("PRAGMA table_info(trophy_awards)")).fetchall()
+    if any(c["name"] == "detail" for c in cols):
+        return
+    await db.execute("PRAGMA foreign_keys=OFF")
+    await db.executescript(
+        """
+        DROP TABLE IF EXISTS trophy_awards;
+        CREATE TABLE trophy_awards (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+          trophy_key     TEXT    NOT NULL,
+          tier           TEXT    NOT NULL DEFAULT '_',
+          detail         TEXT    NOT NULL DEFAULT '',
+          awarded_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(participant_id, trophy_key, detail)
+        );
+        CREATE INDEX IF NOT EXISTS idx_trophy_awards_participant
+          ON trophy_awards(participant_id);
+        """
+    )
+    await db.execute("PRAGMA foreign_keys=ON")
+    # Recalcul immédiat (le garde-fou _backfill peut déjà être posé sur une base
+    # existante, il ne relancerait donc pas le refresh par lui-même).
+    from app.trophies import refresh_trophy_awards
+    await refresh_trophy_awards(db)
 
 
 async def _backfill_trophy_awards(db):
