@@ -26,8 +26,9 @@ CATEGORIES = [
     ("departement", "Département"),
 ]
 
-# Seuils — valeurs de départ, à affiner via scripts/simulate_trophies.py.
-SNIPER_EXACT = 10          # scores exacts trouvés
+# Seuils — calibrés via scripts/simulate_trophies.py (1er passage : ~37 % du
+# tournoi joué, à ré-affiner en fin de poules / phase finale).
+SNIPER_EXACT = 14          # scores exacts trouvés (légendaire ~5 %, projeté plein tournoi)
 SERIE_STREAK = 8           # bons résultats d'affilée
 ROI_NUL_DRAWS = 5          # nuls de poule trouvés
 SANGFROID_MIN_KO = 8       # matchs joués en phase finale (min.)
@@ -41,6 +42,7 @@ CUILLERE_MIN_SHARE = 0.5   # avoir pronostiqué au moins la moitié des matchs
 EXTRA_SUM = 6              # buts cumulés mini pour "match fou"
 EXTRA_DIFF = 4             # écart de buts mini pour "match fou"
 PERFECT_MIN_MATCHES = 3    # matchs mini sur une journée parfaite
+PERFECT_MIN_EXACT = 2      # ... dont au moins N scores exacts (sinon trop commun : 71 %)
 
 # Catalogue. timing : "continu" (évalué en continu, éligible au badge éphémère),
 # "fin_poules" (à la clôture de la phase de groupes), "fin_tournoi" (à la clôture
@@ -66,7 +68,8 @@ TROPHIES = [
      "category": "exploit", "secret": False, "repeatable": True, "timing": "continu",
      "icon_key": "calendar-check", "rarity": "rare",
      "caption": "Ce jour-là, branché sur la bonne fréquence.",
-     "desc": f"100 % de bons résultats sur une journée d'au moins {PERFECT_MIN_MATCHES} matchs."},
+     "desc": f"100 % de bons résultats (dont {PERFECT_MIN_EXACT} scores exacts) sur une "
+             f"journée d'au moins {PERFECT_MIN_MATCHES} matchs."},
     # — Sélectifs & malins —
     {"key": "sang_froid", "icon": "🧊", "label": "Sang-Froid", "category": "adresse",
      "secret": False, "repeatable": False, "timing": "fin_tournoi",
@@ -273,11 +276,13 @@ async def refresh_trophy_awards(db) -> None:
                  + abs(r["exact_score_team2"] - r["score_team2"])) == 1
         )
 
-        # Journée parfaite (répétable, une par journée concernée)
+        # Journée parfaite (répétable) : 100 % de bons résultats ET au moins
+        # PERFECT_MIN_EXACT scores exacts sur la journée (sinon trop commun).
         owned = {r["match_id"]: r for r in lst}
         for sday, mids in matches_by_sday.items():
             if len(mids) >= PERFECT_MIN_MATCHES and all(mid in owned for mid in mids) \
-                    and all(is_match_prediction_correct(owned[mid], owned[mid]) for mid in mids):
+                    and all(is_match_prediction_correct(owned[mid], owned[mid]) for mid in mids) \
+                    and sum(1 for mid in mids if is_match_score_exact(owned[mid], owned[mid])) >= PERFECT_MIN_EXACT:
                 inserts.append((pid, "journee_parfaite", sday))
 
         # Extraterrestre (secret, répétable, une par match fou réussi)

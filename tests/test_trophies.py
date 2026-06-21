@@ -14,7 +14,7 @@ from app.database import get_db
 from app.routers.pages import _record_daily_visit
 from app.timeutils import local_today, current_sporting_day
 from app.trophies import (
-    TROPHIES, TROPHY_BY_KEY, CATEGORIES, refresh_trophy_awards,
+    TROPHIES, TROPHY_BY_KEY, CATEGORIES, SNIPER_EXACT, refresh_trophy_awards,
     build_cabinet, latest_ephemeral_badges, _top_department_member_ids,
 )
 from tests.conftest import run
@@ -128,13 +128,13 @@ def test_top_department_members_by_average_excludes_no_dept():
 
 def test_sniper_threshold():
     pid = _new_participant("Sniper")
-    for _ in range(9):
+    for _ in range(SNIPER_EXACT - 1):
         _predict(pid, _mk_match(result="team1", s1=2, s2=1), ps1=2, ps2=1)
     _refresh()
-    assert ("sniper", "") not in _awards(pid)   # 9 exacts : pas encore
+    assert ("sniper", "") not in _awards(pid)   # SNIPER_EXACT-1 exacts : pas encore
     _predict(pid, _mk_match(result="team1", s1=2, s2=1), ps1=2, ps2=1)
     _refresh()
-    assert ("sniper", "") in _awards(pid)        # 10 exacts
+    assert ("sniper", "") in _awards(pid)        # SNIPER_EXACT exacts
 
 
 def test_la_serie_consecutive():
