@@ -130,71 +130,63 @@ def test_limited_profile_hides_trophy_cabinet_for_other_viewer(client):
     assert "Cabinet à trophées" not in html
 
 
-def test_trophy_cabinet_uses_stable_svg_emblems_without_tier_emoji(client):
-    pid, token = _make_participant()
-    base_number = 9800000 + pid * 10
-    for i in range(2):
-        mid = _make_match(
-            base_number + i,
-            f"2000-02-0{i + 1}",
-            result="team1",
-            score_team1=2,
-            score_team2=1,
-        )
-        _predict(pid, mid, "team1", 2, 1)
+def _refresh():
+    from app.trophies import refresh_trophy_awards
 
+    async def _c():
+        async with get_db() as db:
+            await refresh_trophy_awards(db)
+            await db.commit()
+    run(_c())
+
+
+def _unlocked_keys(pid):
+    async def _c():
+        async with get_db() as db:
+            rows = await db.execute(
+                "SELECT DISTINCT trophy_key FROM trophy_awards WHERE participant_id=?", (pid,)
+            )
+            return {r["trophy_key"] for r in await rows.fetchall()}
+    return run(_c())
+
+
+def test_trophy_cabinet_renders_noto_assets_without_native_emoji(client):
+    """Refonte premium : cabinet rendu avec des assets Noto SVG locaux,
+    sans sprite PNG, sans paliers, et SANS emoji natif comme rendu principal."""
+    from app.trophies import TROPHIES
+    pid, token = _make_participant()
     html = client.get(f"/p/{token}/profil").text
     cabinet = _cabinet_fragment(html)
-    assert html.count('class="trophy-symbol-sprite"') == 1
-    for symbol in (
-        "first_step",
-        "present",
-        "marathon",
-        "loyal",
-        "sniper",
-        "bonus_king",
-        "so_close",
-        "streak",
-        "draw_king",
-        "last_minute",
-        "climber",
-        "perfect_day",
-        "lock",
-    ):
-        assert f'id="trophy-symbol-{symbol}"' in html
-        assert f'id="trophy-symbol-mask-{symbol}"' in html
-        assert f'/static/img/trophy-silhouettes/{symbol}.png' in html
-    assert cabinet.count('class="trophy ') == 12
-    assert cabinet.count('class="trophy-emblem-frame"') == 12
-    assert cabinet.count('class="trophy-symbol ') == 12
-    assert 'href="#trophy-symbol-first_step"' in cabinet
-    assert 'href="#trophy-symbol-sniper"' in cabinet
-    assert 'href="#trophy-symbol-lock"' in cabinet
-    assert "trophy-symbol-wrap--legacy" not in cabinet
-    assert 'class="t-glyph' not in cabinet
-    assert 't-medal--chocolat' in cabinet and ">Ch<" in cabinet
-    assert "Progression : 2/5 vers bronze" in cabinet
-    assert 'class="t-bar"' in cabinet
-    assert 'class="t-pips"' in cabinet
-    assert not any(mark in cabinet for mark in ("🥉", "🥈", "🥇", "💎", "🍫", "🏅"))
-    assert "\ufe0f" not in cabinet
+    # Plus de sprite PNG ni de paliers/médailles.
+    assert "trophy-symbol-sprite" not in html
+    assert "/static/img/trophy-silhouettes/" not in html
+    assert "t-medal--" not in cabinet  # plus de badge de palier (ancien système)
+    assert 'class="t-pips"' not in cabinet and 'class="t-bar"' not in cabinet
+    # Une tuile par trophée du catalogue.
+    assert cabinet.count('class="trophy ') == len(TROPHIES)
+    # Icônes servies en assets Noto locaux (pas de CDN, pas d'emoji natif principal).
+    assert 'class="t-noto"' in cabinet
+    assert "/static/img/trophies/noto/" in cabinet
+    assert "🥄" not in cabinet and "🔮" not in cabinet  # plus d'emoji système
+    # Secret verrouillé : cadenas élégant + libellé masqué, pas d'emoji 🔒.
+    assert 'class="t-lock"' in cabinet and "Trophée secret" in cabinet
+    assert "🔒" not in cabinet
+    # Hooks de rareté propagés sur les tuiles.
+    assert "rar-legendary" in cabinet and "rar-anti" in cabinet
 
 
-def test_perfect_day_requires_all_result_matches_predicted(client):
+def test_journee_parfaite_requires_all_day_matches_predicted(client):
     pid, _ = _make_participant()
     base_number = 9900000 + pid * 10
     mids = [
-        _make_match(base_number + i, "2000-01-02", result="team1", score_team1=1, score_team2=0)
+        _make_match(base_number + i, "2044-07-07", result="team1", score_team1=1, score_team2=0)
         for i in range(4)
     ]
     for mid in mids[:3]:
         _predict(pid, mid, "team1", 1, 0)
-
-    profile = _profile(pid)
-    perfect = next(t for t in profile["trophies"] if t["key"] == "perfect_day")
-    assert perfect["unlocked"] is False
+    _refresh()
+    assert "journee_parfaite" not in _unlocked_keys(pid)
 
     _predict(pid, mids[3], "team1", 1, 0)
-    profile = _profile(pid)
-    perfect = next(t for t in profile["trophies"] if t["key"] == "perfect_day")
-    assert perfect["unlocked"] is True
+    _refresh()
+    assert "journee_parfaite" in _unlocked_keys(pid)

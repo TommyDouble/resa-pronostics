@@ -59,29 +59,6 @@ def test_news_seen_rejects_bad_token(client):
     assert res.status_code == 403
 
 
-def test_cabinet_story_is_seeded_as_draft_with_five_guided_screens(admin_client):
-    async def _find():
-        async with get_db() as db:
-            row = await db.execute(
-                """SELECT id, is_published, template_key FROM news_items
-                   WHERE slug='cabinet-trophees'"""
-            )
-            return dict(await row.fetchone())
-
-    item = run(_find())
-    assert item["is_published"] == 0
-    assert item["template_key"] == "cabinet_promo"
-    listing = admin_client.get("/admin/nouveautes").text
-    assert "Le Cabinet à trophées" in listing
-    assert "Brouillon" in listing
-    html = admin_client.get(f"/admin/nouveautes/{item['id']}/preview").text
-    assert html.count('class="story-screen"') == 5
-    assert "Sur l'accueil" in html
-    assert "Sur ton profil" in html
-    assert "classement" in html.lower()
-
-
-
 def test_sporting_day_story_is_seeded_as_draft_with_four_guided_screens(admin_client):
     async def _find():
         async with get_db() as db:

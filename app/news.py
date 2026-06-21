@@ -13,7 +13,6 @@ Ajouter une story = (1) une entrée dans STORY_TEMPLATES, (2) le partial des
 # clé de template -> libellé affiché dans l'admin
 STORY_TEMPLATES = {
     "reveal_promo": "Promo « Reveal du jour »",
-    "cabinet_promo": "Promo « Cabinet à trophées »",
     "sporting_day_update": "Journées sportives et évolutions",
 }
 
@@ -43,16 +42,6 @@ NEWS_DEFAULTS = [
         "template_key": "sporting_day_update",
         "sort_order": 20,
         # Disponible dans l'écran Nouveautés, mais laissée au choix du PO.
-        "is_published": 0,
-    },
-    {
-        "slug": "cabinet-trophees",
-        "title": "Le Cabinet à trophées",
-        "body": "Tes exploits deviennent des trophées : assiduité, scores exacts, "
-                "séries… Débloque-les et fais grimper ta collection. 🏆",
-        "icon": "🏆",
-        "template_key": "cabinet_promo",
-        "sort_order": 20,
         "is_published": 0,
     },
 ]

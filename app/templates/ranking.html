@@ -171,7 +171,7 @@
       <span class="rk">{{ r.rank }}</span>
       {{ avatar(r.avatar_path, r.name, r.id) }}
       <div class="nm">
-        {{ r.name }}{% if r.is_climber %} <span class="climber-mark tip" tabindex="0" data-tip="{{ r.climber_tip }}">🚀</span>{% endif %}{% if r.trophy_count %} <span class="trophy-pill">🏆{{ r.trophy_count }}</span>{% endif %}
+        <span class="nm-line">{{ r.name }}{% if r.badge %}<span class="mini-badge rar-{{ r.badge.rarity }} tip" tabindex="0" data-tip="{{ r.badge.label }} — {{ r.badge.caption }}"><img src="/static/img/trophies/noto/{{ r.badge.icon_key }}.svg" alt="" aria-hidden="true"></span>{% endif %}</span>
         {% if r.full_name and r.full_name != r.name %}
           <small>{{ r.full_name }}{% if r.is_me %} · c'est toi{% endif %}</small>
         {% elif r.is_me %}
