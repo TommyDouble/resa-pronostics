@@ -1598,6 +1598,28 @@ function initConfettiTriggers() {
   els.forEach(function(el) { obs.observe(el); });
 }
 
+/* Médailles : reflet one-shot au scroll-in + rejouable au tap (pulse/burst via .go).
+   Le flottement est géré en CSS (animation continue) ; ici on ne déclenche que le
+   reflet et l'éclat. prefers-reduced-motion => on ne fait rien. */
+function initTrophyMedals() {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var medals = document.querySelectorAll('[data-cabinet] .trophy.on');
+  if (!medals.length) return;
+  function play(t) { t.classList.remove('go'); void t.offsetWidth; t.classList.add('go'); }
+  medals.forEach(function(t) {
+    t.addEventListener('pointerdown', function() { play(t); });
+  });
+  if (!('IntersectionObserver' in window)) return;
+  var obs = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      if (!e.isIntersecting) return;
+      obs.unobserve(e.target);
+      play(e.target);
+    });
+  }, { threshold: 0.45 });
+  medals.forEach(function(t) { obs.observe(t); });
+}
+
 /* ---- Init all on DOM ready ---- */
 document.addEventListener('DOMContentLoaded', function() {
   initLocalTimes();
@@ -1628,5 +1650,6 @@ document.addEventListener('DOMContentLoaded', function() {
   initCompactCards();
   initStoryPlayer();
   initConfettiTriggers();
+  initTrophyMedals();
   initReveal();
 });
