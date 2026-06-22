@@ -169,6 +169,9 @@ def test_journee_parfaite_repeatable_counts():
     cab = _cabinet(pid)
     jp = next(i for g in cab["groups"] for i in g["items"] if i["key"] == "journee_parfaite")
     assert jp["count"] == 2 and jp["unlocked"]
+    assert len(jp["history"]) == 2
+    assert any("1 avril" in event for event in jp["history"])
+    assert any("2 avril" in event for event in jp["history"])
 
 
 def test_grimpeur_from_evolutions():
@@ -231,6 +234,34 @@ def test_refresh_idempotent():
     assert _awards(pid) == before
 
 
+def test_legacy_history_migration_dates_existing_occurrences():
+    from app.database import _migrate_trophy_sporting_day
+
+    pid = _new_participant("Historique migré")
+
+    async def _migrate():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO trophy_awards
+                   (participant_id, trophy_key, detail, sporting_day)
+                   VALUES (?, 'journee_parfaite', '2099-08-12', NULL)""",
+                (pid,),
+            )
+            await db.execute(
+                "DELETE FROM app_settings WHERE key='migr_trophy_sporting_day_v1'"
+            )
+            await _migrate_trophy_sporting_day(db)
+            row = await (await db.execute(
+                """SELECT sporting_day FROM trophy_awards
+                   WHERE participant_id=? AND trophy_key='journee_parfaite'""",
+                (pid,),
+            )).fetchone()
+            await db.commit()
+            return row["sporting_day"]
+
+    assert run(_migrate()) == "2099-08-12"
+
+
 # --- Badge éphémère du classement -----------------------------------------
 
 def test_latest_ephemeral_badge_recent_then_rarest():
@@ -253,18 +284,24 @@ def test_latest_ephemeral_badge_recent_then_rarest():
             )
             # Deux trophées du même instant (dans la fenêtre) : un rare, un commun.
             await db.execute(
-                "INSERT INTO trophy_awards (participant_id, trophy_key, detail, awarded_at) VALUES (?,?,?,?)",
-                (pid, "extraterrestre", "z1", start),
+                "INSERT INTO trophy_awards "
+                "(participant_id, trophy_key, detail, sporting_day, awarded_at) "
+                "VALUES (?,?,?,?,?)",
+                (pid, "extraterrestre", "z1", day, start),
             )
             await db.execute(
-                "INSERT INTO trophy_awards (participant_id, trophy_key, detail, awarded_at) VALUES (?,?,?,?)",
-                (pid, "journee_parfaite", day, start),
+                "INSERT INTO trophy_awards "
+                "(participant_id, trophy_key, detail, sporting_day, awarded_at) "
+                "VALUES (?,?,?,?,?)",
+                (pid, "journee_parfaite", day, day, start),
             )
             # Rend journee_parfaite plus commun (3 autres détenteurs).
             for k, jp in enumerate(jp_ids):
                 await db.execute(
-                    "INSERT INTO trophy_awards (participant_id, trophy_key, detail, awarded_at) VALUES (?,?,?,?)",
-                    (jp, "journee_parfaite", f"x{k}", start),
+                    "INSERT INTO trophy_awards "
+                    "(participant_id, trophy_key, detail, sporting_day, awarded_at) "
+                    "VALUES (?,?,?,?,?)",
+                    (jp, "journee_parfaite", f"x{k}", day, start),
                 )
             await db.commit()
     run(_seed_and_award())
@@ -275,12 +312,11 @@ def test_latest_ephemeral_badge_recent_then_rarest():
     badges = run(_badges())
     # À égalité de date, le plus rare (extraterrestre) l'emporte.
     assert badges[pid]["key"] == "extraterrestre"
-    assert badges[pid]["detail_label"] == ""  # detail "z1" non numérique
+    assert "31 décembre" in badges[pid]["detail_label"]
 
 
-def test_ephemeral_badge_excludes_outside_window():
-    """Trophées décernés AVANT ou APRÈS la fenêtre de la dernière journée
-    finalisée ne doivent PAS apparaître comme badge éphémère."""
+def test_ephemeral_badge_uses_sporting_day_not_insert_time():
+    """Un vieux trophée inséré aujourd'hui ne redevient jamais un badge."""
     from app.timeutils import sporting_day_bounds
     pid_old = _new_participant("Ancien")
     pid_future = _new_participant("Futur")
@@ -296,16 +332,19 @@ def test_ephemeral_badge_excludes_outside_window():
                    VALUES (?, ?, 0, 0, 0, 5, 5, 0, 0)""",
                 (day, pid_old),
             )
-            # Trophée AVANT la fenêtre (veille)
-            prev_start, _ = sporting_day_bounds("2100-06-14")
+            # Les deux écritures ont volontairement un awarded_at situé dans la
+            # dernière journée : seule leur vraie date métier doit compter.
             await db.execute(
-                "INSERT INTO trophy_awards (participant_id, trophy_key, detail, awarded_at) VALUES (?,?,?,?)",
-                (pid_old, "grimpeur", "2100-06-14", prev_start),
+                "INSERT INTO trophy_awards "
+                "(participant_id, trophy_key, detail, sporting_day, awarded_at) "
+                "VALUES (?,?,?,?,?)",
+                (pid_old, "grimpeur", "2100-06-14", "2100-06-14", start),
             )
-            # Trophée APRÈS la fenêtre (journée en cours, pas encore finalisée)
             await db.execute(
-                "INSERT INTO trophy_awards (participant_id, trophy_key, detail, awarded_at) VALUES (?,?,?,?)",
-                (pid_future, "grimpeur", day, end),
+                "INSERT INTO trophy_awards "
+                "(participant_id, trophy_key, detail, sporting_day, awarded_at) "
+                "VALUES (?,?,?,?,?)",
+                (pid_future, "grimpeur", "2100-06-16", "2100-06-16", start),
             )
             await db.commit()
     run(_seed())
@@ -335,8 +374,10 @@ def test_ephemeral_badge_detail_label_sporting_day():
                 (day, pid),
             )
             await db.execute(
-                "INSERT INTO trophy_awards (participant_id, trophy_key, detail, awarded_at) VALUES (?,?,?,?)",
-                (pid, "grimpeur", day, start),
+                "INSERT INTO trophy_awards "
+                "(participant_id, trophy_key, detail, sporting_day, awarded_at) "
+                "VALUES (?,?,?,?,?)",
+                (pid, "grimpeur", day, day, start),
             )
             await db.commit()
     run(_seed())

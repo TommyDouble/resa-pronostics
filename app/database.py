@@ -250,6 +250,7 @@ CREATE TABLE IF NOT EXISTS trophy_awards (
   trophy_key     TEXT    NOT NULL,
   tier           TEXT    NOT NULL DEFAULT '_',
   detail         TEXT    NOT NULL DEFAULT '',
+  sporting_day   TEXT,
   awarded_at     TEXT    NOT NULL DEFAULT (datetime('now')),
   UNIQUE(participant_id, trophy_key, detail)
 );
@@ -371,6 +372,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await ensure_news_defaults(db)
         await _migrate_reveal_sporting_day(db)
         await _migrate_trophy_detail(db)
+        await _migrate_trophy_sporting_day(db)
         await _backfill_trophy_awards(db)
         await db.commit()
 
@@ -422,11 +424,14 @@ async def _migrate_trophy_detail(db):
           trophy_key     TEXT    NOT NULL,
           tier           TEXT    NOT NULL DEFAULT '_',
           detail         TEXT    NOT NULL DEFAULT '',
+          sporting_day   TEXT,
           awarded_at     TEXT    NOT NULL DEFAULT (datetime('now')),
           UNIQUE(participant_id, trophy_key, detail)
         );
         CREATE INDEX IF NOT EXISTS idx_trophy_awards_participant
           ON trophy_awards(participant_id);
+        CREATE INDEX IF NOT EXISTS idx_trophy_awards_sporting_day
+          ON trophy_awards(sporting_day);
         """
     )
     await db.execute("PRAGMA foreign_keys=ON")
@@ -434,6 +439,46 @@ async def _migrate_trophy_detail(db):
     # existante, il ne relancerait donc pas le refresh par lui-même).
     from app.trophies import refresh_trophy_awards
     await refresh_trophy_awards(db)
+
+
+async def _migrate_trophy_sporting_day(db):
+    """Rattache chaque trophée à sa journée sportive réelle.
+
+    ``awarded_at`` reste la date technique d'écriture et ne permet pas de savoir
+    pendant quelle journée le trophée a été gagné (notamment après un backfill).
+    Le moteur de trophées reconstruit ici la date métier des lignes existantes.
+    """
+    cols = await (await db.execute("PRAGMA table_info(trophy_awards)")).fetchall()
+    has_sporting_day = any(c["name"] == "sporting_day" for c in cols)
+    if not has_sporting_day:
+        await db.execute("ALTER TABLE trophy_awards ADD COLUMN sporting_day TEXT")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trophy_awards_sporting_day "
+        "ON trophy_awards(sporting_day)"
+    )
+    key = "migr_trophy_sporting_day_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    # Ces trophées portent historiquement leur journée dans ``detail``. On la
+    # copie directement afin de conserver aussi les occurrences qui ne seraient
+    # plus recalculables après une correction de résultats.
+    await db.execute(
+        """UPDATE trophy_awards
+           SET sporting_day=detail
+           WHERE trophy_key IN ('grimpeur', 'journee_parfaite')
+             AND length(detail)=10
+             AND detail GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"""
+    )
+    from app.trophies import refresh_trophy_awards
+    await refresh_trophy_awards(db)
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
 
 
 async def _backfill_trophy_awards(db):
