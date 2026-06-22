@@ -108,7 +108,7 @@
       {{ avatar(r.avatar_path, r.name, r.id) }}
       <div class="nm">
         {{ r.name }}
-        <small>{{ r.baseline_rank }}e fin de groupes → {{ r.rank }}e aujourd'hui{% if r.is_me %} · c'est toi{% endif %}</small>
+        <small>{{ r.baseline_rank }}e fin de groupes → {{ r.rank }}e aujourd'hui{% if r.is_me %} · c’est toi{% endif %}</small>
       </div>
       <span class="chip {{ 'up' if r.delta > 0 else ('dn' if r.delta < 0 else 'fl') }}">
         {% if r.delta > 0 %}▲ +{{ r.delta }}{% elif r.delta < 0 %}▼ {{ r.delta }}{% else %}=={% endif %}
@@ -119,54 +119,46 @@
 
   {% else %}
 
-  {% if view == 'general' and climbers %}
-  <div class="climber-hero">
-    <div class="ch-meta">
-      <span class="ch-kicker">
-        <span class="ch-rocket" aria-hidden="true">🚀</span>
-        <span class="ch-label">Grimpeur{{ 's' if climbers|length > 1 else '' }} · dernière journée finalisée</span>
-      </span>
-      <small class="ch-day">
-        {{ climber_day_label }}
-        {% if climber_matches %}
-        <span class="help-tip climber-day-help" tabindex="0" role="button"
-              aria-label="Pourquoi {{ 'ces Grimpeurs' if climbers|length > 1 else 'ce Grimpeur' }} ?"
-              data-tooltip-content="climber-day-tooltip">?</span>
-        {% endif %}
-      </small>
-    </div>
-    <div class="ch-main">
-      <span class="ch-name">
-        {% for c in climbers %}{{ c.name }}{% if not loop.last %} · {% endif %}{% endfor %}
-      </span>
-      <span class="chip up ch-delta">▲ {{ climber_delta }} place{{ 's' if climber_delta > 1 else '' }}</span>
-    </div>
-  </div>
-  {% if climber_matches %}
-  <template id="climber-day-tooltip">
-    <div class="climber-tooltip">
-      <strong class="climber-tooltip-title">Pourquoi {{ 'ces Grimpeurs' if climbers|length > 1 else 'ce Grimpeur' }} ?</strong>
-      <p>Ce titre récompense la meilleure progression au classement pendant la dernière journée sportive entièrement finalisée.{% if climbers|length > 1 %} En cas d’égalité, il est partagé.{% endif %}</p>
-      <div class="climber-tooltip-day">
-        <b>Journée sportive du {{ climber_day_label }}</b>
-        <span>{{ climber_period_label }}</span>
-      </div>
-      <span class="climber-tooltip-label">{{ climber_matches|length }} match{{ 's' if climber_matches|length > 1 else '' }} pris en compte</span>
-      <div class="climber-tooltip-matches">
-        {% for match in climber_matches %}
-        <div class="climber-tooltip-match">
-          <span>{{ match.team1_name|team }}</span>
-          <b>{% if match.score_team1 is not none and match.score_team2 is not none %}{{ match.score_team1 }}–{{ match.score_team2 }}{% else %}Résultat{% endif %}</b>
-          <span>{{ match.team2_name|team }}</span>
-          {% if match.phase != 'group' and match.qualifier_name %}
-          <small>{{ match.qualifier_name|team }} qualifié</small>
-          {% endif %}
+  {% if view == 'general' and carousel_items %}
+  <div class="trophy-carousel" data-trophy-carousel
+       role="region" aria-roledescription="carrousel" aria-label="Troph&#233;es du jour">
+    <div class="tc-track">
+      {% for item in carousel_items %}
+      <div class="tc-slide" role="group"
+           aria-label="Troph&#233;e {{ loop.index }} sur {{ carousel_items|length }}">
+        <div class="climber-hero tc-card rar-border-{{ item.rarity }}">
+          <div class="tc-row1">
+            <span class="ch-kicker">
+              <span class="tc-icon" aria-hidden="true">
+                <img src="/static/img/trophies/noto/{{ item.icon_key }}.svg" alt="">
+              </span>
+              {{ item.label }} · derni&#232;re journ&#233;e finalis&#233;e
+            </span>
+            <span class="tc-right">
+              <span class="tc-day">{{ item.day_label }}</span>
+              <span class="help-tip" tabindex="0" data-tip="{{ item.caption }}{% if item.tip_lines %} · {{ item.tip_lines | join(' · ') }}{% endif %}">?</span>
+            </span>
+          </div>
+          <div class="tc-row2">
+            <span class="tc-names">{{ item.winners | map(attribute='participant_name') | join(' · ') }}</span>
+            {% if item.shared_delta %}
+            <span class="chip up ch-delta">▲ {{ item.shared_delta }} place{{ 's' if item.shared_delta > 1 else '' }}</span>
+            {% endif %}
+          </div>
         </div>
-        {% endfor %}
       </div>
+      {% endfor %}
     </div>
-  </template>
-  {% endif %}
+    {% if carousel_items|length > 1 %}
+    <div class="tc-dots" role="tablist" aria-label="Navigation troph&#233;es">
+      {% for item in carousel_items %}
+      <button class="tc-dot rar-dot-{{ item.rarity }}{{ ' active' if loop.first else '' }}"
+              role="tab" aria-label="Troph&#233;e {{ loop.index }}"
+              aria-selected="{{ 'true' if loop.first else 'false' }}"></button>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
   {% endif %}
 
   {% if rankings|length >= 3 %}
@@ -218,11 +210,11 @@
       <span class="rk">{{ r.rank }}</span>
       {{ avatar(r.avatar_path, r.name, r.id) }}
       <div class="nm">
-        <span class="nm-line">{{ r.name }}{% if r.badge %}<span class="mini-badge rar-{{ r.badge.rarity }} tip" tabindex="0" data-tip="{{ r.badge.label }}{% if r.badge.detail_label %} · {{ r.badge.detail_label }}{% endif %} — {{ r.badge.caption }}"><img src="/static/img/trophies/noto/{{ r.badge.icon_key }}.svg" alt="" aria-hidden="true"></span>{% endif %}</span>
+        <span class="nm-line">{{ r.name }}{% for b in r.badges[:2] %}<span class="mini-badge rar-{{ b.rarity }} tip" tabindex="0" data-tip="{{ b.label }}{% if b.detail_label %} · {{ b.detail_label }}{% endif %} — {{ b.caption }}"><img src="/static/img/trophies/noto/{{ b.icon_key }}.svg" alt="" aria-hidden="true"></span>{% endfor %}{% if r.badges|length > 2 %}<span class="mini-badge-more tip" tabindex="0" data-tip="{{ r.badges[2:]|map(attribute='label')|join(', ') }}">+{{ r.badges|length - 2 }}</span>{% endif %}</span>
         {% if r.full_name and r.full_name != r.name %}
-          <small>{{ r.full_name }}{% if r.is_me %} · c'est toi{% endif %}</small>
+          <small>{{ r.full_name }}{% if r.is_me %} · c’est toi{% endif %}</small>
         {% elif r.is_me %}
-          <small>c'est toi</small>
+          <small>c’est toi</small>
         {% endif %}
       </div>
       {% if view == 'general' and r.evolution is not none %}
