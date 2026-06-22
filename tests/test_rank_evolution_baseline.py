@@ -362,6 +362,18 @@ def test_ranking_live_header_and_rich_tooltip_css_contract():
     assert ".climber-tooltip-match" in source
 
 
+def test_ranking_trophy_badges_keep_a_light_paper_palette():
+    source = Path("app/static/css/resa.css").read_text()
+    badge_css = source.split("/* Mini badge du classement", 1)[1].split(
+        "@keyframes badge-pop", 1
+    )[0]
+
+    assert "#0a0a0d" not in badge_css
+    assert "#fffdf9" in badge_css
+    assert "radial-gradient" in badge_css
+    assert "--mb-sh" in badge_css
+
+
 def test_tooltip_player_keeps_plain_text_and_supports_trusted_templates():
     source = Path("app/static/js/resa.js").read_text()
 

@@ -2370,23 +2370,27 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 /* Badge du classement : un trophée décroché pendant la dernière journée
    sportive finalisée. Tout l'historique reste archivé au cabinet. */
 .rrow .nm .nm-line { display: inline-flex; align-items: center; gap: 5px; }
-/* Mini badge du classement : squircle « app-icon », teinté par la matière/rareté. */
+/* Mini badge du classement : médaillon papier lumineux, teinté par rareté. */
 .mini-badge {
   display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
   width: 23px; height: 23px; border-radius: 7px; margin-left: 3px; flex: none;
-  background: linear-gradient(150deg, var(--mb-bg), #0a0a0d);
-  border: 1.5px solid var(--mb-bd);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 1px 3px rgba(0,0,0,.30);
+  background:
+    radial-gradient(circle at 28% 22%, rgba(255,255,255,.96) 0 18%, transparent 48%),
+    linear-gradient(145deg, #fffdf9 0%, var(--mb-bg) 100%);
+  border: 1px solid var(--mb-bd);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.9),
+    0 2px 5px var(--mb-sh);
   animation: badge-pop .5s cubic-bezier(.34,1.56,.64,1) both;
 }
 .mini-badge img {
   width: 64%; height: 64%; display: block;
-  filter: var(--mb-icf, none) drop-shadow(0 0 1px var(--mb-ich, transparent)) drop-shadow(0 1px 1px rgba(0,0,0,.4));
+  filter: var(--mb-icf, none) drop-shadow(0 1px 1px rgba(53,43,34,.16));
 }
-.mini-badge.rar-legendary { --mb-bg: #16314A; --mb-bd: #3E93C6; --mb-icf: saturate(1.06) hue-rotate(6deg);    --mb-ich: rgba(225,247,255,.9); }
-.mini-badge.rar-rare      { --mb-bg: #3A2606; --mb-bd: #9A6B12; --mb-icf: saturate(1.06) sepia(.06) hue-rotate(-6deg); --mb-ich: rgba(255,245,208,.85); }
-.mini-badge.rar-common    { --mb-bg: #2C1909; --mb-bd: #7A4A23; --mb-icf: saturate(1.05) sepia(.08) hue-rotate(-6deg); --mb-ich: rgba(247,228,198,.85); }
-.mini-badge.rar-anti      { --mb-bg: #0A0A0D; --mb-bd: #3A3A44; --mb-icf: saturate(1.04) brightness(.98);       --mb-ich: rgba(255,150,150,.55); }
+.mini-badge.rar-legendary { --mb-bg: #DDF3FF; --mb-bd: #75BDE0; --mb-sh: rgba(62,147,198,.22); --mb-icf: saturate(1.04) hue-rotate(3deg); }
+.mini-badge.rar-rare      { --mb-bg: #FFF0BC; --mb-bd: #D9A832; --mb-sh: rgba(186,132,18,.20); --mb-icf: saturate(1.04) sepia(.03); }
+.mini-badge.rar-common    { --mb-bg: #F7E2CD; --mb-bd: #C68B55; --mb-sh: rgba(151,92,38,.18); --mb-icf: saturate(1.03) sepia(.03); }
+.mini-badge.rar-anti      { --mb-bg: #F1E8EC; --mb-bd: #AA8D99; --mb-sh: rgba(105,75,88,.16); --mb-icf: saturate(.92) brightness(1.04); }
 @keyframes badge-pop {
   0% { transform: translateY(-1px) scale(0); }
   100% { transform: translateY(-1px) scale(1); }
