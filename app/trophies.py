@@ -670,16 +670,20 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
         meta = TROPHY_BY_KEY.get(r["trophy_key"])
         if not meta:
             continue
-        detail_label = _occurrence_label(
+        full_label = _occurrence_label(
             meta["key"], r, format_sporting_day_fr, format_local_datetime,
             match_names, participant_names,
+        )
+        event_label = _detail_label(
+            meta["key"], (r.get("detail") or ""),
+            format_sporting_day_fr, match_names, participant_names,
         )
         detail_raw = (r.get("detail") or "")
         is_day_only = detail_raw == day
         winner = {
             "participant_id": r["participant_id"],
             "participant_name": r["participant_name"],
-            "detail_label": "" if is_day_only else detail_label,
+            "detail_label": "" if is_day_only else event_label,
             "delta": climber_deltas.get(r["participant_id"]) if meta["key"] == "grimpeur" else None,
         }
         if meta["key"] not in grouped:
@@ -694,8 +698,36 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
         by_participant.setdefault(r["participant_id"], []).append({
             "key": meta["key"], "icon": meta["icon"], "label": meta["label"],
             "icon_key": meta["icon_key"], "rarity": meta["rarity"],
-            "caption": meta["caption"], "detail_label": detail_label,
+            "caption": meta["caption"], "detail_label": full_label,
         })
+
+    day_label = format_sporting_day_fr(day)
+
+    for slide in grouped.values():
+        slide["day_label"] = day_label
+        winners = slide["winners"]
+        details = {w["detail_label"] for w in winners}
+        if len(details) == 1:
+            slide["shared_detail"] = details.pop()
+            for w in winners:
+                w["detail_label"] = ""
+        else:
+            slide["shared_detail"] = ""
+        deltas = {w["delta"] for w in winners if w["delta"] is not None}
+        if len(deltas) == 1:
+            slide["shared_delta"] = deltas.pop()
+            for w in winners:
+                w["delta"] = None
+        else:
+            slide["shared_delta"] = None
+        has_per_winner = any(w["detail_label"] for w in winners)
+        if has_per_winner:
+            slide["tip_lines"] = [
+                f"{w['participant_name']} — {w['detail_label']}"
+                for w in winners if w["detail_label"]
+            ]
+        else:
+            slide["tip_lines"] = []
 
     carousel = sorted(
         grouped.values(),

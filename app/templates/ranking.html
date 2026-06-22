@@ -127,25 +127,24 @@
       <div class="tc-slide" role="group"
            aria-label="Troph&#233;e {{ loop.index }} sur {{ carousel_items|length }}">
         <div class="climber-hero tc-card rar-border-{{ item.rarity }}">
-          <div class="ch-meta">
+          <div class="tc-row1">
             <span class="ch-kicker">
               <span class="tc-icon" aria-hidden="true">
                 <img src="/static/img/trophies/noto/{{ item.icon_key }}.svg" alt="">
               </span>
-              <span class="ch-label">{{ item.label }} · derni&#232;re journ&#233;e</span>
+              {{ item.label }} · derni&#232;re journ&#233;e finalis&#233;e
+            </span>
+            <span class="tc-right">
+              <span class="tc-day">{{ item.day_label }}</span>
+              <span class="help-tip" tabindex="0" data-tip="{{ item.caption }}{% if item.tip_lines %} · {{ item.tip_lines | join(' · ') }}{% endif %}">?</span>
             </span>
           </div>
-          {% for w in item.winners %}
-          <div class="ch-main">
-            <span class="ch-name">{{ w.participant_name }}</span>
-            {% if item.key == 'grimpeur' and w.delta %}
-            <span class="chip up ch-delta">▲ {{ w.delta }} place{{ 's' if w.delta > 1 else '' }}</span>
+          <div class="tc-row2">
+            <span class="tc-names">{{ item.winners | map(attribute='participant_name') | join(' · ') }}</span>
+            {% if item.shared_delta %}
+            <span class="chip up ch-delta">▲ {{ item.shared_delta }} place{{ 's' if item.shared_delta > 1 else '' }}</span>
             {% endif %}
           </div>
-          {% if w.detail_label %}
-          <small class="tc-detail">{{ w.detail_label }}</small>
-          {% endif %}
-          {% endfor %}
         </div>
       </div>
       {% endfor %}
