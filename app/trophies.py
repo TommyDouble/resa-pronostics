@@ -469,14 +469,15 @@ async def build_cabinet(db, participant_id: int) -> dict:
     from app.timeutils import format_local_datetime, format_sporting_day_fr
 
     rows = await db.execute(
-        "SELECT trophy_key, detail, sporting_day, awarded_at FROM trophy_awards "
+        "SELECT id, trophy_key, detail, sporting_day, awarded_at FROM trophy_awards "
         "WHERE participant_id=? "
-        "ORDER BY COALESCE(sporting_day, substr(awarded_at, 1, 10)), awarded_at",
+        "ORDER BY COALESCE(sporting_day, substr(awarded_at, 1, 10)), awarded_at, id",
         (participant_id,),
     )
+    award_rows = [dict(r) for r in await rows.fetchall()]
     awarded: dict[str, list[dict]] = defaultdict(list)
-    for r in await rows.fetchall():
-        awarded[r["trophy_key"]].append(dict(r))
+    for r in award_rows:
+        awarded[r["trophy_key"]].append(r)
 
     occurrences = [occ for values in awarded.values() for occ in values]
     match_names, participant_names = await _load_detail_context(db, occurrences)
@@ -532,11 +533,30 @@ async def build_cabinet(db, participant_id: int) -> dict:
             items.append(item)
         groups.append({"key": rar_key, "label": rar_label, "items": items})
 
+    latest = None
+    latest_occurrence = next(
+        (occ for occ in reversed(award_rows) if occ["trophy_key"] in TROPHY_BY_KEY),
+        None,
+    )
+    if latest_occurrence:
+        meta = TROPHY_BY_KEY[latest_occurrence["trophy_key"]]
+        detail_label = _occurrence_label(
+            meta["key"], latest_occurrence, format_sporting_day_fr,
+            format_local_datetime, match_names, participant_names,
+        )
+        latest = {
+            "key": meta["key"], "label": meta["label"],
+            "icon": meta["icon"], "icon_key": meta["icon_key"],
+            "rarity": meta["rarity"], "count": len(awarded[meta["key"]]),
+            "detail_label": detail_label or "Dernier trophée obtenu",
+        }
+
     return {
         "groups": groups,
         "unlocked_count": unlocked_count,
         "total": len(TROPHIES),
         "unlocked_keys": {k for k, occ in awarded.items() if occ},
+        "latest": latest,
     }
 
 

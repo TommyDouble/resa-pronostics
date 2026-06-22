@@ -140,6 +140,32 @@
       <div class="lbl">Cabinet à trophées</div>
       <span class="cab-count">{{ profile.trophy_summary.unlocked_count }}/{{ profile.trophy_summary.total }}</span>
     </div>
+    {% set trophy_progress = (profile.trophy_summary.unlocked_count * 100 / profile.trophy_summary.total)|round(1) if profile.trophy_summary.total else 0 %}
+    <div class="cab-progress" role="progressbar"
+         aria-label="Trophées débloqués"
+         aria-valuemin="0"
+         aria-valuemax="{{ profile.trophy_summary.total }}"
+         aria-valuenow="{{ profile.trophy_summary.unlocked_count }}">
+      <span style="width: {{ trophy_progress }}%;"></span>
+    </div>
+    {% if profile.latest_trophy %}
+    {% set latest = profile.latest_trophy %}
+    <div class="cab-latest" aria-label="Dernier trophée débloqué : {{ latest.label }}">
+      <div class="cab-latest-medal trophy on rar-{{ latest.rarity }}" aria-hidden="true">
+        <div class="t-medal-wrap">
+          <div class="t-ic">
+            {{ trophy_icon(latest.icon_key, latest.icon) }}
+          </div>
+          {% if latest.count > 1 %}<span class="t-count">×{{ latest.count }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="cab-latest-copy">
+        <span>Dernier trophée débloqué</span>
+        <strong>{{ latest.label }}</strong>
+        <p>{{ latest.detail_label }}</p>
+      </div>
+    </div>
+    {% endif %}
     {% for grp in profile.trophy_groups %}
     {# Étagère par catégorie : débloqués d'abord. #}
     {% set ordered = grp['items']|sort(attribute='unlocked', reverse=true) %}

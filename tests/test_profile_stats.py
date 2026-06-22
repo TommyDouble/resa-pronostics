@@ -173,6 +173,50 @@ def test_trophy_cabinet_renders_noto_assets_without_native_emoji(client):
     assert "🔒" not in cabinet
     # Hooks de rareté propagés sur les tuiles.
     assert "rar-legendary" in cabinet and "rar-anti" in cabinet
+    # Progression toujours présente, dernier trophée absent sans attribution.
+    assert 'class="cab-progress"' in cabinet
+    assert 'aria-valuenow="0"' in cabinet
+    assert 'class="cab-latest"' not in cabinet
+
+
+def test_trophy_cabinet_shows_latest_business_day_and_repeat_count(client):
+    pid, token = _make_participant()
+
+    async def _seed():
+        async with get_db() as db:
+            # L'ordre métier suit sporting_day, même si l'écriture la plus récente
+            # en base concerne une journée plus ancienne (cas d'un backfill).
+            await db.execute(
+                """INSERT INTO trophy_awards
+                   (participant_id, trophy_key, detail, sporting_day, awarded_at)
+                   VALUES (?, 'journee_parfaite', '2044-07-08', '2044-07-08', '2044-07-08 18:00:00')""",
+                (pid,),
+            )
+            await db.execute(
+                """INSERT INTO trophy_awards
+                   (participant_id, trophy_key, detail, sporting_day, awarded_at)
+                   VALUES (?, 'grimpeur', '2044-07-07', '2044-07-07', '2099-01-01 12:00:00')""",
+                (pid,),
+            )
+            await db.execute(
+                """INSERT INTO trophy_awards
+                   (participant_id, trophy_key, detail, sporting_day, awarded_at)
+                   VALUES (?, 'journee_parfaite', '2044-07-09', '2044-07-09', '2044-07-09 18:00:00')""",
+                (pid,),
+            )
+            await db.commit()
+
+    run(_seed())
+    profile = _profile(pid)
+    assert profile["latest_trophy"]["key"] == "journee_parfaite"
+    assert profile["latest_trophy"]["count"] == 2
+    assert profile["latest_trophy"]["detail_label"] == "Journée du samedi 9 juillet"
+
+    cabinet = _cabinet_fragment(client.get(f"/p/{token}/profil").text)
+    assert 'class="cab-latest"' in cabinet
+    assert "La Journée Parfaite" in cabinet
+    assert "×2" in cabinet
+    assert 'aria-valuenow="2"' in cabinet
 
 
 def test_trophy_cabinet_tooltip_keeps_dated_history(client):

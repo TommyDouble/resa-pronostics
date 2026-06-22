@@ -1190,14 +1190,44 @@ img.av { object-fit: cover; display: block; }
 .bdg.off .nm { color: var(--n400); }
 
 /* Cabinet à trophées (W7) — étagères par catégorie */
-.cabinet .cab-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.cabinet .cab-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .cab-count { font-family: var(--display); font-weight: 800; font-size: 14px; color: var(--primary); }
-.shelf { margin-top: 10px; }
-.shelf-lbl { font-family: var(--sketch); font-size: 17px; color: var(--n600); margin-bottom: 5px; display: flex; align-items: baseline; gap: 6px; }
+.cab-progress {
+  height: 3px; overflow: hidden; border-radius: 99px;
+  background: var(--n200); margin-bottom: 11px;
+}
+.cab-progress > span {
+  display: block; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), #E88948);
+}
+.cab-latest {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 68px; margin: 0 0 12px; padding: 8px 10px;
+  border: 1px solid rgba(211,69,13,.14); border-radius: 10px;
+  background: linear-gradient(135deg, rgba(245,232,227,.72), rgba(255,253,250,.35));
+}
+.cab-latest .cab-latest-medal {
+  --trophy-emblem-size: 48px;
+  flex: none; padding: 0; border: 0; pointer-events: none;
+}
+.cab-latest .cab-latest-medal .t-medal-wrap { animation: none; }
+.cab-latest-copy { min-width: 0; display: flex; flex-direction: column; line-height: 1.15; }
+.cab-latest-copy > span {
+  font-family: var(--sketch); font-size: 14px; font-weight: 700; color: var(--primary);
+}
+.cab-latest-copy strong {
+  font-family: var(--display); font-size: 12.5px; font-weight: 800; color: var(--n900);
+}
+.cab-latest-copy p {
+  margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 10.5px; color: var(--n600);
+}
+.shelf { margin-top: 8px; }
+.shelf-lbl { font-family: var(--sketch); font-size: 17px; color: var(--n600); margin-bottom: 3px; display: flex; align-items: baseline; gap: 6px; }
 .shelf-count { font-family: var(--display); font-size: 11px; font-weight: 800; color: var(--n400); }
 .shelf-row {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px 12px;
-  padding: 6px 2px 16px; border-bottom: 2px solid var(--line);  /* rebord d'étagère */
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; gap: 12px 8px;
+  padding: 4px 2px 11px; border-bottom: 2px solid var(--line);  /* rebord d'étagère */
 }
 .trophy {
   --trophy-emblem-size: 64px;
@@ -1267,7 +1297,7 @@ img.av { object-fit: cover; display: block; }
   width: 48%; height: 48%; color: var(--t-ink); opacity: .82;
 }
 /* Verrouillé : silhouette désaturée et froide. */
-.trophy.off .t-noto { filter: grayscale(1) opacity(.5); }
+.trophy.off .t-noto { filter: grayscale(1) opacity(.58); }
 /* Burst de déblocage : éclat radial (au tap + à la première apparition « just-unlocked »). */
 .trophy .t-burst {
   position: absolute; inset: -12px; z-index: 5; border-radius: 50%; pointer-events: none; opacity: 0;
@@ -1398,11 +1428,12 @@ img.av { object-fit: cover; display: block; }
 /* Secret */
 .trophy.secret .t-nm { color: var(--n400); letter-spacing: 1px; }
 @media (max-width: 520px) {
-  .shelf-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 8px; }
+  .shelf-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px 7px; }
   .trophy {
     --trophy-emblem-size: 56px;
     padding: 5px 1px 3px; gap: 5px;
   }
+  .cab-latest .cab-latest-medal { --trophy-emblem-size: 46px; padding: 0; }
   .trophy .t-nm { max-width: 92px; font-size: 10px; }
 }
 
