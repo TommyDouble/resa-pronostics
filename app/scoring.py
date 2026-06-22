@@ -257,19 +257,45 @@ async def get_department_rankings(db) -> list:
     departments = {}
     for r in rankings:
         dept = (r.get("department") or "").strip() or "Sans département"
-        bucket = departments.setdefault(dept, {"department": dept, "members": 0, "total": 0})
+        bucket = departments.setdefault(dept, {
+            "department": dept,
+            "members": 0,
+            "total": 0,
+            "participants": [],
+        })
         bucket["members"] += 1
         bucket["total"] += r["total_points"]
+        # ``rankings`` est déjà trié comme le classement général : points
+        # décroissants, favori admin, puis nom d'affichage.
+        bucket["participants"].append({
+            "id": r["id"],
+            "name": r["name"],
+            "total_points": r["total_points"],
+        })
     rows = []
     for bucket in departments.values():
         bucket["average"] = round(bucket["total"] / bucket["members"], 1) if bucket["members"] else 0.0
+        bucket["is_provisional"] = (
+            bucket["members"] < 3 or bucket["department"] == "Sans département"
+        )
         rows.append(bucket)
-    rows.sort(key=lambda r: (-r["average"], -r["members"], r["department"]))
+    rows.sort(key=lambda r: (
+        r["department"] == "Sans département",
+        r["is_provisional"],
+        -r["average"],
+        -r["members"],
+        r["department"],
+    ))
     previous_avg = None
     current_rank = 0
-    for index, r in enumerate(rows, start=1):
+    official_index = 0
+    for r in rows:
+        if r["is_provisional"]:
+            r["rank"] = None
+            continue
+        official_index += 1
         if previous_avg is None or r["average"] != previous_avg:
-            current_rank = index
+            current_rank = official_index
             previous_avg = r["average"]
         r["rank"] = current_rank
     return rows

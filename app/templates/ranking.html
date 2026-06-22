@@ -7,11 +7,22 @@
   <div class="row1">
     <h1>Classement</h1>
   </div>
-  <div class="fchips prono-tabs">
-    {% for key, label in ranking_views.items() %}
-    <a href="/p/{{ token }}/classement?view={{ key }}" class="{{ 'on' if view == key else '' }}">{{ label }}</a>
+  <nav class="ranking-mode-tabs" aria-label="Type de classement">
+    <a href="/p/{{ token }}/classement?view={{ individual_view }}"
+       class="{{ 'on' if ranking_mode == 'individual' else '' }}"
+       {% if ranking_mode == 'individual' %}aria-current="page"{% endif %}>Individuel</a>
+    <a href="/p/{{ token }}/classement?view=departments"
+       class="{{ 'on' if ranking_mode == 'departments' else '' }}"
+       {% if ranking_mode == 'departments' %}aria-current="page"{% endif %}>Départements</a>
+  </nav>
+  {% if ranking_mode == 'individual' %}
+  <nav class="fchips ranking-filters" aria-label="Périmètre du classement" data-ranking-filters>
+    {% for key, label in individual_views.items() %}
+    <a href="/p/{{ token }}/classement?view={{ key }}" class="{{ 'on' if view == key else '' }}"
+       {% if view == key %}aria-current="page" data-ranking-filter-active{% endif %}>{{ label }}</a>
     {% endfor %}
-  </div>
+  </nav>
+  {% endif %}
 </div>
 
 <div class="page-content">
@@ -25,14 +36,50 @@
   <div class="card p0">
     <div class="list-head"><span>Classement des départements</span></div>
     {% for d in departments %}
-    <div class="rrow {{ 'me' if d.department == my_department else '' }}">
-      <span class="rk">{{ d.rank }}</span>
-      <div class="nm">
-        {{ d.department }}
-        <small>{{ d.members }} inscrit{{ 's' if d.members > 1 else '' }}{% if d.department == my_department %} · ton équipe{% endif %}</small>
+    {% set average_label = ('%.1f'|format(d.average))|replace('.', ',') %}
+    {% set expanded_members = members_all and d.department == open_department %}
+    <details class="department-detail" name="department-ranking" data-department-detail
+             data-department-name="{{ d.department }}"{% if expanded_members %} data-members-expanded="1"{% endif %}
+             {% if d.department == open_department %}open{% endif %}>
+      <summary class="rrow department-summary {{ 'me' if d.department == my_department else '' }}"
+               aria-label="{{ d.department }} · {{ average_label }} points par personne · ouvrir le détail des participants">
+        <span class="rk">{{ d.rank if d.rank is not none else '—' }}</span>
+        <div class="nm">
+          {{ d.department }}
+          {% if d.department == 'Sans département' %}
+          <small>Non classé · {{ d.members }} inscrit{{ 's' if d.members > 1 else '' }}</small>
+          {% elif d.is_provisional %}
+          <small>Provisoire · {{ d.members }}/3 inscrits{% if d.department == my_department %} · ton équipe{% endif %}</small>
+          {% else %}
+          <small>{{ d.members }} inscrits{% if d.department == my_department %} · ton équipe{% endif %}</small>
+          {% endif %}
+        </div>
+        <span class="sc">{{ average_label }}<small> pts/pers</small></span>
+        <span class="department-chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="department-body">
+        <div class="department-members">
+          {% set hidden_members = namespace(count=0) %}
+          {% for m in d.participants %}
+          {% set hide_member = not expanded_members and d.members > department_collapse_threshold and loop.index > department_preview_limit and m.id != participant.id %}
+          {% if hide_member %}{% set hidden_members.count = hidden_members.count + 1 %}{% endif %}
+          <a class="rrow department-member {{ 'me' if m.id == participant.id else '' }}"
+             href="/p/{{ token }}/profil{{ '' if m.id == participant.id else '/' ~ m.id }}?return_view=departments&amp;return_department={{ d.department|urlencode }}{% if expanded_members or hide_member %}&amp;return_members=all{% endif %}"
+             {% if hide_member %}hidden data-department-member-hidden{% endif %}>
+            <div class="nm">
+              {{ m.name }}{% if m.id == participant.id %}<small> · c’est toi</small>{% endif %}
+            </div>
+            <span class="sc">{{ m.total_points }} <small>pts</small></span>
+          </a>
+          {% endfor %}
+          {% if hidden_members.count > 0 %}
+          <button type="button" class="department-more" data-department-show-all>
+            {% if hidden_members.count == 1 %}Voir 1 autre{% else %}Voir les {{ hidden_members.count }} autres{% endif %}
+          </button>
+          {% endif %}
+        </div>
       </div>
-      <span class="sc">{{ d.average }}<small> pts/pers</small></span>
-    </div>
+    </details>
     {% else %}
     <div style="padding:24px;text-align:center;color:var(--n600);">
       <p style="font-family:var(--sketch);font-size:20px;">Aucun département renseigné.</p>
@@ -56,7 +103,7 @@
   <div class="card p0">
     <div class="list-head"><span>Remontada</span></div>
     {% for r in rankings %}
-    <a class="rrow {{ 'me' if r.is_me else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}">
+    <a class="rrow {{ 'me' if r.is_me else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}?return_view={{ view }}">
       <span class="rk">{{ r.remontada_rank }}</span>
       {{ avatar(r.avatar_path, r.name, r.id) }}
       <div class="nm">
@@ -126,7 +173,7 @@
   <div class="podium">
     {% for pos in [1, 0, 2] %}
     {% set r = rankings[pos] %}
-    <a class="pod p{{ pos + 1 }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}">
+    <a class="pod p{{ pos + 1 }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}?return_view={{ view }}">
       <span class="medal">{% if r.rank == 1 %}🥇{% elif r.rank == 2 %}🥈{% elif r.rank == 3 %}🥉{% else %}#{{ r.rank }}{% endif %}</span>
       {{ avatar(r.avatar_path, r.name, r.id) }}
       <div class="bar">{{ r.rank }}</div>
@@ -167,7 +214,7 @@
     </div>
     {% endif %}
     {% for r in rankings %}
-    <a class="rrow {{ 'me' if r.is_me else '' }} {{ 'climber' if r.is_climber else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}">
+    <a class="rrow {{ 'me' if r.is_me else '' }} {{ 'climber' if r.is_climber else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}?return_view={{ view }}">
       <span class="rk">{{ r.rank }}</span>
       {{ avatar(r.avatar_path, r.name, r.id) }}
       <div class="nm">

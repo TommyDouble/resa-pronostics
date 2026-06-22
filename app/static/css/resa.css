@@ -2,8 +2,6 @@
    RESA Pronostics 2026 — Full app styles
    Design system spec §7 + "brouillon" personality
    ============================================================ */
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Nunito:wght@600;700;800&display=swap');
-
 :root {
   --primary: #D3450D; --primary-l: #F5E8E3; --primary-d: #A33308;
   --success: #2E7D32; --warning: #F59E0B; --error: #DC2626;
@@ -21,6 +19,12 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 body {
   font-family: var(--body);
   color: var(--n900);
@@ -732,6 +736,42 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
   font-size: 10px;
   opacity: .72;
 }
+
+/* Deux niveaux stables : type de classement, puis périmètre individuel. */
+.ranking-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--n100);
+}
+.ranking-mode-tabs a {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--n600);
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.ranking-mode-tabs a.on {
+  background: var(--paper);
+  color: var(--primary-d);
+  box-shadow: var(--sh);
+}
+.ranking-filters { margin-top: 8px; }
+.ranking-filters a {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .prono-progress {
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
@@ -1023,6 +1063,138 @@ img.av { object-fit: cover; display: block; }
 .rrow .sc { font-family: var(--display); font-weight: 800; font-size: 17px; color: var(--primary); }
 .rrow .sc small { display: block; font-family: var(--body); font-size: 9px; color: var(--n600); text-align: right; margin-top: -1px; }
 .rrow.me { background: var(--primary-l); border-left: 3px solid var(--primary); }
+
+/* ---- Détail du classement des départements ---- */
+.department-detail:not(:last-child) { border-bottom: 1px solid var(--line); }
+.department-summary {
+  border-bottom: none;
+  cursor: pointer;
+  list-style: none;
+}
+.department-summary::-webkit-details-marker { display: none; }
+.department-summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.department-chevron {
+  width: 18px;
+  flex: none;
+  color: var(--n400);
+  font-size: 20px;
+  line-height: 1;
+  text-align: center;
+  transform: rotate(0deg);
+  transition: transform 150ms ease, color 150ms ease;
+}
+.department-detail[open] > .department-summary {
+  border-bottom: 1px solid var(--line);
+  background: var(--n50);
+}
+.department-detail[open] > .department-summary.me { background: var(--primary-l); }
+.department-detail[open] .department-chevron {
+  color: var(--primary);
+  transform: rotate(180deg);
+}
+.department-body {
+  padding: 3px 0;
+  background: var(--paper2);
+}
+.department-members {
+  margin-left: 32px;
+  border-left: 1.5px solid var(--n300);
+}
+.department-member {
+  min-height: 40px;
+  gap: 8px;
+  padding-top: 4px;
+  padding-right: 12px;
+  padding-bottom: 4px;
+  padding-left: 12px;
+  background: transparent;
+  border-bottom-color: rgba(231,225,214,.78);
+}
+.department-member:hover { background: rgba(255,255,255,.62); }
+.department-member .nm {
+  min-width: 0;
+  overflow: visible;
+  color: var(--n600);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.department-member .nm small {
+  display: inline;
+  margin-left: 2px;
+  color: var(--primary-d);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.department-member .sc {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  color: var(--n600);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.department-member .sc small {
+  display: inline;
+  margin: 0;
+  color: var(--n600);
+  font-size: 8.5px;
+  text-align: inherit;
+}
+.department-member[hidden] { display: none; }
+.department-member:last-child { border-bottom: none; }
+.department-member.me {
+  padding-left: 12px;
+  border-left: none;
+  background: rgba(245,232,227,.55);
+  box-shadow: inset 2px 0 0 rgba(211,69,13,.72);
+}
+.department-member.me .nm { color: var(--n900); font-weight: 600; }
+.department-member:focus-visible,
+.department-more:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline-offset: -2px;
+}
+.department-more {
+  width: 100%;
+  min-height: 40px;
+  border: none;
+  border-top: 1px dashed var(--n300);
+  background: rgba(255,255,255,.45);
+  color: var(--primary-d);
+  cursor: pointer;
+  font-family: var(--display);
+  font-size: 11px;
+  font-weight: 800;
+}
+.department-more:hover { background: var(--paper); }
+.profile-back {
+  color: var(--n600);
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.profile-back:hover { color: var(--primary); }
+
+@media (max-width: 380px) {
+  .department-summary { gap: 7px; }
+  .department-summary .sc { font-size: 15px; }
+  .department-members { margin-left: 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .department-chevron { transition: none; }
+}
 .pot-card {
   display: flex;
   align-items: center;

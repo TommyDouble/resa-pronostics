@@ -5,36 +5,36 @@
   <!-- Desktop top nav (affichée en CSS ≥ 768px) -->
   <nav class="top-nav" id="top-nav">
     <div class="brand">RESA <b>Pronos</b></div>
-    <a href="/p/{{ token }}" class="{{ 'on' if active_nav == 'home' else '' }}">Accueil</a>
-    <a href="/p/{{ token }}/pronos" class="{{ 'on' if active_nav == 'pronos' else '' }}">Pronos</a>
-    <a href="/p/{{ token }}/classement" class="{{ 'on' if active_nav == 'rank' else '' }}">Classement</a>
-    <a href="/p/{{ token }}/profil" class="{{ 'on' if active_nav == 'profil' else '' }}">Profil</a>
+    <a href="/p/{{ token }}" class="{{ 'on' if active_nav == 'home' else '' }}"{% if active_nav == 'home' %} aria-current="page"{% endif %}>Accueil</a>
+    <a href="/p/{{ token }}/pronos" class="{{ 'on' if active_nav == 'pronos' else '' }}"{% if active_nav == 'pronos' %} aria-current="page"{% endif %}>Pronos</a>
+    <a href="/p/{{ token }}/classement" class="{{ 'on' if active_nav == 'rank' else '' }}"{% if active_nav == 'rank' %} aria-current="page"{% endif %}>Classement</a>
+    <a href="/p/{{ token }}/profil" class="{{ 'on' if active_nav == 'profil' else '' }}"{% if active_nav == 'profil' %} aria-current="page"{% endif %}>Profil</a>
     <a href="/p/{{ token }}/bonus"
-       class="{{ 'on' if active_nav == 'bonus' else '' }}{% if pending_bonus > 0 %} bdg-link{% endif %}">Bonus</a>
-    <a href="/p/{{ token }}/reglement" class="{{ 'on' if active_nav == 'rules' else '' }}">Règlement</a>
+       class="{{ 'on' if active_nav == 'bonus' else '' }}{% if pending_bonus > 0 %} bdg-link{% endif %}"{% if active_nav == 'bonus' %} aria-current="page"{% endif %}>Bonus</a>
+    <a href="/p/{{ token }}/reglement" class="{{ 'on' if active_nav == 'rules' else '' }}"{% if active_nav == 'rules' %} aria-current="page"{% endif %}>Règlement</a>
   </nav>
 
   {% block page_content %}{% endblock %}
 
   <!-- Mobile bottom nav -->
   <nav class="bnav">
-    <a href="/p/{{ token }}" class="{{ 'on' if active_nav == 'home' else '' }}">
+    <a href="/p/{{ token }}" class="{{ 'on' if active_nav == 'home' else '' }}"{% if active_nav == 'home' %} aria-current="page"{% endif %}>
       <span class="nicon-wrap"><i class="nicon ic-home"></i></span>
       <span>Accueil</span>
     </a>
-    <a href="/p/{{ token }}/pronos" class="{{ 'on' if active_nav == 'pronos' else '' }}">
+    <a href="/p/{{ token }}/pronos" class="{{ 'on' if active_nav == 'pronos' else '' }}"{% if active_nav == 'pronos' %} aria-current="page"{% endif %}>
       <span class="nicon-wrap"><i class="nicon ic-pronos"></i></span>
       <span>Pronos</span>
     </a>
-    <a href="/p/{{ token }}/classement" class="{{ 'on' if active_nav == 'rank' else '' }}">
+    <a href="/p/{{ token }}/classement" class="{{ 'on' if active_nav == 'rank' else '' }}"{% if active_nav == 'rank' %} aria-current="page"{% endif %}>
       <span class="nicon-wrap"><i class="nicon ic-rank"></i></span>
       <span>Classement</span>
     </a>
-    <a href="/p/{{ token }}/profil" class="{{ 'on' if active_nav == 'profil' else '' }}">
+    <a href="/p/{{ token }}/profil" class="{{ 'on' if active_nav == 'profil' else '' }}"{% if active_nav == 'profil' %} aria-current="page"{% endif %}>
       <span class="nicon-wrap"><i class="nicon ic-user"></i></span>
       <span>Profil</span>
     </a>
-    <a href="/p/{{ token }}/bonus" class="{{ 'on' if active_nav == 'bonus' else '' }}">
+    <a href="/p/{{ token }}/bonus" class="{{ 'on' if active_nav == 'bonus' else '' }}"{% if active_nav == 'bonus' %} aria-current="page"{% endif %}>
       <span class="nicon-wrap{% if pending_bonus > 0 %} bdg{% endif %}"><i class="nicon ic-bonus"></i></span>
       <span>Bonus</span>
     </a>

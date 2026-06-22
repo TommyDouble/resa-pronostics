@@ -6,6 +6,7 @@ import logging
 import os
 import unicodedata
 import uuid
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, HTTPException, Request, Form, UploadFile
 from PIL import Image, ImageOps
@@ -1150,6 +1151,17 @@ RANKING_VIEWS = {
     "departments": "Départements",
 }
 
+RANKING_INDIVIDUAL_VIEWS = {
+    "general": "Général",
+    "groups": "Groupes",
+    "knockout": "Phase finale",
+    "bonus": "Bonus uniquement",
+    "remontada": "Remontada",
+}
+
+DEPARTMENT_PREVIEW_LIMIT = 5
+DEPARTMENT_COLLAPSE_THRESHOLD = 6
+
 
 def _format_day_fr(value: str) -> str:
     return format_sporting_day_fr(value)
@@ -1181,7 +1193,13 @@ async def _sporting_day_match_details(db, day: str) -> list[dict]:
 
 
 @router.get("/p/{token}/classement", response_class=HTMLResponse)
-async def ranking_page(request: Request, token: str, view: str = "general"):
+async def ranking_page(
+    request: Request,
+    token: str,
+    view: str = "general",
+    department: str = "",
+    members: str = "",
+):
     if view not in RANKING_VIEWS:
         view = "general"
     async with get_db() as db:
@@ -1195,8 +1213,19 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
         evolution_match_count = 0
         evolution_encoded_count = 0
         evolution_last_match = None
+        climber_delta = 0
+        climber_day = None
+        climber_matches = []
+        climber_period_label = ""
+        climber_ids = set()
+        ephemeral_badges = {}
+        knockout_started = False
         if view == "remontada":
             rankings = await get_remontada(db)
+            ko_row = await db.execute(
+                "SELECT COUNT(*) AS cnt FROM matches WHERE phase != 'group' AND result IS NOT NULL"
+            )
+            knockout_started = (await ko_row.fetchone())["cnt"] > 0
         elif view == "departments":
             departments = await get_department_rankings(db)
         else:
@@ -1211,26 +1240,22 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
                 if evolution_status == "in_progress" and evolution_day:
                     encoded_matches = await _sporting_day_match_details(db, evolution_day)
                     evolution_last_match = encoded_matches[-1] if encoded_matches else None
-        # Le titre reste celui de la dernière journée entièrement finalisée.
-        finalized_climbers = await get_latest_finalized_climbers(db)
-        climber_delta = finalized_climbers["delta"]
-        climber_day = finalized_climbers["day"]
-        climber_matches = []
-        climber_period_label = ""
-        if view == "general" and climber_day:
-            climber_matches = await _sporting_day_match_details(db, climber_day)
-            climber_next_day = (
-                date.fromisoformat(climber_day) + timedelta(days=1)
-            ).isoformat()
-            climber_period_label = (
-                f"Du {format_sporting_day_fr(climber_day)} à 9 h au "
-                f"{format_sporting_day_fr(climber_next_day)} à 8 h 59"
-            )
-        climber_by_id = {r["participant_id"]: r for r in finalized_climbers["climbers"]}
-        climber_ids = set(climber_by_id)
-        # Badge du classement : un trophée gagné pendant la dernière journée
-        # finalisée uniquement. Les précédents restent archivés au cabinet.
-        ephemeral_badges = await latest_ephemeral_badges(db)
+                # Le titre reste celui de la dernière journée entièrement finalisée.
+                finalized_climbers = await get_latest_finalized_climbers(db)
+                climber_delta = finalized_climbers["delta"]
+                climber_day = finalized_climbers["day"]
+                climber_ids = {r["participant_id"] for r in finalized_climbers["climbers"]}
+                if climber_day:
+                    climber_matches = await _sporting_day_match_details(db, climber_day)
+                    climber_next_day = (
+                        date.fromisoformat(climber_day) + timedelta(days=1)
+                    ).isoformat()
+                    climber_period_label = (
+                        f"Du {format_sporting_day_fr(climber_day)} à 9 h au "
+                        f"{format_sporting_day_fr(climber_next_day)} à 8 h 59"
+                    )
+            # Badge affiché dans les classements individuels par points.
+            ephemeral_badges = await latest_ephemeral_badges(db)
         for r in rankings:
             r["is_me"] = (r["id"] == p["id"])
             r["color_class"] = f"c{((r['id'] - 1) % 8) + 1}"
@@ -1238,19 +1263,23 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
             r["is_climber"] = r["id"] in climber_ids
             r["badge"] = ephemeral_badges.get(r["id"])
         climbers = [r for r in rankings if r.get("is_climber")]
-        # La remontada n'a de sens qu'une fois la phase finale entamée.
-        ko_row = await db.execute(
-            "SELECT COUNT(*) AS cnt FROM matches WHERE phase != 'group' AND result IS NOT NULL"
-        )
-        knockout_started = (await ko_row.fetchone())["cnt"] > 0
         prize_info = await get_prize_info(db)
         my_department = (p.get("department") or "").strip() or "Sans département"
+        department_names = {d["department"] for d in departments}
+        open_department = department.strip() if department.strip() in department_names else ""
+        members_all = members == "all" and bool(open_department)
         ctx.update({
             "rankings": rankings,
             "departments": departments,
             "my_department": my_department,
             "view": view,
-            "ranking_views": RANKING_VIEWS,
+            "ranking_mode": "departments" if view == "departments" else "individual",
+            "individual_view": view if view in RANKING_INDIVIDUAL_VIEWS else "general",
+            "individual_views": RANKING_INDIVIDUAL_VIEWS,
+            "open_department": open_department,
+            "members_all": members_all,
+            "department_preview_limit": DEPARTMENT_PREVIEW_LIMIT,
+            "department_collapse_threshold": DEPARTMENT_COLLAPSE_THRESHOLD,
             "evolution_day_label": _format_day_fr(evolution_day) if evolution_day else "",
             "evolution_status": evolution_status,
             "evolution_match_count": evolution_match_count,
@@ -1412,13 +1441,45 @@ async def match_detail_page(request: Request, token: str, match_id: int):
     return templates.TemplateResponse(request, "match_detail.html", {"request": request, **ctx})
 
 
+def _ranking_return_url(
+    token: str,
+    return_view: str,
+    return_department: str = "",
+    return_members: str = "",
+) -> str:
+    """URL de retour bornée au classement, sans accepter de redirection libre."""
+    if return_view not in RANKING_VIEWS:
+        return ""
+    params = {"view": return_view}
+    if return_view == "departments":
+        department = return_department.strip()
+        if department not in {*DEPARTMENTS, "Sans département"}:
+            return ""
+        params["department"] = department
+        if return_members == "all":
+            params["members"] = "all"
+    return f"/p/{token}/classement?{urlencode(params)}"
+
+
 @router.get("/p/{token}/profil", response_class=HTMLResponse)
-async def own_profile(request: Request, token: str):
+async def own_profile(
+    request: Request,
+    token: str,
+    return_view: str = "",
+    return_department: str = "",
+    return_members: str = "",
+):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "profil")
         p = ctx["participant"]
         profile_data = await _build_profile(p["id"], db)
-        ctx.update({"profile": profile_data, "is_own": True})
+        ctx.update({
+            "profile": profile_data,
+            "is_own": True,
+            "profile_back_url": _ranking_return_url(
+                token, return_view, return_department, return_members
+            ),
+        })
     return templates.TemplateResponse(request, "profile.html", {"request": request, **ctx})
 
 
@@ -1569,7 +1630,14 @@ async def save_profile(
 
 
 @router.get("/p/{token}/profil/{participant_id}", response_class=HTMLResponse)
-async def other_profile(request: Request, token: str, participant_id: int):
+async def other_profile(
+    request: Request,
+    token: str,
+    participant_id: int,
+    return_view: str = "",
+    return_department: str = "",
+    return_members: str = "",
+):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "")
         p = ctx["participant"]
@@ -1578,7 +1646,13 @@ async def other_profile(request: Request, token: str, participant_id: int):
         if not target:
             raise HTTPException(404)
         profile_data = await _build_profile(participant_id, db, viewer_id=p["id"])
-        ctx.update({"profile": profile_data, "is_own": participant_id == p["id"]})
+        ctx.update({
+            "profile": profile_data,
+            "is_own": participant_id == p["id"],
+            "profile_back_url": _ranking_return_url(
+                token, return_view, return_department, return_members
+            ),
+        })
     return templates.TemplateResponse(request, "profile.html", {"request": request, **ctx})
 
 
