@@ -239,7 +239,7 @@ def test_latest_ephemeral_badge_recent_then_rarest():
     jp_ids = [_new_participant(f"JP{k}") for k in range(3)]
     # Journée volontairement maximale (postérieure à toute autre du jeu de test).
     day = "2099-12-31"
-    start, _ = sporting_day_bounds(day)
+    start, end = sporting_day_bounds(day)
 
     async def _seed_and_award():
         async with get_db() as db:
@@ -275,6 +275,78 @@ def test_latest_ephemeral_badge_recent_then_rarest():
     badges = run(_badges())
     # À égalité de date, le plus rare (extraterrestre) l'emporte.
     assert badges[pid]["key"] == "extraterrestre"
+    assert badges[pid]["detail_label"] == ""  # detail "z1" non numérique
+
+
+def test_ephemeral_badge_excludes_outside_window():
+    """Trophées décernés AVANT ou APRÈS la fenêtre de la dernière journée
+    finalisée ne doivent PAS apparaître comme badge éphémère."""
+    from app.timeutils import sporting_day_bounds
+    pid_old = _new_participant("Ancien")
+    pid_future = _new_participant("Futur")
+    day = "2100-06-15"
+    start, end = sporting_day_bounds(day)
+
+    async def _seed():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO sporting_day_rank_evolutions
+                   (sporting_day, participant_id, points_before, day_points, points_after,
+                    rank_before, rank_after, delta, is_climber)
+                   VALUES (?, ?, 0, 0, 0, 5, 5, 0, 0)""",
+                (day, pid_old),
+            )
+            # Trophée AVANT la fenêtre (veille)
+            prev_start, _ = sporting_day_bounds("2100-06-14")
+            await db.execute(
+                "INSERT INTO trophy_awards (participant_id, trophy_key, detail, awarded_at) VALUES (?,?,?,?)",
+                (pid_old, "grimpeur", "2100-06-14", prev_start),
+            )
+            # Trophée APRÈS la fenêtre (journée en cours, pas encore finalisée)
+            await db.execute(
+                "INSERT INTO trophy_awards (participant_id, trophy_key, detail, awarded_at) VALUES (?,?,?,?)",
+                (pid_future, "grimpeur", day, end),
+            )
+            await db.commit()
+    run(_seed())
+
+    async def _badges():
+        async with get_db() as db:
+            return await latest_ephemeral_badges(db)
+    badges = run(_badges())
+    assert pid_old not in badges, "trophée de la veille ne doit pas apparaître"
+    assert pid_future not in badges, "trophée de la journée suivante ne doit pas apparaître"
+
+
+def test_ephemeral_badge_detail_label_sporting_day():
+    """Le detail_label d'un grimpeur contient la date formatée."""
+    from app.timeutils import sporting_day_bounds
+    pid = _new_participant("Grimpeur Label")
+    day = "2100-07-20"
+    start, _ = sporting_day_bounds(day)
+
+    async def _seed():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO sporting_day_rank_evolutions
+                   (sporting_day, participant_id, points_before, day_points, points_after,
+                    rank_before, rank_after, delta, is_climber)
+                   VALUES (?, ?, 0, 0, 0, 5, 5, 0, 0)""",
+                (day, pid),
+            )
+            await db.execute(
+                "INSERT INTO trophy_awards (participant_id, trophy_key, detail, awarded_at) VALUES (?,?,?,?)",
+                (pid, "grimpeur", day, start),
+            )
+            await db.commit()
+    run(_seed())
+
+    async def _badges():
+        async with get_db() as db:
+            return await latest_ephemeral_badges(db)
+    badges = run(_badges())
+    assert pid in badges
+    assert "20 juillet" in badges[pid]["detail_label"]
 
 
 # --- Série de connexions (inchangé) ---------------------------------------
