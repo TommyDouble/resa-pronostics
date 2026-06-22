@@ -1163,6 +1163,99 @@ function initCompactCards() {
   });
 }
 
+/* ---- Classement des départements : un seul détail ouvert à la fois ---- */
+function initDepartmentRanking() {
+  var details = Array.from(document.querySelectorAll('[data-department-detail]'));
+  if (!details.length) return;
+
+  function updateSummaryLabel(detail) {
+    var summary = detail.querySelector('summary');
+    if (!summary) return;
+    var label = summary.getAttribute('aria-label') || '';
+    summary.setAttribute(
+      'aria-label',
+      label.replace(/ouvrir|fermer/, detail.open ? 'fermer' : 'ouvrir')
+    );
+  }
+
+  function syncUrl() {
+    if (!window.history || !window.history.replaceState) return;
+    var url = new URL(window.location.href);
+    var openDetail = details.find(function(item) { return item.open; });
+    if (!openDetail) {
+      url.searchParams.delete('department');
+      url.searchParams.delete('members');
+    } else {
+      url.searchParams.set('department', openDetail.dataset.departmentName || '');
+      if (openDetail.dataset.membersExpanded === '1') {
+        url.searchParams.set('members', 'all');
+      } else {
+        url.searchParams.delete('members');
+      }
+    }
+    window.history.replaceState({}, '', url.pathname + url.search);
+  }
+
+  details.forEach(function(detail) {
+    updateSummaryLabel(detail);
+    var summary = detail.querySelector('summary');
+    if (summary) {
+      summary.addEventListener('keydown', function(event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        detail.open = !detail.open;
+      });
+    }
+    detail.addEventListener('toggle', function() {
+      if (detail.open) {
+        details.forEach(function(other) {
+          if (other !== detail && other.open) other.open = false;
+        });
+      }
+      updateSummaryLabel(detail);
+      syncUrl();
+    });
+
+    var showAll = detail.querySelector('[data-department-show-all]');
+    if (showAll) {
+      showAll.addEventListener('click', function() {
+        detail.querySelectorAll('[data-department-member-hidden]').forEach(function(row) {
+          row.hidden = false;
+          row.removeAttribute('data-department-member-hidden');
+        });
+        detail.querySelectorAll('.department-member[href]').forEach(function(link) {
+          var profileUrl = new URL(link.href, window.location.origin);
+          profileUrl.searchParams.set('return_members', 'all');
+          link.href = profileUrl.pathname + profileUrl.search;
+        });
+        detail.dataset.membersExpanded = '1';
+        showAll.hidden = true;
+        syncUrl();
+      });
+    }
+  });
+
+  var initialOpen = details.find(function(item) { return item.open; });
+  if (initialOpen) {
+    window.requestAnimationFrame(function() {
+      initialOpen.querySelector('summary').scrollIntoView({ block: 'center', inline: 'nearest' });
+    });
+  }
+}
+
+/* Le filtre actif d'une rangée scrollable doit toujours rester visible. */
+function initRankingFilters() {
+  var filters = document.querySelector('[data-ranking-filters]');
+  if (!filters) return;
+  var active = filters.querySelector('[data-ranking-filter-active]');
+  if (!active) return;
+  var left = active.offsetLeft;
+  var right = left + active.offsetWidth;
+  if (left < filters.scrollLeft || right > filters.scrollLeft + filters.clientWidth) {
+    active.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+}
+
 /* ---- Compteur animé pour les points gagnés ---- */
 function initCountUp() {
   var els = document.querySelectorAll('[data-countup]');
@@ -1648,6 +1741,8 @@ document.addEventListener('DOMContentLoaded', function() {
   initCountUp();
   initStickyTop();
   initCompactCards();
+  initDepartmentRanking();
+  initRankingFilters();
   initStoryPlayer();
   initConfettiTriggers();
   initTrophyMedals();

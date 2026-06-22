@@ -6,8 +6,10 @@
 
 <div class="page-head">
   <div class="row1">
-    {% if not is_own %}
-    <a href="/p/{{ token }}/classement" style="font-family:var(--display);font-weight:800;font-size:14px;color:var(--n600);text-decoration:none;">‹ Classement</a>
+    {% if profile_back_url %}
+    <a href="{{ profile_back_url }}" class="profile-back">‹ Classement</a>
+    {% elif not is_own %}
+    <a href="/p/{{ token }}/classement" class="profile-back">‹ Classement</a>
     {% else %}
     <h1>Mon profil</h1>
     {% endif %}
