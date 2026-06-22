@@ -1782,11 +1782,13 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     show_trophy_cabinet = not is_limited_view
     trophy_groups = []
     trophy_summary = {"unlocked_count": 0, "total": 0}
+    latest_trophy = None
     just_unlocked = 0
     if show_trophy_cabinet:
         cabinet = await build_cabinet(db, participant_id)
         trophy_groups = cabinet["groups"]
         trophy_summary = {"unlocked_count": cabinet["unlocked_count"], "total": cabinet["total"]}
+        latest_trophy = cabinet["latest"]
 
         # Célébration : trophées nouvellement débloqués depuis la dernière visite
         # du propriétaire. Première visite post-déploiement = init silencieuse.
@@ -1869,6 +1871,7 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
         "recent_form": [] if is_limited_view else recent_form,
         "trophy_groups": trophy_groups,
         "trophy_summary": trophy_summary,
+        "latest_trophy": latest_trophy,
         "trophies_just_unlocked": just_unlocked,
         "show_trophy_cabinet": show_trophy_cabinet,
         "fun_stats": [] if is_limited_view else fun_stats,
