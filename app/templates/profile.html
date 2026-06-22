@@ -149,12 +149,12 @@
       <div class="shelf-row" role="list">
         {% for t in ordered %}
         {% set hidden = t.hidden %}
-        {% set tip %}{% if hidden %}Trophée secret — continue à jouer pour le découvrir.{% else %}{{ t.desc }}{% if t.unlocked %} — débloqué !{% endif %}{% if t.count > 1 %} ({{ t.count }}×){% endif %}{% if t.twins %} Jumeau{{ 'x' if t.twins|length > 1 else '' }} : {{ t.twins|join(', ') }}.{% endif %}{% endif %}{% endset %}
+        {% set tip %}{% if hidden %}Trophée secret — continue à jouer pour le découvrir.{% else %}{{ t.desc }}{% if t.unlocked %} — débloqué !{% endif %}{% if t.count > 1 %} ({{ t.count }}×){% endif %}{% if t.history %} Historique : {{ t.history|join(' ; ') }}.{% endif %}{% endif %}{% endset %}
         <div class="trophy {{ 'on' if t.unlocked else 'off' }}{{ ' secret' if hidden else '' }}{{ ' just-unlocked' if t.just_unlocked else '' }} rar-{{ t.rarity }} tip"
              role="listitem"
              tabindex="0"
              style="--i: {{ loop.index0 }};"
-             aria-label="{% if hidden %}Trophée secret.{% else %}{{ t.label }}{% if t.unlocked %}, débloqué{% if t.count > 1 %} {{ t.count }} fois{% endif %}{% endif %}. {{ t.desc }}{% endif %}"
+             aria-label="{% if hidden %}Trophée secret.{% else %}{{ t.label }}{% if t.unlocked %}, débloqué{% if t.count > 1 %} {{ t.count }} fois{% endif %}{% endif %}. {{ t.desc }}{% if t.history %} Historique : {{ t.history|join(' ; ') }}.{% endif %}{% endif %}"
              data-tip="{{ tip|trim }}">
           <div class="t-medal-wrap">
             <span class="t-burst" aria-hidden="true"></span>

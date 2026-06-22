@@ -1228,8 +1228,8 @@ async def ranking_page(request: Request, token: str, view: str = "general"):
             )
         climber_by_id = {r["participant_id"]: r for r in finalized_climbers["climbers"]}
         climber_ids = set(climber_by_id)
-        # Badge éphémère : le trophée le plus récent de la dernière journée
-        # finalisée, affiché à côté du joueur jusqu'à la journée suivante.
+        # Badge du classement : un trophée gagné pendant la dernière journée
+        # finalisée uniquement. Les précédents restent archivés au cabinet.
         ephemeral_badges = await latest_ephemeral_badges(db)
         for r in rankings:
             r["is_me"] = (r["id"] == p["id"])

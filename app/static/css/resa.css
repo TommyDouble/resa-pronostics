@@ -2367,8 +2367,8 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
   background: linear-gradient(90deg, rgba(245,158,11,.12), transparent 60%);
   border-left: 3px solid var(--warning);
 }
-/* Badge éphémère : le dernier trophée décroché, affiché jusqu'à la journée
-   sportive suivante (puis archivé au cabinet). */
+/* Badge du classement : un trophée décroché pendant la dernière journée
+   sportive finalisée. Tout l'historique reste archivé au cabinet. */
 .rrow .nm .nm-line { display: inline-flex; align-items: center; gap: 5px; }
 /* Mini badge du classement : squircle « app-icon », teinté par la matière/rareté. */
 .mini-badge {

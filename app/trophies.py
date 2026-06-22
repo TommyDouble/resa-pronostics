@@ -2,10 +2,10 @@
 
 Philosophie (cf. charte de gamification) :
 - Un trophée doit marquer un ÉVÉNEMENT RARE. Tous binaires (pas de paliers).
-- Le classement est un FIL D'ACTUALITÉ : un seul badge éphémère par joueur, le
-  plus récent, jusqu'à la clôture du prochain sporting day (cf.
-  `latest_ephemeral_badges`). Le cabinet est l'ARCHIVE permanente
-  (cf. `build_cabinet`).
+- Le classement est un FIL D'ACTUALITÉ : un seul badge par joueur, choisi parmi
+  ceux gagnés pendant la dernière journée sportive finalisée (cf.
+  `latest_ephemeral_badges`). Le cabinet est l'ARCHIVE permanente, avec le
+  détail daté de chaque occurrence (cf. `build_cabinet`).
 - Certains trophées sont RÉPÉTABLES : chaque occurrence est une ligne distincte
   dans `trophy_awards`, discriminée par `detail` ; le cabinet affiche un compteur
   « ×N » au-delà de la première fois.
@@ -195,11 +195,24 @@ async def refresh_trophy_awards(db) -> None:
     group_done = bool(group_ids) and all(matches[mid]["result"] is not None for mid in group_ids)
     all_done = total_matches > 0 and all(m["result"] is not None for m in matches.values())
 
-    # Journées sportives (matchs avec résultat) pour la journée parfaite.
+    # Journées sportives (matchs avec résultat) : source de vérité de la date
+    # métier des trophées. ``awarded_at`` n'est qu'une date d'écriture en base.
     matches_by_sday: dict[str, list[int]] = defaultdict(list)
+    match_sdays: dict[int, str] = {}
     for mid, m in matches.items():
         if m["result"] is not None:
-            matches_by_sday[sporting_day(m)].append(mid)
+            sday = sporting_day(m)
+            match_sdays[mid] = sday
+            matches_by_sday[sday].append(mid)
+    group_final_day = max(
+        (match_sdays[mid] for mid in group_ids if mid in match_sdays),
+        default=None,
+    )
+    tournament_final_day = max(match_sdays.values(), default=None)
+    finalized_row = await db.execute(
+        "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
+    )
+    latest_finalized_day = (await finalized_row.fetchone())["day"]
 
     # --- Pronostics joués (match avec résultat) ---
     played_rows = await db.execute(
@@ -241,32 +254,36 @@ async def refresh_trophy_awards(db) -> None:
     )
     pred_count = {r["participant_id"]: r["cnt"] for r in await pc_rows.fetchall()}
 
-    inserts: list[tuple] = []
+    inserts: list[tuple[int, str, str, str | None]] = []
     near_miss_by_pid: dict[int, int] = {}
 
     # --- Trophées par participant (continus + métriques relatives) ---
     for pid, lst in played_by_pid.items():
-        exact = sum(1 for r in lst if is_match_score_exact(r, r))
-        if exact >= SNIPER_EXACT:
-            inserts.append((pid, "sniper", ""))
-
         ordered = sorted(lst, key=lambda r: (r["match_date"], r["kickoff_time"]))
-        run = longest = 0
+        exact_rows = [r for r in ordered if is_match_score_exact(r, r)]
+        if len(exact_rows) >= SNIPER_EXACT:
+            milestone = exact_rows[SNIPER_EXACT - 1]
+            inserts.append((pid, "sniper", "", match_sdays.get(milestone["match_id"])))
+
+        run = 0
+        serie_day = None
         for r in ordered:
             if is_match_prediction_correct(r, r):
                 run += 1
-                longest = max(longest, run)
+                if run == SERIE_STREAK and serie_day is None:
+                    serie_day = match_sdays.get(r["match_id"])
             else:
                 run = 0
-        if longest >= SERIE_STREAK:
-            inserts.append((pid, "la_serie", ""))
+        if serie_day:
+            inserts.append((pid, "la_serie", "", serie_day))
 
-        draw_ok = sum(
-            1 for r in lst
+        draw_rows = [
+            r for r in ordered
             if r["phase"] == "group" and r["prediction"] == "draw" and r["result"] == "draw"
-        )
-        if draw_ok >= ROI_NUL_DRAWS:
-            inserts.append((pid, "roi_du_nul", ""))
+        ]
+        if len(draw_rows) >= ROI_NUL_DRAWS:
+            milestone = draw_rows[ROI_NUL_DRAWS - 1]
+            inserts.append((pid, "roi_du_nul", "", match_sdays.get(milestone["match_id"])))
 
         near_miss_by_pid[pid] = sum(
             1 for r in lst
@@ -283,14 +300,17 @@ async def refresh_trophy_awards(db) -> None:
             if len(mids) >= PERFECT_MIN_MATCHES and all(mid in owned for mid in mids) \
                     and all(is_match_prediction_correct(owned[mid], owned[mid]) for mid in mids) \
                     and sum(1 for mid in mids if is_match_score_exact(owned[mid], owned[mid])) >= PERFECT_MIN_EXACT:
-                inserts.append((pid, "journee_parfaite", sday))
+                inserts.append((pid, "journee_parfaite", sday, sday))
 
         # Extraterrestre (secret, répétable, une par match fou réussi)
         for r in lst:
             if is_match_score_exact(r, r):
                 s1, s2 = r["score_team1"], r["score_team2"]
                 if (s1 + s2) >= EXTRA_SUM or abs(s1 - s2) >= EXTRA_DIFF:
-                    inserts.append((pid, "extraterrestre", str(r["match_id"])))
+                    inserts.append((
+                        pid, "extraterrestre", str(r["match_id"]),
+                        match_sdays.get(r["match_id"]),
+                    ))
 
         # Tueur de favoris — figé en fin de tournoi
         if all_done:
@@ -301,12 +321,12 @@ async def refresh_trophy_awards(db) -> None:
                     if total > 0 and correct / total < UPSET_SHARE:
                         upsets += 1
             if upsets >= TUEUR_UPSETS:
-                inserts.append((pid, "tueur_de_favoris", ""))
+                inserts.append((pid, "tueur_de_favoris", "", tournament_final_day))
 
             ko = [r for r in lst if r["phase"] != "group"]
             ko_ok = sum(1 for r in ko if is_match_prediction_correct(r, r))
             if len(ko) >= SANGFROID_MIN_KO and ko_ok / len(ko) >= SANGFROID_RATE:
-                inserts.append((pid, "sang_froid", ""))
+                inserts.append((pid, "sang_froid", "", tournament_final_day))
 
             exotic_miss = 0
             for r in lst:
@@ -318,7 +338,7 @@ async def refresh_trophy_awards(db) -> None:
                     if share < EXOTIC_SHARE and not is_match_score_exact(r, r):
                         exotic_miss += 1
             if exotic_miss >= SAVANT_EXOTIC:
-                inserts.append((pid, "savant_fou", ""))
+                inserts.append((pid, "savant_fou", "", tournament_final_day))
 
     # --- L'Oracle : vainqueur du tournoi trouvé au prono pré-tournoi ---
     oracle_rows = await db.execute(
@@ -326,7 +346,10 @@ async def refresh_trophy_awards(db) -> None:
     )
     for r in await oracle_rows.fetchall():
         if r["participant_id"] in participants:
-            inserts.append((r["participant_id"], "oracle", ""))
+            inserts.append((
+                r["participant_id"], "oracle", "",
+                tournament_final_day if all_done else latest_finalized_day,
+            ))
 
     # --- Le Grimpeur (répétable, une par journée où l'on est meilleur grimpeur) ---
     cl_rows = await db.execute(
@@ -334,7 +357,9 @@ async def refresh_trophy_awards(db) -> None:
     )
     for r in await cl_rows.fetchall():
         if r["participant_id"] in participants:
-            inserts.append((r["participant_id"], "grimpeur", r["sporting_day"]))
+            inserts.append((
+                r["participant_id"], "grimpeur", r["sporting_day"], r["sporting_day"],
+            ))
 
     # --- L'Éternel Deuxième : argmax de "presque" (figé en fin de tournoi) ---
     if all_done and near_miss_by_pid:
@@ -342,7 +367,7 @@ async def refresh_trophy_awards(db) -> None:
         if best > 0:
             for pid, n in near_miss_by_pid.items():
                 if n == best:
-                    inserts.append((pid, "eternel_deuxieme", ""))
+                    inserts.append((pid, "eternel_deuxieme", "", tournament_final_day))
 
     # --- La Cuillère en Bois : dernier du général parmi les assidus (fin) ---
     if all_done:
@@ -355,32 +380,36 @@ async def refresh_trophy_awards(db) -> None:
             worst = min(r["total_points"] for r in eligible)
             for r in eligible:
                 if r["total_points"] == worst:
-                    inserts.append((r["id"], "cuillere_en_bois", ""))
+                    inserts.append((r["id"], "cuillere_en_bois", "", tournament_final_day))
 
     # --- Champions de département (fin de poules / fin de tournoi) ---
     if group_done:
         groups_rk = await get_rankings(db, scope="groups")
         for pid in _top_department_member_ids(groups_rk):
             if pid in participants:
-                inserts.append((pid, "champion_poules", ""))
+                inserts.append((pid, "champion_poules", "", group_final_day))
     if all_done:
         general_rk = await get_rankings(db, scope="general")
         for pid in _top_department_member_ids(general_rk):
             if pid in participants:
-                inserts.append((pid, "champion_tournoi", ""))
+                inserts.append((pid, "champion_tournoi", "", tournament_final_day))
 
     # --- Le Jumeau (secret, répétable) : 12 mêmes scores exacts consécutifs ---
-    inserts.extend(await _compute_jumeaux(db, participants))
+    inserts.extend(await _compute_jumeaux(db, participants, match_sdays))
 
     if inserts:
         await db.executemany(
-            "INSERT OR IGNORE INTO trophy_awards (participant_id, trophy_key, detail) "
-            "VALUES (?,?,?)",
+            "INSERT INTO trophy_awards (participant_id, trophy_key, detail, sporting_day) "
+            "VALUES (?,?,?,?) "
+            "ON CONFLICT(participant_id, trophy_key, detail) DO UPDATE SET "
+            "sporting_day=COALESCE(excluded.sporting_day, trophy_awards.sporting_day)",
             inserts,
         )
 
 
-async def _compute_jumeaux(db, participants: dict) -> list[tuple]:
+async def _compute_jumeaux(
+    db, participants: dict, match_sdays: dict[int, str]
+) -> list[tuple[int, str, str, str | None]]:
     """Paires de joueurs ayant tapé les mêmes scores exacts sur >= JUMEAU_CONSEC
     matchs consécutifs (ordre chronologique). Chaque membre reçoit une occurrence
     dont le `detail` est l'id de son jumeau."""
@@ -411,19 +440,19 @@ async def _compute_jumeaux(db, participants: dict) -> list[tuple]:
             b = pids[j]
             sb = scores[b]
             run = 0
-            twins = False
+            twin_day = None
             for mid in order:
                 va, vb = sa.get(mid), sb.get(mid)
                 if va is not None and vb is not None and va == vb:
                     run += 1
                     if run >= JUMEAU_CONSEC:
-                        twins = True
+                        twin_day = match_sdays.get(mid)
                         break
                 else:
                     run = 0
-            if twins:
-                out.append((a, "le_jumeau", str(b)))
-                out.append((b, "le_jumeau", str(a)))
+            if twin_day:
+                out.append((a, "le_jumeau", str(b), twin_day))
+                out.append((b, "le_jumeau", str(a), twin_day))
     return out
 
 
@@ -435,16 +464,22 @@ async def build_cabinet(db, participant_id: int) -> dict:
     """Cabinet d'un participant, lu depuis `trophy_awards` (archive permanente).
 
     Renvoie les groupes par catégorie (chaque item : débloqué ou non, compteur
-    ×N, secret, et pour Le Jumeau la liste des noms de jumeaux), plus un résumé.
+    ×N, secret et historique détaillé de toutes les occurrences), plus un résumé.
     """
+    from app.timeutils import format_local_datetime, format_sporting_day_fr
+
     rows = await db.execute(
-        "SELECT trophy_key, detail, awarded_at FROM trophy_awards "
-        "WHERE participant_id=? ORDER BY awarded_at",
+        "SELECT trophy_key, detail, sporting_day, awarded_at FROM trophy_awards "
+        "WHERE participant_id=? "
+        "ORDER BY COALESCE(sporting_day, substr(awarded_at, 1, 10)), awarded_at",
         (participant_id,),
     )
     awarded: dict[str, list[dict]] = defaultdict(list)
     for r in await rows.fetchall():
-        awarded[r["trophy_key"]].append({"detail": r["detail"], "awarded_at": r["awarded_at"]})
+        awarded[r["trophy_key"]].append(dict(r))
+
+    occurrences = [occ for values in awarded.values() for occ in values]
+    match_names, participant_names = await _load_detail_context(db, occurrences)
 
     # Noms des jumeaux (detail = id du jumeau)
     twin_names: dict[str, str] = {}
@@ -484,6 +519,13 @@ async def build_cabinet(db, participant_id: int) -> dict:
                 "caption": t["caption"], "desc": t["desc"],
                 "unlocked": unlocked, "hidden": hidden, "count": len(occ),
                 "just_unlocked": False,
+                "history": [
+                    _occurrence_label(
+                        t["key"], o, format_sporting_day_fr, format_local_datetime,
+                        match_names, participant_names,
+                    )
+                    for o in occ
+                ],
             }
             if t["key"] == "le_jumeau" and occ:
                 item["twins"] = [twin_names.get(o["detail"], "?") for o in occ]
@@ -499,22 +541,25 @@ async def build_cabinet(db, participant_id: int) -> dict:
 
 
 async def latest_ephemeral_badges(db) -> dict[int, dict]:
-    """Badge éphémère par joueur pour le classement : le trophée décroché PENDANT
-    la dernière journée sportive finalisée uniquement (fenêtre [start, end[).
-    Les trophées de la journée en cours ne sont pas encore visibles.
+    """Badge par joueur pour le classement : un trophée dont la date MÉTIER est
+    exactement la dernière journée sportive finalisée.
 
-    En cas d'égalité de date, le plus rare (moins de détenteurs) l'emporte.
+    ``awarded_at`` est volontairement ignoré : un backfill effectué aujourd'hui
+    ne doit jamais remettre en vitrine un ancien Grimpeur. Les trophées de la
+    journée en cours ne sont pas encore visibles.
+
+    Si plusieurs trophées ont été gagnés ce jour-là, le plus rare (moins de
+    détenteurs) l'emporte.
 
     Renvoie {participant_id: {"key","icon","label","icon_key","rarity","caption","detail_label"}}.
     """
-    from app.timeutils import sporting_day_bounds, format_sporting_day_fr
+    from app.timeutils import format_local_datetime, format_sporting_day_fr
 
     day = (await (await db.execute(
         "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
     )).fetchone())["day"]
     if not day:
         return {}
-    start, end = sporting_day_bounds(day)
 
     holders_rows = await db.execute(
         "SELECT trophy_key, COUNT(DISTINCT participant_id) AS c FROM trophy_awards GROUP BY trophy_key"
@@ -522,35 +567,15 @@ async def latest_ephemeral_badges(db) -> dict[int, dict]:
     holders = {r["trophy_key"]: r["c"] for r in await holders_rows.fetchall()}
 
     rows = await db.execute(
-        "SELECT participant_id, trophy_key, detail, awarded_at FROM trophy_awards "
-        "WHERE datetime(awarded_at) >= datetime(?) AND datetime(awarded_at) < datetime(?)",
-        (start, end),
+        "SELECT participant_id, trophy_key, detail, sporting_day, awarded_at "
+        "FROM trophy_awards WHERE sporting_day=?",
+        (day,),
     )
     candidates = [dict(r) for r in await rows.fetchall()]
     if not candidates:
         return {}
 
-    detail_ids = set()
-    for c in candidates:
-        if c["detail"] and c["detail"].isdigit():
-            detail_ids.add(int(c["detail"]))
-    match_names: dict[int, str] = {}
-    participant_names: dict[int, str] = {}
-    if detail_ids:
-        ph = ",".join("?" * len(detail_ids))
-        id_list = list(detail_ids)
-        mrows = await db.execute(
-            f"SELECT id, team1_name, team2_name, score_team1, score_team2 FROM matches WHERE id IN ({ph})",
-            id_list,
-        )
-        for r in await mrows.fetchall():
-            match_names[r["id"]] = f"{r['team1_name']} {r['score_team1']}-{r['score_team2']} {r['team2_name']}"
-        prows = await db.execute(
-            f"SELECT id, name, nickname FROM participants WHERE id IN ({ph})",
-            id_list,
-        )
-        for r in await prows.fetchall():
-            participant_names[r["id"]] = r["nickname"] or r["name"]
+    match_names, participant_names = await _load_detail_context(db, candidates)
 
     best: dict[int, tuple] = {}
     chosen: dict[int, dict] = {}
@@ -558,17 +583,79 @@ async def latest_ephemeral_badges(db) -> dict[int, dict]:
         meta = TROPHY_BY_KEY.get(r["trophy_key"])
         if not meta:
             continue
-        rank_key = (r["awarded_at"], -holders.get(r["trophy_key"], 0))
+        rank_key = (
+            -holders.get(r["trophy_key"], 0),
+            r["awarded_at"],
+            r["trophy_key"],
+        )
         if r["participant_id"] not in best or rank_key > best[r["participant_id"]]:
             best[r["participant_id"]] = rank_key
-            detail_label = _detail_label(meta["key"], r["detail"], format_sporting_day_fr,
-                                         match_names, participant_names)
+            detail_label = _occurrence_label(
+                meta["key"], r, format_sporting_day_fr, format_local_datetime,
+                match_names, participant_names,
+            )
             chosen[r["participant_id"]] = {
                 "key": meta["key"], "icon": meta["icon"], "label": meta["label"],
                 "icon_key": meta["icon_key"], "rarity": meta["rarity"],
                 "caption": meta["caption"], "detail_label": detail_label,
             }
     return chosen
+
+
+async def _load_detail_context(db, occurrences: list[dict]) -> tuple[dict[int, str], dict[int, str]]:
+    """Charge les libellés nécessaires aux détails de match et de jumeau."""
+    detail_ids = {
+        int(o["detail"])
+        for o in occurrences
+        if o.get("detail") and o["detail"].isdigit()
+    }
+    match_names: dict[int, str] = {}
+    participant_names: dict[int, str] = {}
+    if not detail_ids:
+        return match_names, participant_names
+
+    placeholders = ",".join("?" * len(detail_ids))
+    id_list = list(detail_ids)
+    mrows = await db.execute(
+        f"SELECT id, team1_name, team2_name, score_team1, score_team2 "
+        f"FROM matches WHERE id IN ({placeholders})",
+        id_list,
+    )
+    for r in await mrows.fetchall():
+        match_names[r["id"]] = (
+            f"{r['team1_name']} {r['score_team1']}-{r['score_team2']} {r['team2_name']}"
+        )
+    prows = await db.execute(
+        f"SELECT id, name, nickname FROM participants WHERE id IN ({placeholders})",
+        id_list,
+    )
+    for r in await prows.fetchall():
+        participant_names[r["id"]] = r["nickname"] or r["name"]
+    return match_names, participant_names
+
+
+def _occurrence_label(
+    key: str,
+    occurrence: dict,
+    fmt_day,
+    fmt_datetime,
+    match_names: dict,
+    participant_names: dict,
+) -> str:
+    """Libellé daté d'une occurrence, commun au classement et au cabinet."""
+    detail = _detail_label(
+        key, occurrence.get("detail") or "", fmt_day, match_names, participant_names
+    )
+    sporting_day = occurrence.get("sporting_day")
+    if key in ("grimpeur", "journee_parfaite") and detail:
+        return detail
+
+    parts = [detail] if detail else []
+    if sporting_day:
+        parts.append(f"Journée du {fmt_day(sporting_day)}")
+    elif occurrence.get("awarded_at"):
+        parts.append(f"Obtenu le {fmt_datetime(occurrence['awarded_at'], '%d/%m/%Y')}")
+    return " · ".join(parts)
 
 
 def _detail_label(key: str, detail: str, fmt_day, match_names: dict, participant_names: dict) -> str:

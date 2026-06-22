@@ -175,6 +175,25 @@ def test_trophy_cabinet_renders_noto_assets_without_native_emoji(client):
     assert "rar-legendary" in cabinet and "rar-anti" in cabinet
 
 
+def test_trophy_cabinet_tooltip_keeps_dated_history(client):
+    pid, token = _make_participant()
+
+    async def _seed():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO trophy_awards
+                   (participant_id, trophy_key, detail, sporting_day)
+                   VALUES (?, 'grimpeur', '2044-07-07', '2044-07-07')""",
+                (pid,),
+            )
+            await db.commit()
+
+    run(_seed())
+    cabinet = _cabinet_fragment(client.get(f"/p/{token}/profil").text)
+    assert "Historique : Journée du" in cabinet
+    assert "7 juillet." in cabinet
+
+
 def test_journee_parfaite_requires_all_day_matches_predicted(client):
     pid, _ = _make_participant()
     base_number = 9900000 + pid * 10
