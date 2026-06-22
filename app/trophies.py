@@ -622,6 +622,91 @@ async def latest_ephemeral_badges(db) -> dict[int, dict]:
     return chosen
 
 
+RARITY_ORDER = {"legendary": 0, "rare": 1, "common": 2, "anti": 3}
+
+
+async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
+    """Tous les trophées de la dernière journée sportive finalisée.
+
+    Renvoie (carousel_items, badges_by_participant) :
+    - carousel_items : un élément par *type* de trophée, trié par rareté
+      (legendary d'abord). Chaque élément contient une liste ``winners``
+      regroupant les lauréats de ce trophée.
+    - badges_by_participant : {participant_id: [badge, ...]} triés par rareté.
+    """
+    from app.timeutils import format_local_datetime, format_sporting_day_fr
+
+    day = (await (await db.execute(
+        "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
+    )).fetchone())["day"]
+    if not day:
+        return [], {}
+
+    rows = await db.execute(
+        "SELECT ta.participant_id, ta.trophy_key, ta.detail, ta.sporting_day, "
+        "ta.awarded_at, COALESCE(p.nickname, p.name) AS participant_name "
+        "FROM trophy_awards ta "
+        "JOIN participants p ON p.id = ta.participant_id "
+        "WHERE ta.sporting_day = ?",
+        (day,),
+    )
+    candidates = [dict(r) for r in await rows.fetchall()]
+    if not candidates:
+        return [], {}
+
+    match_names, participant_names = await _load_detail_context(db, candidates)
+
+    climber_rows = await db.execute(
+        "SELECT participant_id, delta FROM sporting_day_rank_evolutions "
+        "WHERE sporting_day = ? AND is_climber = 1",
+        (day,),
+    )
+    climber_deltas = {r["participant_id"]: r["delta"] for r in await climber_rows.fetchall()}
+
+    grouped: dict[str, dict] = {}
+    by_participant: dict[int, list[dict]] = {}
+
+    for r in candidates:
+        meta = TROPHY_BY_KEY.get(r["trophy_key"])
+        if not meta:
+            continue
+        detail_label = _occurrence_label(
+            meta["key"], r, format_sporting_day_fr, format_local_datetime,
+            match_names, participant_names,
+        )
+        detail_raw = (r.get("detail") or "")
+        is_day_only = detail_raw == day
+        winner = {
+            "participant_id": r["participant_id"],
+            "participant_name": r["participant_name"],
+            "detail_label": "" if is_day_only else detail_label,
+            "delta": climber_deltas.get(r["participant_id"]) if meta["key"] == "grimpeur" else None,
+        }
+        if meta["key"] not in grouped:
+            grouped[meta["key"]] = {
+                "key": meta["key"], "icon": meta["icon"], "label": meta["label"],
+                "icon_key": meta["icon_key"], "rarity": meta["rarity"],
+                "caption": meta["caption"],
+                "winners": [],
+            }
+        grouped[meta["key"]]["winners"].append(winner)
+
+        by_participant.setdefault(r["participant_id"], []).append({
+            "key": meta["key"], "icon": meta["icon"], "label": meta["label"],
+            "icon_key": meta["icon_key"], "rarity": meta["rarity"],
+            "caption": meta["caption"], "detail_label": detail_label,
+        })
+
+    carousel = sorted(
+        grouped.values(),
+        key=lambda item: RARITY_ORDER.get(item["rarity"], 9),
+    )
+    for badges in by_participant.values():
+        badges.sort(key=lambda b: RARITY_ORDER.get(b["rarity"], 9))
+
+    return carousel, by_participant
+
+
 async def _load_detail_context(db, occurrences: list[dict]) -> tuple[dict[int, str], dict[int, str]]:
     """Charge les libellés nécessaires aux détails de match et de jumeau."""
     detail_ids = {

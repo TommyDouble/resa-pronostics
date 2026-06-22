@@ -1163,6 +1163,76 @@ function initCompactCards() {
   });
 }
 
+/* ---- Carrousel de trophées (encart supérieur du classement général) ---- */
+function initTrophyCarousel() {
+  var el = document.querySelector('[data-trophy-carousel]');
+  if (!el) return;
+  var track = el.querySelector('.tc-track');
+  var slides = Array.from(track.querySelectorAll('.tc-slide'));
+  var dots = Array.from(el.querySelectorAll('.tc-dot'));
+  if (slides.length < 2) return;
+
+  var current = 0;
+  var timer = null;
+  var resumeTimer = null;
+  var INTERVAL = 5000;
+  var RESUME_DELAY = 8000;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function syncDots(idx) {
+    dots.forEach(function(d, j) {
+      var active = j === idx;
+      d.classList.toggle('active', active);
+      d.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+  }
+
+  function goTo(idx) {
+    current = idx;
+    track.scrollTo({ left: slides[idx].offsetLeft, behavior: reduced ? 'auto' : 'smooth' });
+    syncDots(idx);
+  }
+
+  function next() { goTo((current + 1) % slides.length); }
+
+  function startAuto() {
+    if (reduced) return;
+    stopAuto();
+    timer = setInterval(next, INTERVAL);
+  }
+
+  function stopAuto() {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (resumeTimer) { clearTimeout(resumeTimer); resumeTimer = null; }
+  }
+
+  function pauseAndResume() {
+    stopAuto();
+    resumeTimer = setTimeout(startAuto, RESUME_DELAY);
+  }
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      if (e.isIntersecting) {
+        var idx = slides.indexOf(e.target);
+        if (idx >= 0) { current = idx; syncDots(idx); }
+      }
+    });
+  }, { root: track, threshold: 0.5 });
+  slides.forEach(function(s) { observer.observe(s); });
+
+  dots.forEach(function(d, i) {
+    d.addEventListener('click', function() { goTo(i); pauseAndResume(); });
+  });
+
+  track.addEventListener('pointerdown', function() { stopAuto(); });
+  track.addEventListener('pointerup', function() {
+    resumeTimer = setTimeout(startAuto, RESUME_DELAY);
+  });
+
+  startAuto();
+}
+
 /* ---- Classement des départements : un seul détail ouvert à la fois ---- */
 function initDepartmentRanking() {
   var details = Array.from(document.querySelectorAll('[data-department-detail]'));
@@ -1741,6 +1811,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initCountUp();
   initStickyTop();
   initCompactCards();
+  initTrophyCarousel();
   initDepartmentRanking();
   initRankingFilters();
   initStoryPlayer();

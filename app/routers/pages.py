@@ -71,7 +71,7 @@ from app.timeutils import (
 # Whitelist stricte des templates de story (registre central app.news) :
 # empêche tout include de chemin arbitraire depuis la BDD.
 from app.news import STORY_TEMPLATES
-from app.trophies import build_cabinet, latest_ephemeral_badges
+from app.trophies import build_cabinet, latest_ephemeral_badges, all_ephemeral_badges
 
 router = APIRouter()
 templates = create_templates()
@@ -1213,12 +1213,9 @@ async def ranking_page(
         evolution_match_count = 0
         evolution_encoded_count = 0
         evolution_last_match = None
-        climber_delta = 0
-        climber_day = None
-        climber_matches = []
-        climber_period_label = ""
         climber_ids = set()
-        ephemeral_badges = {}
+        carousel_items: list[dict] = []
+        badges_by_participant: dict[int, list[dict]] = {}
         knockout_started = False
         if view == "remontada":
             rankings = await get_remontada(db)
@@ -1240,29 +1237,15 @@ async def ranking_page(
                 if evolution_status == "in_progress" and evolution_day:
                     encoded_matches = await _sporting_day_match_details(db, evolution_day)
                     evolution_last_match = encoded_matches[-1] if encoded_matches else None
-                # Le titre reste celui de la dernière journée entièrement finalisée.
                 finalized_climbers = await get_latest_finalized_climbers(db)
-                climber_delta = finalized_climbers["delta"]
-                climber_day = finalized_climbers["day"]
                 climber_ids = {r["participant_id"] for r in finalized_climbers["climbers"]}
-                if climber_day:
-                    climber_matches = await _sporting_day_match_details(db, climber_day)
-                    climber_next_day = (
-                        date.fromisoformat(climber_day) + timedelta(days=1)
-                    ).isoformat()
-                    climber_period_label = (
-                        f"Du {format_sporting_day_fr(climber_day)} à 9 h au "
-                        f"{format_sporting_day_fr(climber_next_day)} à 8 h 59"
-                    )
-            # Badge affiché dans les classements individuels par points.
-            ephemeral_badges = await latest_ephemeral_badges(db)
+            carousel_items, badges_by_participant = await all_ephemeral_badges(db)
         for r in rankings:
             r["is_me"] = (r["id"] == p["id"])
             r["color_class"] = f"c{((r['id'] - 1) % 8) + 1}"
             r["evolution"] = evolution.get(r["id"])
             r["is_climber"] = r["id"] in climber_ids
-            r["badge"] = ephemeral_badges.get(r["id"])
-        climbers = [r for r in rankings if r.get("is_climber")]
+            r["badges"] = badges_by_participant.get(r["id"], [])
         prize_info = await get_prize_info(db)
         my_department = (p.get("department") or "").strip() or "Sans département"
         department_names = {d["department"] for d in departments}
@@ -1285,11 +1268,7 @@ async def ranking_page(
             "evolution_match_count": evolution_match_count,
             "evolution_encoded_count": evolution_encoded_count,
             "evolution_last_match": evolution_last_match,
-            "climbers": climbers,
-            "climber_delta": climber_delta,
-            "climber_day_label": _format_day_fr(climber_day) if climber_day else "",
-            "climber_matches": climber_matches,
-            "climber_period_label": climber_period_label,
+            "carousel_items": carousel_items,
             "knockout_started": knockout_started,
             "prize_info": prize_info,
         })

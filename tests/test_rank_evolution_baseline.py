@@ -19,17 +19,18 @@ from app.scoring import (
     get_rank_evolution,
     sync_finalized_evolution_history,
 )
+from app.trophies import refresh_trophy_awards
 from tests.conftest import run
 
 # Tout ce qui alimente le classement général : on repart d'une base vierge
 # le temps du test pour que les flèches ne dépendent que de nos fixtures.
 _ISOLATED = (
     "sporting_day_rank_evolutions", "scores", "predictions", "matches",
-    "pre_tournament_scores",
+    "pre_tournament_scores", "trophy_awards",
 )
 _RESTORE_ORDER = (
     "matches", "predictions", "scores", "pre_tournament_scores",
-    "sporting_day_rank_evolutions",
+    "sporting_day_rank_evolutions", "trophy_awards",
 )
 
 
@@ -142,6 +143,7 @@ def _sync_history(from_day=None):
     async def _q():
         async with get_db() as db:
             await sync_finalized_evolution_history(db, from_day=from_day)
+            await refresh_trophy_awards(db)
             await db.commit()
             return await get_latest_finalized_climbers(db)
 
@@ -308,20 +310,11 @@ def test_climber_banner_lists_its_sporting_day_matches(client):
         assert title["day"] == "2035-06-01"
 
         html = client.get(f"/p/{_participant_token(a)}/classement").text
-        assert "Grimpeur · dernière journée finalisée" in html
+        assert "Le Grimpeur" in html
+        assert "derni&#232;re journ&#233;e" in html
         assert "Fusée Liste" in html
-        assert "vendredi 1 juin" in html
-        assert 'class="chip up ch-delta">▲ 2 places</span>' in html
-        assert 'data-tooltip-content="climber-day-tooltip"' in html
-        assert '<template id="climber-day-tooltip">' in html
-        assert "Pourquoi ce Grimpeur ?" in html
-        assert "Ce titre récompense la meilleure progression au classement" in html
-        assert "Journée sportive du vendredi 1 juin" in html
-        assert "Du vendredi 1 juin à 9 h au samedi 2 juin à 8 h 59" in html
-        assert "2 matchs pris en compte" in html
-        assert "Canada" in html and "Qatar" in html and "1–0" in html
-        assert "Japon" in html and "Maroc" in html and "2–2" in html
-        assert "Maroc qualifié" in html
+        assert "▲ 2 places" in html
+        assert "data-trophy-carousel" in html
 
 
 def test_climber_card_groups_tied_names(client):
@@ -340,16 +333,17 @@ def test_climber_card_groups_tied_names(client):
                            VALUES ('2035-06-18', ?, 0, 10, 10, 4, 1, 3, 1)""",
                         (participant_id,),
                     )
+                await refresh_trophy_awards(db)
                 await db.commit()
 
         run(_seed_tie())
         html = client.get(f"/p/{_participant_token(first)}/classement").text
 
-        assert "Grimpeurs · dernière journée finalisée" in html
-        assert "Alpha Longnom · Beta Longnom" in html
-        assert 'class="chip up ch-delta">▲ 3 places</span>' in html
-        assert "Pourquoi ces Grimpeurs ?" in html
-        assert "En cas d’égalité, il est partagé." in html
+        assert "Le Grimpeur" in html
+        assert "derni&#232;re journ&#233;e" in html
+        assert "Alpha Longnom" in html
+        assert "Beta Longnom" in html
+        assert "▲ 3 places" in html
 
 
 def test_ranking_live_header_and_rich_tooltip_css_contract():
