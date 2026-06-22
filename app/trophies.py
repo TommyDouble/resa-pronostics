@@ -499,20 +499,22 @@ async def build_cabinet(db, participant_id: int) -> dict:
 
 
 async def latest_ephemeral_badges(db) -> dict[int, dict]:
-    """Badge éphémère par joueur pour le classement : le trophée le plus récemment
-    décroché depuis le début de la dernière journée sportive finalisée. En cas
-    d'égalité de date, le plus rare (moins de détenteurs) l'emporte.
+    """Badge éphémère par joueur pour le classement : le trophée décroché PENDANT
+    la dernière journée sportive finalisée uniquement (fenêtre [start, end[).
+    Les trophées de la journée en cours ne sont pas encore visibles.
 
-    Renvoie {participant_id: {"key","icon","label","caption","count"}}.
+    En cas d'égalité de date, le plus rare (moins de détenteurs) l'emporte.
+
+    Renvoie {participant_id: {"key","icon","label","icon_key","rarity","caption","detail_label"}}.
     """
-    from app.timeutils import sporting_day_bounds
+    from app.timeutils import sporting_day_bounds, format_sporting_day_fr
 
     day = (await (await db.execute(
         "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
     )).fetchone())["day"]
     if not day:
         return {}
-    start, _ = sporting_day_bounds(day)
+    start, end = sporting_day_bounds(day)
 
     holders_rows = await db.execute(
         "SELECT trophy_key, COUNT(DISTINCT participant_id) AS c FROM trophy_awards GROUP BY trophy_key"
@@ -520,23 +522,67 @@ async def latest_ephemeral_badges(db) -> dict[int, dict]:
     holders = {r["trophy_key"]: r["c"] for r in await holders_rows.fetchall()}
 
     rows = await db.execute(
-        "SELECT participant_id, trophy_key, awarded_at FROM trophy_awards "
-        "WHERE datetime(awarded_at) >= datetime(?)",
-        (start,),
+        "SELECT participant_id, trophy_key, detail, awarded_at FROM trophy_awards "
+        "WHERE datetime(awarded_at) >= datetime(?) AND datetime(awarded_at) < datetime(?)",
+        (start, end),
     )
+    candidates = [dict(r) for r in await rows.fetchall()]
+    if not candidates:
+        return {}
+
+    detail_ids = set()
+    for c in candidates:
+        if c["detail"] and c["detail"].isdigit():
+            detail_ids.add(int(c["detail"]))
+    match_names: dict[int, str] = {}
+    participant_names: dict[int, str] = {}
+    if detail_ids:
+        ph = ",".join("?" * len(detail_ids))
+        id_list = list(detail_ids)
+        mrows = await db.execute(
+            f"SELECT id, team1_name, team2_name, score_team1, score_team2 FROM matches WHERE id IN ({ph})",
+            id_list,
+        )
+        for r in await mrows.fetchall():
+            match_names[r["id"]] = f"{r['team1_name']} {r['score_team1']}-{r['score_team2']} {r['team2_name']}"
+        prows = await db.execute(
+            f"SELECT id, name, nickname FROM participants WHERE id IN ({ph})",
+            id_list,
+        )
+        for r in await prows.fetchall():
+            participant_names[r["id"]] = r["nickname"] or r["name"]
+
     best: dict[int, tuple] = {}
     chosen: dict[int, dict] = {}
-    for r in await rows.fetchall():
+    for r in candidates:
         meta = TROPHY_BY_KEY.get(r["trophy_key"])
         if not meta:
             continue
-        # plus récent d'abord, puis le plus rare (moins de détenteurs)
         rank_key = (r["awarded_at"], -holders.get(r["trophy_key"], 0))
         if r["participant_id"] not in best or rank_key > best[r["participant_id"]]:
             best[r["participant_id"]] = rank_key
+            detail_label = _detail_label(meta["key"], r["detail"], format_sporting_day_fr,
+                                         match_names, participant_names)
             chosen[r["participant_id"]] = {
                 "key": meta["key"], "icon": meta["icon"], "label": meta["label"],
                 "icon_key": meta["icon_key"], "rarity": meta["rarity"],
-                "caption": meta["caption"],
+                "caption": meta["caption"], "detail_label": detail_label,
             }
     return chosen
+
+
+def _detail_label(key: str, detail: str, fmt_day, match_names: dict, participant_names: dict) -> str:
+    if not detail:
+        return ""
+    if key in ("grimpeur", "journee_parfaite"):
+        return f"Journée du {fmt_day(detail)}"
+    if key == "extraterrestre":
+        if detail.isdigit():
+            return match_names.get(int(detail), "")
+        return ""
+    if key == "le_jumeau":
+        if detail.isdigit():
+            name = participant_names.get(int(detail))
+            return f"avec {name}" if name else ""
+        return ""
+    return ""

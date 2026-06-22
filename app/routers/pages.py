@@ -894,8 +894,11 @@ async def participant_home(request: Request, token: str):
             and (not pt_status["open"] or pt_status["complete"])
             and ctx["pending_bonus"] == 0
         )
-        raw_seen = dict(p).get("seen_trophies") or ""
-        trophy_unlocked_count = len([k for k in raw_seen.split(",") if k])
+        tc_row = await db.execute(
+            "SELECT COUNT(DISTINCT trophy_key) AS cnt FROM trophy_awards WHERE participant_id=?",
+            (p["id"],),
+        )
+        trophy_unlocked_count = (await tc_row.fetchone())["cnt"]
         ctx.update({
             "trophy_unlocked_count": trophy_unlocked_count,
             "today_matches": today_matches,
