@@ -44,6 +44,19 @@ EXTRA_DIFF = 4             # écart de buts mini pour "match fou"
 PERFECT_MIN_MATCHES = 3    # matchs mini sur une journée parfaite
 PERFECT_MIN_EXACT = 2      # ... dont au moins N scores exacts (sinon trop commun : 71 %)
 
+MATCH_ORIGIN_TROPHIES = {"extraterrestre", "sniper", "la_serie", "roi_du_nul"}
+MATCH_MILESTONE_TROPHIES = {"sniper", "la_serie", "roi_du_nul"}
+BILAN_ORIGIN_LABELS = {
+    "oracle": "Prono pré-tournoi",
+    "sang_froid": "Bilan phase finale",
+    "tueur_de_favoris": "Bilan des surprises",
+    "eternel_deuxieme": "Bilan des presque",
+    "cuillere_en_bois": "Bilan du tournoi",
+    "savant_fou": "Bilan des scores exotiques",
+    "champion_poules": "Département en tête fin des poules",
+    "champion_tournoi": "Département en tête fin du tournoi",
+}
+
 # Catalogue. timing : "continu" (évalué en continu, éligible au badge éphémère),
 # "fin_poules" (à la clôture de la phase de groupes), "fin_tournoi" (à la clôture
 # du tournoi). repeatable : occurrences multiples avec compteur ×N.
@@ -263,19 +276,24 @@ async def refresh_trophy_awards(db) -> None:
         exact_rows = [r for r in ordered if is_match_score_exact(r, r)]
         if len(exact_rows) >= SNIPER_EXACT:
             milestone = exact_rows[SNIPER_EXACT - 1]
-            inserts.append((pid, "sniper", "", match_sdays.get(milestone["match_id"])))
+            inserts.append((
+                pid, "sniper", str(milestone["match_id"]),
+                match_sdays.get(milestone["match_id"]),
+            ))
 
         run = 0
         serie_day = None
+        serie_match_id = None
         for r in ordered:
             if is_match_prediction_correct(r, r):
                 run += 1
                 if run == SERIE_STREAK and serie_day is None:
                     serie_day = match_sdays.get(r["match_id"])
+                    serie_match_id = r["match_id"]
             else:
                 run = 0
-        if serie_day:
-            inserts.append((pid, "la_serie", "", serie_day))
+        if serie_day and serie_match_id:
+            inserts.append((pid, "la_serie", str(serie_match_id), serie_day))
 
         draw_rows = [
             r for r in ordered
@@ -283,7 +301,10 @@ async def refresh_trophy_awards(db) -> None:
         ]
         if len(draw_rows) >= ROI_NUL_DRAWS:
             milestone = draw_rows[ROI_NUL_DRAWS - 1]
-            inserts.append((pid, "roi_du_nul", "", match_sdays.get(milestone["match_id"])))
+            inserts.append((
+                pid, "roi_du_nul", str(milestone["match_id"]),
+                match_sdays.get(milestone["match_id"]),
+            ))
 
         near_miss_by_pid[pid] = sum(
             1 for r in lst
@@ -398,13 +419,50 @@ async def refresh_trophy_awards(db) -> None:
     inserts.extend(await _compute_jumeaux(db, participants, match_sdays))
 
     if inserts:
-        await db.executemany(
-            "INSERT INTO trophy_awards (participant_id, trophy_key, detail, sporting_day) "
-            "VALUES (?,?,?,?) "
-            "ON CONFLICT(participant_id, trophy_key, detail) DO UPDATE SET "
-            "sporting_day=COALESCE(excluded.sporting_day, trophy_awards.sporting_day)",
-            inserts,
+        await _upsert_trophy_awards(db, inserts)
+
+
+async def _upsert_trophy_awards(
+    db, inserts: list[tuple[int, str, str, str | None]]
+) -> None:
+    """Insère les trophées et enrichit les anciens détails vides sans doublons."""
+    for participant_id, trophy_key, detail, sporting_day in inserts:
+        if trophy_key not in MATCH_MILESTONE_TROPHIES or not detail:
+            continue
+        await db.execute(
+            """DELETE FROM trophy_awards
+               WHERE participant_id=? AND trophy_key=? AND detail<>?
+                 AND EXISTS (
+                   SELECT 1 FROM trophy_awards existing
+                    WHERE existing.participant_id=?
+                      AND existing.trophy_key=?
+                      AND existing.detail=?
+                 )""",
+            (participant_id, trophy_key, detail, participant_id, trophy_key, detail),
         )
+        await db.execute(
+            """UPDATE trophy_awards
+                  SET detail=?,
+                      sporting_day=COALESCE(?, sporting_day)
+                WHERE participant_id=? AND trophy_key=? AND detail<>?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM trophy_awards existing
+                     WHERE existing.participant_id=?
+                       AND existing.trophy_key=?
+                       AND existing.detail=?
+                  )""",
+            (
+                detail, sporting_day, participant_id, trophy_key, detail,
+                participant_id, trophy_key, detail,
+            ),
+        )
+    await db.executemany(
+        "INSERT INTO trophy_awards (participant_id, trophy_key, detail, sporting_day) "
+        "VALUES (?,?,?,?) "
+        "ON CONFLICT(participant_id, trophy_key, detail) DO UPDATE SET "
+        "sporting_day=COALESCE(excluded.sporting_day, trophy_awards.sporting_day)",
+        inserts,
+    )
 
 
 async def _compute_jumeaux(
@@ -644,7 +702,7 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
 
     rows = await db.execute(
         "SELECT ta.participant_id, ta.trophy_key, ta.detail, ta.sporting_day, "
-        "ta.awarded_at, COALESCE(p.nickname, p.name) AS participant_name "
+        "ta.awarded_at, COALESCE(NULLIF(p.nickname, ''), p.name) AS participant_name "
         "FROM trophy_awards ta "
         "JOIN participants p ON p.id = ta.participant_id "
         "WHERE ta.sporting_day = ?",
@@ -674,16 +732,17 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
             meta["key"], r, format_sporting_day_fr, format_local_datetime,
             match_names, participant_names,
         )
-        event_label = _detail_label(
-            meta["key"], (r.get("detail") or ""),
-            format_sporting_day_fr, match_names, participant_names,
+        event_label = _event_label(
+            meta["key"], r, format_sporting_day_fr,
+            match_names, participant_names,
         )
-        detail_raw = (r.get("detail") or "")
-        is_day_only = detail_raw == day
+        origin_prefix = _origin_prefix(meta["key"])
+        origin_text = _origin_text(origin_prefix, event_label)
+        participant_name = (r.get("participant_name") or "").strip()
         winner = {
             "participant_id": r["participant_id"],
-            "participant_name": r["participant_name"],
-            "detail_label": "" if is_day_only else event_label,
+            "participant_name": participant_name,
+            "origin_text": origin_text,
             "delta": climber_deltas.get(r["participant_id"]) if meta["key"] == "grimpeur" else None,
         }
         if meta["key"] not in grouped:
@@ -706,13 +765,16 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
     for slide in grouped.values():
         slide["day_label"] = day_label
         winners = slide["winners"]
-        details = {w["detail_label"] for w in winners}
-        if len(details) == 1:
-            slide["shared_detail"] = details.pop()
+        slide["winner_names"] = [
+            w["participant_name"] for w in winners if w["participant_name"]
+        ]
+        origin_texts = {w["origin_text"] for w in winners if w["origin_text"]}
+        if len(origin_texts) == 1:
+            slide["shared_origin_text"] = origin_texts.pop()
             for w in winners:
-                w["detail_label"] = ""
+                w["origin_text"] = ""
         else:
-            slide["shared_detail"] = ""
+            slide["shared_origin_text"] = ""
         deltas = {w["delta"] for w in winners if w["delta"] is not None}
         if len(deltas) == 1:
             slide["shared_delta"] = deltas.pop()
@@ -720,14 +782,19 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
                 w["delta"] = None
         else:
             slide["shared_delta"] = None
-        has_per_winner = any(w["detail_label"] for w in winners)
+        has_per_winner = any(w["origin_text"] for w in winners)
+        slide["origin_hint"] = "Origines détaillées dans l’aide" if has_per_winner else ""
         if has_per_winner:
             slide["tip_lines"] = [
-                f"{w['participant_name']} — {w['detail_label']}"
-                for w in winners if w["detail_label"]
+                f"{w['participant_name']} — {w['origin_text']}"
+                for w in winners if w["participant_name"] and w["origin_text"]
             ]
         else:
             slide["tip_lines"] = []
+        slide["tip_segments"] = [
+            segment for segment in [slide["caption"], *slide["tip_lines"]]
+            if segment
+        ]
 
     carousel = sorted(
         grouped.values(),
@@ -795,12 +862,40 @@ def _occurrence_label(
     return " · ".join(parts)
 
 
+def _event_label(
+    key: str,
+    occurrence: dict,
+    fmt_day,
+    match_names: dict,
+    participant_names: dict,
+) -> str:
+    detail = _detail_label(
+        key, occurrence.get("detail") or "", fmt_day, match_names, participant_names
+    )
+    if detail:
+        return detail
+    if key in BILAN_ORIGIN_LABELS:
+        return BILAN_ORIGIN_LABELS[key]
+    sporting_day = occurrence.get("sporting_day")
+    if sporting_day and key in MATCH_ORIGIN_TROPHIES:
+        return f"Journée du {fmt_day(sporting_day)}"
+    return ""
+
+
+def _origin_prefix(key: str) -> str:
+    return "Match" if key in MATCH_ORIGIN_TROPHIES else "Origine"
+
+
+def _origin_text(prefix: str, label: str) -> str:
+    return f"{prefix} : {label}" if label else ""
+
+
 def _detail_label(key: str, detail: str, fmt_day, match_names: dict, participant_names: dict) -> str:
     if not detail:
         return ""
     if key in ("grimpeur", "journee_parfaite"):
         return f"Journée du {fmt_day(detail)}"
-    if key == "extraterrestre":
+    if key in MATCH_ORIGIN_TROPHIES:
         if detail.isdigit():
             return match_names.get(int(detail), "")
         return ""
