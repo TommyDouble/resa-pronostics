@@ -133,20 +133,30 @@
               </span>
               {{ item.label }}
             </span>
-            <span class="tc-right">
-              <span class="help-tip" tabindex="0" data-tip="{{ item.tip_segments | join(' · ') }}">?</span>
-            </span>
-          </div>
-          <div class="tc-row2">
-            <span class="tc-names">
-              {{ item.visible_names | join(' · ') }}{% if item.hidden_count %} <span class="tc-more">+{{ item.hidden_count }}</span>{% endif %}
-            </span>
             {% if item.shared_delta %}
             <span class="chip up ch-delta">▲ {{ item.shared_delta }} place{{ 's' if item.shared_delta > 1 else '' }}</span>
             {% endif %}
           </div>
-          {% if item.card_context or item.detail_hint %}
-          <div class="tc-context">{{ item.card_context or item.detail_hint }}</div>
+          {% if item.caption %}
+          <div class="tc-caption">{{ item.caption }}</div>
+          {% endif %}
+          {% if item.context_line %}
+          <div class="tc-context">{{ item.context_line }}</div>
+          {% endif %}
+          <div class="tc-winners{% if item.winner_lines[0].detail is defined and item.winner_lines[0].detail %} tc-has-detail{% endif %}">
+            {% for w in item.winner_lines[:3] %}
+            <span class="tc-winner{% if w.is_me %} tc-me{% endif %}">{{ w.name }}{% if w.detail %}<span class="tc-wdetail">{{ w.detail }}</span>{% endif %}</span>
+            {% endfor %}
+            {% if item.winner_lines|length > 3 %}
+            <button type="button" class="tc-show-more rar-text-{{ item.rarity }}" data-tc-overflow>+{{ item.winner_lines|length - 3 }} autre{{ 's' if item.winner_lines|length - 3 > 1 else '' }}</button>
+            {% endif %}
+          </div>
+          {% if item.winner_lines|length > 3 %}
+          <div class="tc-overflow" hidden>
+            {% for w in item.winner_lines[3:] %}
+            <span class="tc-winner{% if w.is_me %} tc-me{% endif %}">{{ w.name }}{% if w.detail %}<span class="tc-wdetail">{{ w.detail }}</span>{% endif %}</span>
+            {% endfor %}
+          </div>
           {% endif %}
         </div>
       </div>
