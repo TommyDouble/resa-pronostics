@@ -7,6 +7,7 @@ réel ; les trophées « fin de phase » (relatifs au peloton entier) sont gard�
 est partagée entre fichiers, donc l'état global de complétion n'est pas fiable.
 """
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -583,6 +584,75 @@ def test_trophy_carousel_limits_visible_winners_and_keeps_full_list_in_help():
     assert names[:3] == ["Lauréat 0", "Lauréat 1", "Lauréat 2"]
     assert len(names) == 6
     assert "Lauréat 5" in names
+    assert [w["name"] for w in slide["visible_winner_lines"]] == [
+        "Lauréat 0", "Lauréat 1", "Lauréat 2",
+    ]
+    assert [w["name"] for w in slide["overflow_winner_lines"]] == [
+        "Lauréat 3", "Lauréat 4", "Lauréat 5",
+    ]
+
+
+def test_trophy_carousel_journee_parfaite_hides_overflow_until_click(client):
+    day = "2100-08-05"
+    winners = [_new_participant(f"Parfait {idx}") for idx in range(7)]
+    _seed_carousel_awards(
+        day,
+        [(participant_id, "journee_parfaite", day) for participant_id in winners],
+    )
+
+    html = client.get(f"/p/{_participant_token(winners[0])}/classement").text
+    carousel = html[
+        html.index('data-trophy-carousel'):
+        html.index('class="podium"', html.index('data-trophy-carousel'))
+    ]
+    visible, overflow = carousel.split(
+        '<span class="tc-overflow" id="tc-overflow-1" hidden>', 1
+    )
+
+    assert "La Journée Parfaite" in carousel
+    assert "Parfait 0" in visible
+    assert "Parfait 1" in visible
+    assert "Parfait 2" in visible
+    assert "Parfait 3" not in visible
+    assert "Parfait 3" in overflow
+    assert "Parfait 6" in overflow
+    assert (
+        'data-tc-overflow aria-expanded="false" '
+        'aria-controls="tc-overflow-1">+4 autres</button>'
+    ) in carousel
+
+
+def test_trophy_carousel_overflow_keeps_details_for_other_trophies():
+    day = "2100-08-05"
+    winners = [_new_participant(f"Détail {idx}") for idx in range(5)]
+    matches = [
+        _mk_match(result="team1", s1=5 + idx, s2=1, date=day)
+        for idx in range(len(winners))
+    ]
+    _seed_carousel_awards(
+        day,
+        [
+            (participant_id, "extraterrestre", str(match_id))
+            for participant_id, match_id in zip(winners, matches)
+        ],
+    )
+
+    slide = next(item for item in _carousel_items() if item["key"] == "extraterrestre")
+
+    assert slide["context_line"] == ""
+    assert [w["name"] for w in slide["visible_winner_lines"]] == [
+        "Détail 0", "Détail 1", "Détail 2",
+    ]
+    assert [w["name"] for w in slide["overflow_winner_lines"]] == [
+        "Détail 3", "Détail 4",
+    ]
+    assert slide["overflow_winner_lines"][0]["detail"] == "A 8-1 B"
+
+
+def test_trophy_carousel_hidden_overflow_css_contract():
+    source = Path("app/static/css/resa.css").read_text()
+
+    assert ".tc-overflow[hidden] { display: none; }" in source
 
 
 def test_trophy_carousel_threshold_contexts_are_compact():

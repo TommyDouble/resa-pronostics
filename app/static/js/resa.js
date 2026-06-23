@@ -1172,14 +1172,19 @@ function initTrophyCarousel() {
   var dots = Array.from(el.querySelectorAll('.tc-dot'));
 
   el.querySelectorAll('[data-tc-overflow]').forEach(function(btn) {
-    btn.dataset.originalText = btn.textContent;
+    btn.dataset.originalText = btn.textContent.trim();
+    btn.textContent = btn.dataset.originalText;
+    btn.setAttribute('aria-expanded', 'false');
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
       var card = btn.closest('.tc-card') || btn.closest('.tc-slide');
       var overflow = card ? card.querySelector('.tc-overflow') : null;
       if (overflow) {
         overflow.hidden = !overflow.hidden;
-        btn.textContent = overflow.hidden ? btn.dataset.originalText : 'Voir moins';
+        var expanded = !overflow.hidden;
+        btn.textContent = expanded ? 'Voir moins' : btn.dataset.originalText;
+        btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        if (slides.length > 1) pauseAndResume();
       }
     });
   });

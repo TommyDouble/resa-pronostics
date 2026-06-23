@@ -123,6 +123,7 @@
     <div class="tc-global-label">{{ carousel_items[0].carousel_label }}</div>
     <div class="tc-track">
       {% for item in carousel_items %}
+      {% set slide_idx = loop.index %}
       <div class="tc-slide" role="group"
            aria-label="Troph&#233;e {{ loop.index }} sur {{ carousel_items|length }}">
         <div class="climber-hero tc-card rar-border-{{ item.rarity }}">
@@ -143,17 +144,18 @@
           {% if item.context_line %}
           <div class="tc-context">{{ item.context_line }}</div>
           {% endif %}
-          <div class="tc-winners{% if item.winner_lines[0].detail is defined and item.winner_lines[0].detail %} tc-has-detail{% endif %}">
-            {% for w in item.winner_lines[:3] %}
+          <div class="tc-winners{% if item.visible_winner_lines[0].detail is defined and item.visible_winner_lines[0].detail %} tc-has-detail{% endif %}">
+            {% for w in item.visible_winner_lines %}
             <span class="tc-winner{% if w.is_me %} tc-me{% endif %}">{{ w.name }}{% if w.detail %}<span class="tc-wdetail">{{ w.detail }}</span>{% endif %}</span>
             {% endfor %}
-            {% if item.winner_lines|length > 3 %}
-            <span class="tc-overflow" hidden>
-              {% for w in item.winner_lines[3:] %}
+            {% if item.overflow_winner_lines %}
+            <span class="tc-overflow" id="tc-overflow-{{ slide_idx }}" hidden>
+              {% for w in item.overflow_winner_lines %}
               <span class="tc-winner{% if w.is_me %} tc-me{% endif %}">{{ w.name }}{% if w.detail %}<span class="tc-wdetail">{{ w.detail }}</span>{% endif %}</span>
               {% endfor %}
             </span>
-            <button type="button" class="tc-show-more rar-text-{{ item.rarity }}" data-tc-overflow>+{{ item.winner_lines|length - 3 }} autre{{ 's' if item.winner_lines|length - 3 > 1 else '' }}</button>
+            <button type="button" class="tc-show-more rar-text-{{ item.rarity }}"
+                    data-tc-overflow aria-expanded="false" aria-controls="tc-overflow-{{ slide_idx }}">+{{ item.overflow_winner_lines|length }} autre{{ 's' if item.overflow_winner_lines|length > 1 else '' }}</button>
             {% endif %}
           </div>
         </div>

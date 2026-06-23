@@ -2612,6 +2612,7 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 }
 .tc-overflow { display: inline; }
 .tc-has-detail .tc-overflow { display: block; }
+.tc-overflow[hidden] { display: none; }
 .tc-show-more {
   display: block; margin-top: 4px;
   font-size: 13px; font-weight: 700; cursor: pointer;
