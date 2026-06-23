@@ -2554,6 +2554,13 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 
 /* Carrousel de trophées (encart supérieur du classement général) */
 .trophy-carousel { display: flex; flex-direction: column; gap: 8px; }
+.tc-global-label {
+  color: var(--n600);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 0 2px;
+}
 .tc-track {
   display: flex;
   overflow-x: auto;
@@ -2581,12 +2588,16 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 }
 .tc-row1 .ch-kicker { font-size: 12px; }
 .tc-right { display: flex; align-items: center; gap: 6px; flex: none; }
-.tc-day { font-size: 12px; white-space: nowrap; }
 .tc-row2 {
   display: flex; align-items: center; justify-content: space-between;
   gap: 8px; margin-top: 4px;
 }
 .tc-names { font-weight: 700; font-size: 15px; }
+.tc-more {
+  color: var(--n600);
+  font-size: 13px;
+  white-space: nowrap;
+}
 .tc-context {
   margin-top: 4px;
   color: var(--n600);

@@ -120,6 +120,7 @@
   {% if view == 'general' and carousel_items %}
   <div class="trophy-carousel" data-trophy-carousel
        role="region" aria-roledescription="carrousel" aria-label="Troph&#233;es du jour">
+    <div class="tc-global-label">{{ carousel_items[0].carousel_label }}</div>
     <div class="tc-track">
       {% for item in carousel_items %}
       <div class="tc-slide" role="group"
@@ -130,21 +131,22 @@
               <span class="tc-icon" aria-hidden="true">
                 <img src="/static/img/trophies/noto/{{ item.icon_key }}.svg" alt="">
               </span>
-              {{ item.label }} · derni&#232;re journ&#233;e finalis&#233;e
+              {{ item.label }}
             </span>
             <span class="tc-right">
-              <span class="tc-day">{{ item.day_label }}</span>
               <span class="help-tip" tabindex="0" data-tip="{{ item.tip_segments | join(' · ') }}">?</span>
             </span>
           </div>
           <div class="tc-row2">
-            <span class="tc-names">{{ item.winner_names | join(' · ') }}</span>
+            <span class="tc-names">
+              {{ item.visible_names | join(' · ') }}{% if item.hidden_count %} <span class="tc-more">+{{ item.hidden_count }}</span>{% endif %}
+            </span>
             {% if item.shared_delta %}
             <span class="chip up ch-delta">▲ {{ item.shared_delta }} place{{ 's' if item.shared_delta > 1 else '' }}</span>
             {% endif %}
           </div>
-          {% if item.shared_origin_text or item.origin_hint %}
-          <div class="tc-context">{{ item.shared_origin_text or item.origin_hint }}</div>
+          {% if item.card_context or item.detail_hint %}
+          <div class="tc-context">{{ item.card_context or item.detail_hint }}</div>
           {% endif %}
         </div>
       </div>
