@@ -43,6 +43,18 @@ def _new_participant(name="J", dept=None):
     return run(_c())
 
 
+def _participant_token(participant_id):
+    async def _c():
+        async with get_db() as db:
+            row = await (await db.execute(
+                "SELECT token FROM participants WHERE id=?",
+                (participant_id,),
+            )).fetchone()
+            return row["token"]
+
+    return run(_c())
+
+
 def _set_nickname(pid, nickname):
     async def _c():
         async with get_db() as db:
@@ -486,10 +498,12 @@ def test_trophy_carousel_filters_empty_names_and_shared_match_origin():
 
     slide = next(item for item in _carousel_items() if item["key"] == "extraterrestre")
 
-    assert slide["winner_names"] == ["À moi la cagnotte !", "Apaches Power"]
-    assert " · · " not in " · ".join(slide["winner_names"])
-    assert slide["shared_origin_text"] == "Match : A 5-1 B"
-    assert slide["origin_hint"] == ""
+    assert slide["carousel_label"].endswith("1 août")
+    assert slide["visible_names"] == ["À moi la cagnotte !", "Apaches Power"]
+    assert slide["hidden_count"] == 0
+    assert " · · " not in " · ".join(slide["visible_names"])
+    assert slide["card_context"] == "A 5-1 B"
+    assert slide["detail_hint"] == ""
     assert slide["tip_segments"] == ["Comment. Est-ce. Possible."]
 
 
@@ -509,10 +523,10 @@ def test_trophy_carousel_keeps_different_match_origins_in_help():
 
     slide = next(item for item in _carousel_items() if item["key"] == "extraterrestre")
 
-    assert slide["shared_origin_text"] == ""
-    assert slide["origin_hint"] == "Origines détaillées dans l’aide"
-    assert "Origine Alpha — Match : A 5-1 B" in slide["tip_lines"]
-    assert "Origine Beta — Match : A 4-4 B" in slide["tip_lines"]
+    assert slide["card_context"] == ""
+    assert slide["detail_hint"] == "Détails par lauréat dans ?"
+    assert "Origine Alpha — A 5-1 B" in slide["tip_lines"]
+    assert "Origine Beta — A 4-4 B" in slide["tip_lines"]
 
 
 def test_trophy_carousel_origin_rules_for_day_pair_and_summary():
@@ -520,7 +534,7 @@ def test_trophy_carousel_origin_rules_for_day_pair_and_summary():
     climber = _new_participant("Règle Grimpeur")
     twin = _new_participant("Règle Jumeau")
     other_twin = _new_participant("Double Miroir")
-    champion = _new_participant("Règle Champion")
+    champion = _new_participant("Règle Champion", "Technique et Opérationnel")
     _seed_carousel_awards(
         day,
         [
@@ -533,12 +547,93 @@ def test_trophy_carousel_origin_rules_for_day_pair_and_summary():
 
     slides = {item["key"]: item for item in _carousel_items()}
 
-    assert slides["grimpeur"]["shared_origin_text"].startswith("Origine : Journée du")
-    assert slides["le_jumeau"]["shared_origin_text"] == "Origine : avec Double Miroir"
-    assert (
-        slides["champion_tournoi"]["shared_origin_text"]
-        == "Origine : Département en tête fin du tournoi"
+    assert slides["grimpeur"]["card_context"] == ""
+    assert slides["grimpeur"]["shared_delta"] == 4
+    assert slides["le_jumeau"]["visible_names"] == ["Règle Jumeau avec Double Miroir"]
+    assert slides["champion_tournoi"]["visible_names"] == ["Technique et Opérationnel"]
+    assert slides["champion_tournoi"]["card_context"] == "Membres : Règle Champion"
+
+
+def test_trophy_carousel_global_label_and_no_repeated_day(client):
+    day = "2100-08-04"
+    viewer = _new_participant("Vue Carrousel")
+    _seed_carousel_awards(day, [(viewer, "journee_parfaite", day)])
+
+    html = client.get(f"/p/{_participant_token(viewer)}/classement").text
+    carousel = html[html.index('data-trophy-carousel'):html.index('class="podium"', html.index('data-trophy-carousel'))]
+
+    assert "Trophées de la dernière journée finalisée" in carousel
+    assert "derni&#232;re journ&#233;e finalis&#233;e" not in carousel
+    assert "Origine" not in carousel
+    assert "Journée du" not in carousel
+
+
+def test_trophy_carousel_limits_visible_winners_and_keeps_full_list_in_help():
+    day = "2100-08-05"
+    winners = [_new_participant(f"Lauréat {idx}") for idx in range(6)]
+    match_id = _mk_match(result="team1", s1=5, s2=1, date=day)
+    _seed_carousel_awards(
+        day,
+        [(participant_id, "extraterrestre", str(match_id)) for participant_id in winners],
     )
+
+    slide = next(item for item in _carousel_items() if item["key"] == "extraterrestre")
+
+    assert slide["visible_names"] == ["Lauréat 0", "Lauréat 1", "Lauréat 2", "Lauréat 3"]
+    assert slide["hidden_count"] == 2
+    assert any("Lauréat 5" in segment for segment in slide["tip_segments"])
+
+
+def test_trophy_carousel_threshold_contexts_are_compact():
+    day = "2100-08-06"
+    sniper = _new_participant("Seuil Sniper")
+    serie = _new_participant("Seuil Série")
+    nul = _new_participant("Seuil Nul")
+    match_id = _mk_match(result="draw", s1=1, s2=1, date=day)
+    _seed_carousel_awards(
+        day,
+        [
+            (sniper, "sniper", str(match_id)),
+            (serie, "la_serie", str(match_id)),
+            (nul, "roi_du_nul", str(match_id)),
+        ],
+    )
+
+    slides = {item["key"]: item for item in _carousel_items()}
+
+    assert slides["sniper"]["card_context"] == "14e score exact · A 1-1 B"
+    assert slides["la_serie"]["card_context"] == "8e bon résultat · A 1-1 B"
+    assert slides["roi_du_nul"]["card_context"] == "5e nul trouvé · A 1-1 B"
+
+
+def test_trophy_carousel_taquin_and_summary_labels_are_visible():
+    day = "2100-08-07"
+    second = _new_participant("Anti Deuxième")
+    spoon = _new_participant("Anti Cuillère")
+    mad = _new_participant("Anti Savant")
+    killer = _new_participant("Favoris Killer")
+    cold = _new_participant("Sang Froid")
+    oracle = _new_participant("Oracle Court")
+    _seed_carousel_awards(
+        day,
+        [
+            (second, "eternel_deuxieme", ""),
+            (spoon, "cuillere_en_bois", ""),
+            (mad, "savant_fou", ""),
+            (killer, "tueur_de_favoris", ""),
+            (cold, "sang_froid", ""),
+            (oracle, "oracle", ""),
+        ],
+    )
+
+    slides = {item["key"]: item for item in _carousel_items()}
+
+    assert slides["eternel_deuxieme"]["card_context"] == "À un but près, encore."
+    assert slides["cuillere_en_bois"]["card_context"] == "Dernier, mais officiellement décoré."
+    assert slides["savant_fou"]["card_context"] == "Des scores venus du labo."
+    assert slides["tueur_de_favoris"]["card_context"] == "3 surprises trouvées"
+    assert slides["sang_froid"]["card_context"] == "Bilan phase finale"
+    assert slides["oracle"]["card_context"] == "Prono pré-tournoi"
 
 
 # --- Série de connexions (inchangé) ---------------------------------------

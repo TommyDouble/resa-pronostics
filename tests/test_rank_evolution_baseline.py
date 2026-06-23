@@ -311,7 +311,7 @@ def test_climber_banner_lists_its_sporting_day_matches(client):
 
         html = client.get(f"/p/{_participant_token(a)}/classement").text
         assert "Le Grimpeur" in html
-        assert "derni&#232;re journ&#233;e finalis&#233;e" in html
+        assert "Trophées de la dernière journée finalisée" in html
         assert "Fusée Liste" in html
         assert "▲ 2 places" in html
         assert "data-trophy-carousel" in html
@@ -340,7 +340,7 @@ def test_climber_card_groups_tied_names(client):
         html = client.get(f"/p/{_participant_token(first)}/classement").text
 
         assert "Le Grimpeur" in html
-        assert "derni&#232;re journ&#233;e finalis&#233;e" in html
+        assert "Trophées de la dernière journée finalisée" in html
         assert "Alpha Longnom" in html
         assert "Beta Longnom" in html
         assert "▲ 3 places" in html

@@ -46,13 +46,14 @@ PERFECT_MIN_EXACT = 2      # ... dont au moins N scores exacts (sinon trop commu
 
 MATCH_ORIGIN_TROPHIES = {"extraterrestre", "sniper", "la_serie", "roi_du_nul"}
 MATCH_MILESTONE_TROPHIES = {"sniper", "la_serie", "roi_du_nul"}
+CAROUSEL_VISIBLE_LIMIT = 4
 BILAN_ORIGIN_LABELS = {
     "oracle": "Prono pré-tournoi",
     "sang_froid": "Bilan phase finale",
-    "tueur_de_favoris": "Bilan des surprises",
-    "eternel_deuxieme": "Bilan des presque",
-    "cuillere_en_bois": "Bilan du tournoi",
-    "savant_fou": "Bilan des scores exotiques",
+    "tueur_de_favoris": f"{TUEUR_UPSETS} surprises trouvées",
+    "eternel_deuxieme": "À un but près, encore.",
+    "cuillere_en_bois": "Dernier, mais officiellement décoré.",
+    "savant_fou": "Des scores venus du labo.",
     "champion_poules": "Département en tête fin des poules",
     "champion_tournoi": "Département en tête fin du tournoi",
 }
@@ -702,7 +703,8 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
 
     rows = await db.execute(
         "SELECT ta.participant_id, ta.trophy_key, ta.detail, ta.sporting_day, "
-        "ta.awarded_at, COALESCE(NULLIF(p.nickname, ''), p.name) AS participant_name "
+        "ta.awarded_at, COALESCE(NULLIF(p.nickname, ''), p.name) AS participant_name, "
+        "p.department "
         "FROM trophy_awards ta "
         "JOIN participants p ON p.id = ta.participant_id "
         "WHERE ta.sporting_day = ?",
@@ -736,13 +738,12 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
             meta["key"], r, format_sporting_day_fr,
             match_names, participant_names,
         )
-        origin_prefix = _origin_prefix(meta["key"])
-        origin_text = _origin_text(origin_prefix, event_label)
         participant_name = (r.get("participant_name") or "").strip()
         winner = {
             "participant_id": r["participant_id"],
             "participant_name": participant_name,
-            "origin_text": origin_text,
+            "department": (r.get("department") or "").strip(),
+            "event_label": event_label,
             "delta": climber_deltas.get(r["participant_id"]) if meta["key"] == "grimpeur" else None,
         }
         if meta["key"] not in grouped:
@@ -761,20 +762,59 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
         })
 
     day_label = format_sporting_day_fr(day)
+    carousel_label = f"Trophées de la dernière journée finalisée · {day_label}"
 
     for slide in grouped.values():
+        key = slide["key"]
         slide["day_label"] = day_label
+        slide["carousel_label"] = carousel_label
         winners = slide["winners"]
-        slide["winner_names"] = [
-            w["participant_name"] for w in winners if w["participant_name"]
-        ]
-        origin_texts = {w["origin_text"] for w in winners if w["origin_text"]}
-        if len(origin_texts) == 1:
-            slide["shared_origin_text"] = origin_texts.pop()
+
+        detail_lines = []
+        detail_hint = ""
+        card_context = ""
+        visible_names: list[str] = []
+        hidden_count = 0
+
+        if key in ("champion_poules", "champion_tournoi"):
+            departments = _unique_nonempty(w["department"] for w in winners)
+            visible_names, hidden_count = _limited_items(departments)
+            member_names = _unique_nonempty(w["participant_name"] for w in winners)
+            card_context = _limited_context("Membres", member_names)
+            if len(member_names) > CAROUSEL_VISIBLE_LIMIT:
+                detail_lines.append(f"Membres : {' · '.join(member_names)}")
+        elif key == "le_jumeau":
+            pair_labels = []
             for w in winners:
-                w["origin_text"] = ""
+                if w["participant_name"] and w["event_label"]:
+                    pair_labels.append(f"{w['participant_name']} {w['event_label']}")
+                elif w["participant_name"]:
+                    pair_labels.append(w["participant_name"])
+            visible_names, hidden_count = _limited_items(pair_labels)
+            if len(pair_labels) > CAROUSEL_VISIBLE_LIMIT:
+                detail_lines.append(f"Paires : {' · '.join(pair_labels)}")
         else:
-            slide["shared_origin_text"] = ""
+            visible_names, hidden_count = _limited_items(
+                _unique_nonempty(w["participant_name"] for w in winners)
+            )
+
+        if hidden_count:
+            full_names = _unique_nonempty(w["participant_name"] for w in winners)
+            if key not in ("champion_poules", "champion_tournoi", "le_jumeau"):
+                detail_lines.append(f"Lauréats : {' · '.join(full_names)}")
+
+        event_labels = {w["event_label"] for w in winners if w["event_label"]}
+        if key not in ("champion_poules", "champion_tournoi", "le_jumeau"):
+            if len(event_labels) == 1:
+                card_context = event_labels.pop()
+            elif len(event_labels) > 1:
+                detail_hint = "Détails par lauréat dans ?"
+                detail_lines.extend(
+                    f"{w['participant_name']} — {w['event_label']}"
+                    for w in winners
+                    if w["participant_name"] and w["event_label"]
+                )
+
         deltas = {w["delta"] for w in winners if w["delta"] is not None}
         if len(deltas) == 1:
             slide["shared_delta"] = deltas.pop()
@@ -782,17 +822,24 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
                 w["delta"] = None
         else:
             slide["shared_delta"] = None
-        has_per_winner = any(w["origin_text"] for w in winners)
-        slide["origin_hint"] = "Origines détaillées dans l’aide" if has_per_winner else ""
-        if has_per_winner:
-            slide["tip_lines"] = [
-                f"{w['participant_name']} — {w['origin_text']}"
-                for w in winners if w["participant_name"] and w["origin_text"]
+
+        if key == "grimpeur" and slide["shared_delta"] is None:
+            delta_lines = [
+                f"{w['participant_name']} — ▲ {w['delta']} place{'s' if w['delta'] > 1 else ''}"
+                for w in winners
+                if w["participant_name"] and w["delta"] is not None
             ]
-        else:
-            slide["tip_lines"] = []
+            if delta_lines:
+                detail_hint = "Détails par lauréat dans ?"
+                detail_lines.extend(delta_lines)
+
+        slide["visible_names"] = visible_names
+        slide["hidden_count"] = hidden_count
+        slide["card_context"] = card_context
+        slide["detail_hint"] = detail_hint
+        slide["tip_lines"] = detail_lines
         slide["tip_segments"] = [
-            segment for segment in [slide["caption"], *slide["tip_lines"]]
+            segment for segment in [slide["caption"], *detail_lines]
             if segment
         ]
 
@@ -862,6 +909,32 @@ def _occurrence_label(
     return " · ".join(parts)
 
 
+def _unique_nonempty(values) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        clean = (value or "").strip()
+        if clean and clean not in seen:
+            seen.add(clean)
+            result.append(clean)
+    return result
+
+
+def _limited_items(items: list[str], limit: int = CAROUSEL_VISIBLE_LIMIT) -> tuple[list[str], int]:
+    visible = items[:limit]
+    return visible, max(0, len(items) - len(visible))
+
+
+def _limited_context(label: str, items: list[str]) -> str:
+    visible, hidden = _limited_items(items)
+    if not visible:
+        return ""
+    parts = [*visible]
+    if hidden:
+        parts.append(f"+{hidden}")
+    return f"{label} : {' · '.join(parts)}"
+
+
 def _event_label(
     key: str,
     occurrence: dict,
@@ -869,25 +942,22 @@ def _event_label(
     match_names: dict,
     participant_names: dict,
 ) -> str:
+    if key in ("grimpeur", "journee_parfaite"):
+        return ""
     detail = _detail_label(
         key, occurrence.get("detail") or "", fmt_day, match_names, participant_names
     )
     if detail:
+        if key == "sniper":
+            return f"{SNIPER_EXACT}e score exact · {detail}"
+        if key == "la_serie":
+            return f"{SERIE_STREAK}e bon résultat · {detail}"
+        if key == "roi_du_nul":
+            return f"{ROI_NUL_DRAWS}e nul trouvé · {detail}"
         return detail
     if key in BILAN_ORIGIN_LABELS:
         return BILAN_ORIGIN_LABELS[key]
-    sporting_day = occurrence.get("sporting_day")
-    if sporting_day and key in MATCH_ORIGIN_TROPHIES:
-        return f"Journée du {fmt_day(sporting_day)}"
     return ""
-
-
-def _origin_prefix(key: str) -> str:
-    return "Match" if key in MATCH_ORIGIN_TROPHIES else "Origine"
-
-
-def _origin_text(prefix: str, label: str) -> str:
-    return f"{prefix} : {label}" if label else ""
 
 
 def _detail_label(key: str, detail: str, fmt_day, match_names: dict, participant_names: dict) -> str:
