@@ -47,6 +47,7 @@ PERFECT_MIN_EXACT = 2      # ... dont au moins N scores exacts (sinon trop commu
 MATCH_ORIGIN_TROPHIES = {"extraterrestre", "sniper", "la_serie", "roi_du_nul"}
 MATCH_MILESTONE_TROPHIES = {"sniper", "la_serie", "roi_du_nul"}
 CAROUSEL_VISIBLE_LIMIT = 4
+TROPHY_CAROUSEL_VISIBLE_WINNERS = 3
 BILAN_ORIGIN_LABELS = {
     "oracle": "Prono pré-tournoi",
     "sang_froid": "Bilan phase finale",
@@ -768,8 +769,6 @@ async def all_ephemeral_badges(
     day_label = format_sporting_day_fr(day)
     carousel_label = f"Trophées de la dernière journée finalisée · {day_label}"
 
-    WINNER_VISIBLE_LIMIT = 3
-
     for slide in grouped.values():
         key = slide["key"]
         slide["day_label"] = day_label
@@ -865,7 +864,11 @@ async def all_ephemeral_badges(
                         winner_lines.insert(0, winner_lines.pop(i))
                         break
 
+        visible_limit = TROPHY_CAROUSEL_VISIBLE_WINNERS
+        slide["winner_visible_limit"] = visible_limit
         slide["winner_lines"] = winner_lines
+        slide["visible_winner_lines"] = winner_lines[:visible_limit]
+        slide["overflow_winner_lines"] = winner_lines[visible_limit:]
         slide["context_line"] = context_line
         slide["current_user_is_winner"] = current_user_is_winner
         slide["tip_segments"] = [
