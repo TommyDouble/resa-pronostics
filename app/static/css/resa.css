@@ -2587,6 +2587,14 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
   gap: 8px; margin-top: 4px;
 }
 .tc-names { font-weight: 700; font-size: 15px; }
+.tc-context {
+  margin-top: 4px;
+  color: var(--n600);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
 .tc-dots {
   display: flex;
   justify-content: center;

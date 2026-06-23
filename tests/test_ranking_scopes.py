@@ -113,8 +113,8 @@ def test_department_rankings_expose_all_members_in_score_order(client):
     assert row["members"] == 2
     assert row["total"] == 8
     assert row["average"] == 4.0
-    assert row["rank"] is None
-    assert row["is_provisional"] is True
+    assert row["rank"] is not None
+    assert row["is_provisional"] is False
     assert row["participants"] == [
         {
             "id": leader["id"],
@@ -145,7 +145,8 @@ def test_department_ranking_renders_collapsed_member_details(client):
     assert all(" open" not in tag for tag in detail_tags)
     assert 'name="department-ranking"' in html
     assert department in html
-    assert "Provisoire · 2/3 inscrits" in html
+    assert "Provisoire" not in html
+    assert "2 inscrits" in html
     assert "3,5" in html
     assert "Collègue Département" in html
     assert "Moi Département" in html

@@ -48,10 +48,8 @@
           {{ d.department }}
           {% if d.department == 'Sans département' %}
           <small>Non classé · {{ d.members }} inscrit{{ 's' if d.members > 1 else '' }}</small>
-          {% elif d.is_provisional %}
-          <small>Provisoire · {{ d.members }}/3 inscrits{% if d.department == my_department %} · ton équipe{% endif %}</small>
           {% else %}
-          <small>{{ d.members }} inscrits{% if d.department == my_department %} · ton équipe{% endif %}</small>
+          <small>{{ d.members }} inscrit{{ 's' if d.members > 1 else '' }}{% if d.department == my_department %} · ton équipe{% endif %}</small>
           {% endif %}
         </div>
         <span class="sc">{{ average_label }}<small> pts/pers</small></span>
@@ -136,15 +134,18 @@
             </span>
             <span class="tc-right">
               <span class="tc-day">{{ item.day_label }}</span>
-              <span class="help-tip" tabindex="0" data-tip="{{ item.caption }}{% if item.tip_lines %} · {{ item.tip_lines | join(' · ') }}{% endif %}">?</span>
+              <span class="help-tip" tabindex="0" data-tip="{{ item.tip_segments | join(' · ') }}">?</span>
             </span>
           </div>
           <div class="tc-row2">
-            <span class="tc-names">{{ item.winners | map(attribute='participant_name') | join(' · ') }}</span>
+            <span class="tc-names">{{ item.winner_names | join(' · ') }}</span>
             {% if item.shared_delta %}
             <span class="chip up ch-delta">▲ {{ item.shared_delta }} place{{ 's' if item.shared_delta > 1 else '' }}</span>
             {% endif %}
           </div>
+          {% if item.shared_origin_text or item.origin_hint %}
+          <div class="tc-context">{{ item.shared_origin_text or item.origin_hint }}</div>
+          {% endif %}
         </div>
       </div>
       {% endfor %}

@@ -15,7 +15,8 @@ from app.routers.pages import _record_daily_visit
 from app.timeutils import local_today, current_sporting_day
 from app.trophies import (
     TROPHIES, TROPHY_BY_KEY, CATEGORIES, SNIPER_EXACT, refresh_trophy_awards,
-    build_cabinet, latest_ephemeral_badges, _top_department_member_ids,
+    build_cabinet, latest_ephemeral_badges, all_ephemeral_badges,
+    _top_department_member_ids,
 )
 from tests.conftest import run
 
@@ -40,6 +41,18 @@ def _new_participant(name="J", dept=None):
             await db.commit()
             return cur.lastrowid
     return run(_c())
+
+
+def _set_nickname(pid, nickname):
+    async def _c():
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE participants SET nickname=? WHERE id=?",
+                (nickname, pid),
+            )
+            await db.commit()
+
+    run(_c())
 
 
 def _mk_match(result="team1", s1=2, s2=1, phase="group", date="2099-01-01", kickoff="12:00"):
@@ -98,6 +111,44 @@ def _cabinet(pid):
     return run(_c())
 
 
+def _carousel_items():
+    async def _c():
+        async with get_db() as db:
+            return await all_ephemeral_badges(db)
+    return run(_c())[0]
+
+
+def _seed_carousel_awards(day, awards, climbers=None):
+    climbers = climbers or {}
+
+    async def _c():
+        async with get_db() as db:
+            await db.execute("DELETE FROM trophy_awards WHERE sporting_day=?", (day,))
+            await db.execute(
+                "DELETE FROM sporting_day_rank_evolutions WHERE sporting_day=?", (day,)
+            )
+            participant_ids = {participant_id for participant_id, _, _ in awards}
+            for participant_id in participant_ids | set(climbers):
+                delta = climbers.get(participant_id, 0)
+                await db.execute(
+                    """INSERT INTO sporting_day_rank_evolutions
+                       (sporting_day, participant_id, points_before, day_points,
+                        points_after, rank_before, rank_after, delta, is_climber)
+                       VALUES (?, ?, 0, 0, 0, 5, 5, ?, ?)""",
+                    (day, participant_id, delta, 1 if participant_id in climbers else 0),
+                )
+            for participant_id, trophy_key, detail in awards:
+                await db.execute(
+                    """INSERT INTO trophy_awards
+                       (participant_id, trophy_key, detail, sporting_day)
+                       VALUES (?, ?, ?, ?)""",
+                    (participant_id, trophy_key, detail, day),
+                )
+            await db.commit()
+
+    run(_c())
+
+
 # --- Catalogue -------------------------------------------------------------
 
 def test_catalog_integrity():
@@ -132,28 +183,57 @@ def test_sniper_threshold():
         _predict(pid, _mk_match(result="team1", s1=2, s2=1), ps1=2, ps2=1)
     _refresh()
     assert ("sniper", "") not in _awards(pid)   # SNIPER_EXACT-1 exacts : pas encore
-    _predict(pid, _mk_match(result="team1", s1=2, s2=1), ps1=2, ps2=1)
+    trigger_match = _mk_match(result="team1", s1=2, s2=1)
+    _predict(pid, trigger_match, ps1=2, ps2=1)
     _refresh()
-    assert ("sniper", "") in _awards(pid)        # SNIPER_EXACT exacts
+    assert ("sniper", str(trigger_match)) in _awards(pid)  # SNIPER_EXACT exacts
 
 
 def test_la_serie_consecutive():
     pid = _new_participant("Serie")
     # 8 bons résultats d'affilée (dates croissantes => ordre chronologique)
+    trigger_match = None
     for i in range(8):
-        _predict(pid, _mk_match(result="team1", s1=1, s2=0, date=f"2099-02-{i + 1:02d}"),
-                 pred="team1", ps1=3, ps2=0)  # bon résultat, score non exact
+        trigger_match = _mk_match(result="team1", s1=1, s2=0, date=f"2099-02-{i + 1:02d}")
+        _predict(pid, trigger_match, pred="team1", ps1=3, ps2=0)  # bon résultat, score non exact
     _refresh()
-    assert "la_serie" in _keys(pid)
+    assert ("la_serie", str(trigger_match)) in _awards(pid)
+
+
+def test_refresh_backfills_empty_match_origin_without_duplicate():
+    pid = _new_participant("Serie Migrée")
+    trigger_match = None
+    for i in range(8):
+        trigger_match = _mk_match(result="team1", s1=1, s2=0, date=f"2099-09-{i + 1:02d}")
+        _predict(pid, trigger_match, pred="team1", ps1=3, ps2=0)
+
+    async def _seed_legacy_award():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO trophy_awards
+                   (participant_id, trophy_key, detail, sporting_day)
+                   VALUES (?, 'la_serie', '', '2099-09-08')""",
+                (pid,),
+            )
+            await db.commit()
+
+    run(_seed_legacy_award())
+    _refresh()
+    awards = _awards(pid)
+
+    assert ("la_serie", "") not in awards
+    assert ("la_serie", str(trigger_match)) in awards
+    assert sum(1 for key, _ in awards if key == "la_serie") == 1
 
 
 def test_roi_du_nul():
     pid = _new_participant("Nul")
+    trigger_match = None
     for i in range(5):
-        _predict(pid, _mk_match(result="draw", s1=1, s2=1, date=f"2099-03-{i + 1:02d}"),
-                 pred="draw", ps1=0, ps2=0)
+        trigger_match = _mk_match(result="draw", s1=1, s2=1, date=f"2099-03-{i + 1:02d}")
+        _predict(pid, trigger_match, pred="draw", ps1=0, ps2=0)
     _refresh()
-    assert "roi_du_nul" in _keys(pid)
+    assert ("roi_du_nul", str(trigger_match)) in _awards(pid)
 
 
 def test_journee_parfaite_repeatable_counts():
@@ -388,6 +468,77 @@ def test_ephemeral_badge_detail_label_sporting_day():
     badges = run(_badges())
     assert pid in badges
     assert "20 juillet" in badges[pid]["detail_label"]
+
+
+def test_trophy_carousel_filters_empty_names_and_shared_match_origin():
+    day = "2100-08-01"
+    alpha = _new_participant("À moi la cagnotte !")
+    beta = _new_participant("Apaches Power")
+    _set_nickname(alpha, "")
+    match_id = _mk_match(result="team1", s1=5, s2=1, date=day)
+    _seed_carousel_awards(
+        day,
+        [
+            (alpha, "extraterrestre", str(match_id)),
+            (beta, "extraterrestre", str(match_id)),
+        ],
+    )
+
+    slide = next(item for item in _carousel_items() if item["key"] == "extraterrestre")
+
+    assert slide["winner_names"] == ["À moi la cagnotte !", "Apaches Power"]
+    assert " · · " not in " · ".join(slide["winner_names"])
+    assert slide["shared_origin_text"] == "Match : A 5-1 B"
+    assert slide["origin_hint"] == ""
+    assert slide["tip_segments"] == ["Comment. Est-ce. Possible."]
+
+
+def test_trophy_carousel_keeps_different_match_origins_in_help():
+    day = "2100-08-02"
+    alpha = _new_participant("Origine Alpha")
+    beta = _new_participant("Origine Beta")
+    first_match = _mk_match(result="team1", s1=5, s2=1, date=day)
+    second_match = _mk_match(result="draw", s1=4, s2=4, date=day)
+    _seed_carousel_awards(
+        day,
+        [
+            (alpha, "extraterrestre", str(first_match)),
+            (beta, "extraterrestre", str(second_match)),
+        ],
+    )
+
+    slide = next(item for item in _carousel_items() if item["key"] == "extraterrestre")
+
+    assert slide["shared_origin_text"] == ""
+    assert slide["origin_hint"] == "Origines détaillées dans l’aide"
+    assert "Origine Alpha — Match : A 5-1 B" in slide["tip_lines"]
+    assert "Origine Beta — Match : A 4-4 B" in slide["tip_lines"]
+
+
+def test_trophy_carousel_origin_rules_for_day_pair_and_summary():
+    day = "2100-08-03"
+    climber = _new_participant("Règle Grimpeur")
+    twin = _new_participant("Règle Jumeau")
+    other_twin = _new_participant("Double Miroir")
+    champion = _new_participant("Règle Champion")
+    _seed_carousel_awards(
+        day,
+        [
+            (climber, "grimpeur", day),
+            (twin, "le_jumeau", str(other_twin)),
+            (champion, "champion_tournoi", ""),
+        ],
+        climbers={climber: 4},
+    )
+
+    slides = {item["key"]: item for item in _carousel_items()}
+
+    assert slides["grimpeur"]["shared_origin_text"].startswith("Origine : Journée du")
+    assert slides["le_jumeau"]["shared_origin_text"] == "Origine : avec Double Miroir"
+    assert (
+        slides["champion_tournoi"]["shared_origin_text"]
+        == "Origine : Département en tête fin du tournoi"
+    )
 
 
 # --- Série de connexions (inchangé) ---------------------------------------

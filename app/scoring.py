@@ -275,9 +275,7 @@ async def get_department_rankings(db) -> list:
     rows = []
     for bucket in departments.values():
         bucket["average"] = round(bucket["total"] / bucket["members"], 1) if bucket["members"] else 0.0
-        bucket["is_provisional"] = (
-            bucket["members"] < 3 or bucket["department"] == "Sans département"
-        )
+        bucket["is_provisional"] = bucket["department"] == "Sans département"
         rows.append(bucket)
     rows.sort(key=lambda r: (
         r["department"] == "Sans département",
