@@ -148,16 +148,14 @@
             <span class="tc-winner{% if w.is_me %} tc-me{% endif %}">{{ w.name }}{% if w.detail %}<span class="tc-wdetail">{{ w.detail }}</span>{% endif %}</span>
             {% endfor %}
             {% if item.winner_lines|length > 3 %}
+            <span class="tc-overflow" hidden>
+              {% for w in item.winner_lines[3:] %}
+              <span class="tc-winner{% if w.is_me %} tc-me{% endif %}">{{ w.name }}{% if w.detail %}<span class="tc-wdetail">{{ w.detail }}</span>{% endif %}</span>
+              {% endfor %}
+            </span>
             <button type="button" class="tc-show-more rar-text-{{ item.rarity }}" data-tc-overflow>+{{ item.winner_lines|length - 3 }} autre{{ 's' if item.winner_lines|length - 3 > 1 else '' }}</button>
             {% endif %}
           </div>
-          {% if item.winner_lines|length > 3 %}
-          <div class="tc-overflow" hidden>
-            {% for w in item.winner_lines[3:] %}
-            <span class="tc-winner{% if w.is_me %} tc-me{% endif %}">{{ w.name }}{% if w.detail %}<span class="tc-wdetail">{{ w.detail }}</span>{% endif %}</span>
-            {% endfor %}
-          </div>
-          {% endif %}
         </div>
       </div>
       {% endfor %}
