@@ -684,7 +684,10 @@ async def latest_ephemeral_badges(db) -> dict[int, dict]:
 RARITY_ORDER = {"legendary": 0, "rare": 1, "common": 2, "anti": 3}
 
 
-async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
+async def all_ephemeral_badges(
+    db,
+    current_participant_id: int | None = None,
+) -> tuple[list[dict], dict[int, list[dict]]]:
     """Tous les trophées de la dernière journée sportive finalisée.
 
     Renvoie (carousel_items, badges_by_participant) :
@@ -744,6 +747,7 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
             "participant_name": participant_name,
             "department": (r.get("department") or "").strip(),
             "event_label": event_label,
+            "detail": r.get("detail") or "",
             "delta": climber_deltas.get(r["participant_id"]) if meta["key"] == "grimpeur" else None,
         }
         if meta["key"] not in grouped:
@@ -764,56 +768,16 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
     day_label = format_sporting_day_fr(day)
     carousel_label = f"Trophées de la dernière journée finalisée · {day_label}"
 
+    WINNER_VISIBLE_LIMIT = 3
+
     for slide in grouped.values():
         key = slide["key"]
         slide["day_label"] = day_label
         slide["carousel_label"] = carousel_label
         winners = slide["winners"]
 
-        detail_lines = []
-        detail_hint = ""
-        card_context = ""
-        visible_names: list[str] = []
-        hidden_count = 0
-
-        if key in ("champion_poules", "champion_tournoi"):
-            departments = _unique_nonempty(w["department"] for w in winners)
-            visible_names, hidden_count = _limited_items(departments)
-            member_names = _unique_nonempty(w["participant_name"] for w in winners)
-            card_context = _limited_context("Membres", member_names)
-            if len(member_names) > CAROUSEL_VISIBLE_LIMIT:
-                detail_lines.append(f"Membres : {' · '.join(member_names)}")
-        elif key == "le_jumeau":
-            pair_labels = []
-            for w in winners:
-                if w["participant_name"] and w["event_label"]:
-                    pair_labels.append(f"{w['participant_name']} {w['event_label']}")
-                elif w["participant_name"]:
-                    pair_labels.append(w["participant_name"])
-            visible_names, hidden_count = _limited_items(pair_labels)
-            if len(pair_labels) > CAROUSEL_VISIBLE_LIMIT:
-                detail_lines.append(f"Paires : {' · '.join(pair_labels)}")
-        else:
-            visible_names, hidden_count = _limited_items(
-                _unique_nonempty(w["participant_name"] for w in winners)
-            )
-
-        if hidden_count:
-            full_names = _unique_nonempty(w["participant_name"] for w in winners)
-            if key not in ("champion_poules", "champion_tournoi", "le_jumeau"):
-                detail_lines.append(f"Lauréats : {' · '.join(full_names)}")
-
-        event_labels = {w["event_label"] for w in winners if w["event_label"]}
-        if key not in ("champion_poules", "champion_tournoi", "le_jumeau"):
-            if len(event_labels) == 1:
-                card_context = event_labels.pop()
-            elif len(event_labels) > 1:
-                detail_hint = "Détails par lauréat dans ?"
-                detail_lines.extend(
-                    f"{w['participant_name']} — {w['event_label']}"
-                    for w in winners
-                    if w["participant_name"] and w["event_label"]
-                )
+        context_line = ""
+        winner_lines: list[dict] = []
 
         deltas = {w["delta"] for w in winners if w["delta"] is not None}
         if len(deltas) == 1:
@@ -823,23 +787,89 @@ async def all_ephemeral_badges(db) -> tuple[list[dict], dict[int, list[dict]]]:
         else:
             slide["shared_delta"] = None
 
-        if key == "grimpeur" and slide["shared_delta"] is None:
-            delta_lines = [
-                f"{w['participant_name']} — ▲ {w['delta']} place{'s' if w['delta'] > 1 else ''}"
-                for w in winners
-                if w["participant_name"] and w["delta"] is not None
-            ]
-            if delta_lines:
-                detail_hint = "Détails par lauréat dans ?"
-                detail_lines.extend(delta_lines)
+        if key in ("champion_poules", "champion_tournoi"):
+            departments = _unique_nonempty(w["department"] for w in winners)
+            for dept in departments:
+                winner_lines.append({"name": dept, "detail": None, "is_me": False})
+            member_names = _unique_nonempty(w["participant_name"] for w in winners)
+            context_line = _limited_context("Membres", member_names)
 
-        slide["visible_names"] = visible_names
-        slide["hidden_count"] = hidden_count
-        slide["card_context"] = card_context
-        slide["detail_hint"] = detail_hint
-        slide["tip_lines"] = detail_lines
+        elif key == "le_jumeau":
+            seen_pairs: set[frozenset] = set()
+            for w in winners:
+                pid = w["participant_id"]
+                partner_id = int(w.get("detail") or 0)
+                pair_key = frozenset([pid, partner_id])
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+                partner_name = participant_names.get(partner_id, "")
+                name = w["participant_name"] or ""
+                if name and partner_name:
+                    label = f"{name} & {partner_name}"
+                else:
+                    label = name or partner_name
+                is_me = (
+                    current_participant_id is not None
+                    and current_participant_id in (pid, partner_id)
+                )
+                winner_lines.append({"name": label, "detail": None, "is_me": is_me})
+
+        else:
+            event_labels = {w["event_label"] for w in winners if w["event_label"]}
+            shared_context = len(event_labels) == 1
+
+            if shared_context and event_labels:
+                context_line = event_labels.pop()
+
+            seen_names: set[str] = set()
+            for w in winners:
+                name = (w.get("participant_name") or "").strip()
+                if not name or name in seen_names:
+                    continue
+                seen_names.add(name)
+                detail = None
+                if not shared_context and w.get("event_label"):
+                    detail = _detail_label(
+                        key, w.get("detail") or "",
+                        format_sporting_day_fr, match_names, participant_names,
+                    )
+                winner_lines.append({
+                    "name": name,
+                    "detail": detail or None,
+                    "is_me": False,
+                })
+
+        current_user_is_winner = False
+        if current_participant_id:
+            for w in winners:
+                if w["participant_id"] == current_participant_id:
+                    current_user_is_winner = True
+                    break
+
+        if current_user_is_winner and key != "le_jumeau":
+            cur_name = ""
+            for w in winners:
+                if w.get("participant_id") == current_participant_id:
+                    cur_name = (w.get("participant_name") or "").strip()
+                    break
+            if cur_name and key not in ("champion_poules", "champion_tournoi"):
+                for i, wl in enumerate(winner_lines):
+                    if wl["name"] == cur_name:
+                        winner_lines[i]["is_me"] = True
+                        winner_lines.insert(0, winner_lines.pop(i))
+                        break
+            if key == "le_jumeau":
+                for i, wl in enumerate(winner_lines):
+                    if wl["is_me"]:
+                        winner_lines.insert(0, winner_lines.pop(i))
+                        break
+
+        slide["winner_lines"] = winner_lines
+        slide["context_line"] = context_line
+        slide["current_user_is_winner"] = current_user_is_winner
         slide["tip_segments"] = [
-            segment for segment in [slide["caption"], *detail_lines]
+            segment for segment in [slide["caption"]]
             if segment
         ]
 

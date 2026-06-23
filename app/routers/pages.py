@@ -1239,7 +1239,7 @@ async def ranking_page(
                     evolution_last_match = encoded_matches[-1] if encoded_matches else None
                 finalized_climbers = await get_latest_finalized_climbers(db)
                 climber_ids = {r["participant_id"] for r in finalized_climbers["climbers"]}
-            carousel_items, badges_by_participant = await all_ephemeral_badges(db)
+            carousel_items, badges_by_participant = await all_ephemeral_badges(db, current_participant_id=p["id"])
         for r in rankings:
             r["is_me"] = (r["id"] == p["id"])
             r["color_class"] = f"c{((r['id'] - 1) % 8) + 1}"
