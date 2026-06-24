@@ -27,11 +27,14 @@ from app.pre_tournament import (
 )
 from app.scoring import (
     calculate_bonus_scores,
+    closest_bonus_standings,
     get_rankings,
+    normalize_closest_config,
     parse_bonus_number,
     parse_revelation_winners,
     recalculate_match_scores,
     recalculate_pre_tournament_scores,
+    serialize_closest_config,
 )
 from app.settings_store import (
     KNOCKOUT_OPEN_KEY,
@@ -135,6 +138,40 @@ def _normalize_bonus_options(answer_type: str, options_text: str):
         if opt.strip()
     ]
     return json.dumps(options, ensure_ascii=False) if options else None
+
+
+def _bonus_int(value, default: int = 0) -> int:
+    try:
+        return max(int(value), 0)
+    except (TypeError, ValueError):
+        return default
+
+
+def _closest_form_config(
+    answer_type: str,
+    points_value: int,
+    award_mode: str,
+    tie_policy: str,
+    rank1_points: int,
+    rank2_points: int,
+    rank3_points: int,
+) -> tuple[int, str | None]:
+    if answer_type != "number":
+        return points_value, None
+    rank_points = [
+        _bonus_int(rank1_points, points_value),
+        _bonus_int(rank2_points, max(points_value - 2, 0)),
+        _bonus_int(rank3_points, max(points_value - 4, 0)),
+    ]
+    if award_mode == "winner_takes_all":
+        rank_points = [rank_points[0], 0, 0]
+    else:
+        award_mode = "podium_custom"
+    if tie_policy not in {"full_skip", "full_dense", "share_occupied"}:
+        tie_policy = "full_skip"
+    return rank_points[0], serialize_closest_config(
+        rank_points[0], award_mode, tie_policy, rank_points
+    )
 
 
 def _push_test_url(token: str, destination: str) -> str:
@@ -1380,9 +1417,16 @@ async def bonus_admin(request: Request):
                 opts = []
             question["options_text"] = "\n".join(opts)
             question["correct_count"] = question.get("correct_count") or 0
+            closest_config = normalize_closest_config(
+                question["points_value"], question.get("scoring_config")
+            )
+            question["closest_award_mode"] = closest_config["award_mode"]
+            question["closest_tie_policy"] = closest_config["tie_policy"]
+            question["closest_rank_points"] = closest_config["rank_points"]
         answer_rows = await db.execute(
             """SELECT
                   ba.question_id,
+                  ba.participant_id,
                   COALESCE(NULLIF(p.nickname, ''), p.name) as participant_name,
                   p.name as full_name,
                   ba.answer,
@@ -1399,6 +1443,18 @@ async def bonus_admin(request: Request):
         for answer in await answer_rows.fetchall():
             answer_dict = dict(answer)
             answers_by_question.setdefault(answer_dict["question_id"], []).append(answer_dict)
+        closest_standings_by_question = {}
+        for question in questions:
+            if question["scoring_mode"] != "closest_podium":
+                continue
+            if not question.get("correct_answer"):
+                continue
+            closest_standings_by_question[question["id"]] = closest_bonus_standings(
+                question["points_value"],
+                question["correct_answer"],
+                answers_by_question.get(question["id"], []),
+                question.get("scoring_config"),
+            )
         pt_sub_row = await db.execute(
             "SELECT COUNT(*) as cnt FROM pre_tournament_predictions WHERE submitted=1"
         )
@@ -1417,6 +1473,7 @@ async def bonus_admin(request: Request):
         "pt_total_count": pt_total_count,
         "pt_deadline": pt_deadline,
         "answers_by_question": answers_by_question,
+        "closest_standings_by_question": closest_standings_by_question,
     })
 
 
@@ -1427,7 +1484,12 @@ async def create_bonus(request: Request,
                        deadline: str = Form(...), timezone_name: str = Form(default=""),
                        options_text: str = Form(default=""),
                        correct_answer: str = Form(default=""),
-                       is_published: int = Form(default=0)):
+                       is_published: int = Form(default=0),
+                       closest_award_mode: str = Form(default="podium_custom"),
+                       closest_tie_policy: str = Form(default="full_skip"),
+                       closest_rank1_points: int = Form(default=6),
+                       closest_rank2_points: int = Form(default=4),
+                       closest_rank3_points: int = Form(default=2)):
     await require_admin(request)
     if answer_type not in {"choice", "number"}:
         _flash(request, "Type de question bonus invalide.", "err")
@@ -1441,6 +1503,15 @@ async def create_bonus(request: Request,
         _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
     scoring_mode = "closest_podium" if answer_type == "number" else "exact"
+    points_value, scoring_config = _closest_form_config(
+        answer_type,
+        points_value,
+        closest_award_mode,
+        closest_tie_policy,
+        closest_rank1_points,
+        closest_rank2_points,
+        closest_rank3_points,
+    )
     options = _normalize_bonus_options(answer_type, options_text)
     if answer_type == "choice" and (not options or len(json.loads(options)) < 2):
         _flash(request, "Ajoute au moins deux options de réponse.", "err")
@@ -1453,8 +1524,9 @@ async def create_bonus(request: Request,
         cursor = await db.execute(
             """INSERT INTO bonus_questions
                (question_text, phase, answer_type, options, points_value,
-                correct_answer, scoring_mode, is_published, deadline)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+                correct_answer, scoring_mode, scoring_config, is_published,
+                deadline)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
                 question_text.strip(),
                 phase,
@@ -1463,6 +1535,7 @@ async def create_bonus(request: Request,
                 points_value,
                 correct_answer.strip() or None,
                 scoring_mode,
+                scoring_config,
                 1 if is_published else 0,
                 deadline_utc,
             )
@@ -1488,6 +1561,11 @@ async def update_bonus_question(
     options_text: str = Form(default=""),
     correct_answer: str = Form(default=""),
     is_published: int = Form(default=0),
+    closest_award_mode: str = Form(default="podium_custom"),
+    closest_tie_policy: str = Form(default="full_skip"),
+    closest_rank1_points: int = Form(default=6),
+    closest_rank2_points: int = Form(default=4),
+    closest_rank3_points: int = Form(default=2),
 ):
     await require_admin(request)
     if phase not in BONUS_PHASES:
@@ -1515,6 +1593,15 @@ async def update_bonus_question(
             _flash(request, "Type de question bonus invalide.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)
         scoring_mode = "closest_podium" if answer_type == "number" else "exact"
+        points_value, scoring_config = _closest_form_config(
+            answer_type,
+            points_value,
+            closest_award_mode,
+            closest_tie_policy,
+            closest_rank1_points,
+            closest_rank2_points,
+            closest_rank3_points,
+        )
         options = _normalize_bonus_options(answer_type, options_text)
         if answer_type == "choice" and (not options or len(json.loads(options)) < 2):
             _flash(request, "Ajoute au moins deux options de réponse.", "err")
@@ -1527,7 +1614,7 @@ async def update_bonus_question(
             """UPDATE bonus_questions
                SET question_text=?, phase=?, answer_type=?, options=?,
                    points_value=?, correct_answer=?, scoring_mode=?,
-                   is_published=?, deadline=?
+                   scoring_config=?, is_published=?, deadline=?
                WHERE id=?""",
             (
                 question_text.strip(),
@@ -1537,6 +1624,7 @@ async def update_bonus_question(
                 points_value,
                 correct_answer.strip() or None,
                 scoring_mode,
+                scoring_config,
                 1 if is_published else 0,
                 deadline_utc,
                 question_id,

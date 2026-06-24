@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS bonus_questions (
   points_value   INTEGER NOT NULL DEFAULT 5,
   correct_answer TEXT,
   scoring_mode   TEXT    NOT NULL DEFAULT 'exact' CHECK(scoring_mode IN ('exact','closest_podium')),
+  scoring_config TEXT,
   is_published   INTEGER NOT NULL DEFAULT 1,
   deadline       TEXT    NOT NULL,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -347,6 +348,7 @@ CREATE INDEX IF NOT EXISTS idx_trophy_awards_participant
             and (
                 "'group'" not in bonus_schema
                 or "scoring_mode" not in bonus_col_names
+                or "scoring_config" not in bonus_col_names
                 or "is_published" not in bonus_col_names
             )
         ):
@@ -355,6 +357,9 @@ CREATE INDEX IF NOT EXISTS idx_trophy_awards_participant
             )
             scoring_mode_expr = (
                 "COALESCE(scoring_mode, 'exact')" if "scoring_mode" in bonus_col_names else "'exact'"
+            )
+            scoring_config_expr = (
+                "scoring_config" if "scoring_config" in bonus_col_names else "NULL"
             )
             await db.execute("PRAGMA foreign_keys = OFF")
             await db.executescript("""
@@ -367,6 +372,7 @@ CREATE TABLE bonus_questions_new (
   points_value   INTEGER NOT NULL DEFAULT 5,
   correct_answer TEXT,
   scoring_mode   TEXT    NOT NULL DEFAULT 'exact' CHECK(scoring_mode IN ('exact','closest_podium')),
+  scoring_config TEXT,
   is_published   INTEGER NOT NULL DEFAULT 1,
   deadline       TEXT    NOT NULL,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -375,10 +381,11 @@ CREATE TABLE bonus_questions_new (
             await db.execute(
                 f"""INSERT INTO bonus_questions_new
                       (id, question_text, phase, answer_type, options, points_value,
-                       correct_answer, scoring_mode, is_published, deadline, created_at)
+                       correct_answer, scoring_mode, scoring_config, is_published,
+                       deadline, created_at)
                     SELECT id, question_text, phase, answer_type, options, points_value,
-                           correct_answer, {scoring_mode_expr}, {is_published_expr},
-                           deadline, created_at
+                           correct_answer, {scoring_mode_expr}, {scoring_config_expr},
+                           {is_published_expr}, deadline, created_at
                     FROM bonus_questions"""
             )
             await db.executescript("""
@@ -432,6 +439,12 @@ async def ensure_bonus_question_drafts(db):
                WHERE question_text=? AND is_published=0""",
             (new_text, old_text),
         )
+    await db.execute(
+        """UPDATE bonus_questions
+           SET scoring_config='{"award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[6,4,2]}'
+           WHERE scoring_mode='closest_podium'
+             AND (scoring_config IS NULL OR scoring_config='')"""
+    )
 
     done = await (await db.execute(
         "SELECT 1 FROM app_settings WHERE key=?", (key,)
@@ -448,6 +461,7 @@ async def ensure_bonus_question_drafts(db):
             "points_value": 6,
             "correct_answer": None,
             "scoring_mode": "closest_podium",
+            "scoring_config": '{"award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[6,4,2]}',
             "is_published": 0,
             "deadline": "2026-06-24T16:59:00",
         },
@@ -459,6 +473,7 @@ async def ensure_bonus_question_drafts(db):
             "points_value": 6,
             "correct_answer": None,
             "scoring_mode": "exact",
+            "scoring_config": None,
             "is_published": 0,
             "deadline": "2026-06-24T16:59:00",
         },
@@ -474,8 +489,9 @@ async def ensure_bonus_question_drafts(db):
         await db.execute(
             """INSERT INTO bonus_questions
                (question_text, phase, answer_type, options, points_value,
-                correct_answer, scoring_mode, is_published, deadline)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+                correct_answer, scoring_mode, scoring_config, is_published,
+                deadline)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
                 draft["question_text"],
                 draft["phase"],
@@ -484,6 +500,7 @@ async def ensure_bonus_question_drafts(db):
                 draft["points_value"],
                 draft["correct_answer"],
                 draft["scoring_mode"],
+                draft["scoring_config"],
                 draft["is_published"],
                 draft["deadline"],
             ),

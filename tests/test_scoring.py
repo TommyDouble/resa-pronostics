@@ -277,3 +277,31 @@ class TestClosestPodiumBonusPoints:
         )
 
         assert scores == {1: 0, 2: 6}
+
+    def test_winner_takes_all_config(self):
+        scores = closest_podium_bonus_points(
+            9,
+            "60",
+            [
+                self.answer(1, "59"),
+                self.answer(2, "61"),
+                self.answer(3, "60"),
+            ],
+            {"award_mode": "winner_takes_all", "tie_policy": "full_skip", "rank_points": [9, 0, 0]},
+        )
+
+        assert scores == {1: 0, 2: 0, 3: 9}
+
+    def test_share_occupied_tie_policy(self):
+        scores = closest_podium_bonus_points(
+            6,
+            "60",
+            [
+                self.answer(1, "59"),
+                self.answer(2, "61"),
+                self.answer(3, "62"),
+            ],
+            {"award_mode": "podium_custom", "tie_policy": "share_occupied", "rank_points": [6, 4, 2]},
+        )
+
+        assert scores == {1: 5, 2: 5, 3: 2}
