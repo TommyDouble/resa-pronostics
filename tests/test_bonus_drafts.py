@@ -73,6 +73,10 @@ def test_seeded_j3_bonus_drafts_visible_admin_hidden_participant(admin_client, p
     assert J3_GOALS in admin_html
     assert J3_POPCORN in admin_html
     assert "Brouillon" in admin_html
+    assert "Recommandé pour une question fun" in admin_html
+    assert "Preset de répartition" in admin_html
+    assert "Enregistrer le brouillon" in admin_html
+    assert "Plein palier, rangs sautés" in admin_html
     assert J3_GOALS not in participant_html
     assert J3_POPCORN not in participant_html
 
@@ -81,6 +85,7 @@ def test_seeded_j3_bonus_drafts_visible_admin_hidden_participant(admin_client, p
     assert goals["answer_type"] == "number"
     assert goals["scoring_mode"] == "closest_podium"
     assert json.loads(goals["scoring_config"]) == {
+        "preset_key": "fun_balanced",
         "award_mode": "podium_custom",
         "tie_policy": "full_skip",
         "rank_points": [6, 4, 2],
@@ -150,6 +155,7 @@ def test_admin_can_configure_closest_points_and_preview_standings(admin_client):
             "answer_type": "number",
             "points_value": "6",
             "deadline": "2035-01-01T12:00",
+            "closest_preset_key": "fun_balanced",
             "closest_award_mode": "podium_custom",
             "closest_tie_policy": "full_skip",
             "closest_rank1_points": "6",
@@ -173,6 +179,7 @@ def test_admin_can_configure_closest_points_and_preview_standings(admin_client):
                 "points_value": "6",
                 "deadline": "2035-01-01T12:00",
                 "correct_answer": "60",
+                "closest_preset_key": "custom",
                 "closest_award_mode": "winner_takes_all",
                 "closest_tie_policy": "full_skip",
                 "closest_rank1_points": "9",
@@ -186,6 +193,7 @@ def test_admin_can_configure_closest_points_and_preview_standings(admin_client):
         question = _bonus_question_by_text(title)
         assert question["points_value"] == 9
         assert json.loads(question["scoring_config"]) == {
+            "preset_key": "custom",
             "award_mode": "winner_takes_all",
             "tie_policy": "full_skip",
             "rank_points": [9, 0, 0],

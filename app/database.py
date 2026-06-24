@@ -441,7 +441,7 @@ async def ensure_bonus_question_drafts(db):
         )
     await db.execute(
         """UPDATE bonus_questions
-           SET scoring_config='{"award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[6,4,2]}'
+           SET scoring_config='{"preset_key":"fun_balanced","award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[6,4,2]}'
            WHERE scoring_mode='closest_podium'
              AND (scoring_config IS NULL OR scoring_config='')"""
     )
@@ -461,7 +461,7 @@ async def ensure_bonus_question_drafts(db):
             "points_value": 6,
             "correct_answer": None,
             "scoring_mode": "closest_podium",
-            "scoring_config": '{"award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[6,4,2]}',
+            "scoring_config": '{"preset_key":"fun_balanced","award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[6,4,2]}',
             "is_published": 0,
             "deadline": "2026-06-24T16:59:00",
         },
