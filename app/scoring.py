@@ -506,38 +506,139 @@ def parse_bonus_number(value) -> Decimal | None:
         return None
 
 
-def closest_podium_bonus_points(points_value: int, correct_answer, answers) -> dict[int, int]:
-    """Generous podium for numeric bonuses: 1st/2nd/3rd distance groups.
+def _row_get(row, key, default=None):
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except (KeyError, IndexError, TypeError):
+        return default
+
+
+def _clean_points(value: Decimal):
+    if value == value.to_integral_value():
+        return int(value)
+    return float(value)
+
+
+def normalize_closest_config(points_value: int, raw_config=None) -> dict:
+    """Normalized config for numeric closest-answer bonus questions."""
+    default_rank_points = [int(points_value), max(int(points_value) - 2, 0), max(int(points_value) - 4, 0)]
+    config = {}
+    if raw_config:
+        try:
+            parsed = json.loads(raw_config) if isinstance(raw_config, str) else raw_config
+            if isinstance(parsed, dict):
+                config = parsed
+        except (TypeError, ValueError):
+            config = {}
+
+    award_mode = config.get("award_mode")
+    if award_mode not in {"podium_custom", "winner_takes_all"}:
+        award_mode = "podium_custom"
+
+    tie_policy = config.get("tie_policy")
+    if tie_policy not in {"full_skip", "full_dense", "share_occupied"}:
+        tie_policy = "full_skip"
+
+    raw_points = config.get("rank_points")
+    rank_points = []
+    if isinstance(raw_points, list):
+        for value in raw_points[:3]:
+            try:
+                rank_points.append(max(int(value), 0))
+            except (TypeError, ValueError):
+                rank_points.append(0)
+    while len(rank_points) < 3:
+        rank_points.append(default_rank_points[len(rank_points)])
+
+    if award_mode == "winner_takes_all":
+        rank_points = [rank_points[0], 0, 0]
+
+    return {
+        "award_mode": award_mode,
+        "tie_policy": tie_policy,
+        "rank_points": rank_points,
+    }
+
+
+def serialize_closest_config(points_value: int, award_mode: str, tie_policy: str, rank_points: list[int]) -> str:
+    config = normalize_closest_config(
+        points_value,
+        {
+            "award_mode": award_mode,
+            "tie_policy": tie_policy,
+            "rank_points": rank_points,
+        },
+    )
+    return json.dumps(config, ensure_ascii=False, separators=(",", ":"))
+
+
+def _closest_group_points(rank: int, tie_size: int, rank_points: list[int], tie_policy: str):
+    if tie_policy == "share_occupied":
+        total = Decimal(0)
+        for place in range(rank, rank + tie_size):
+            if 1 <= place <= len(rank_points):
+                total += Decimal(rank_points[place - 1])
+        return _clean_points(total / Decimal(tie_size))
+    if 1 <= rank <= len(rank_points):
+        return rank_points[rank - 1]
+    return 0
+
+
+def closest_bonus_standings(points_value: int, correct_answer, answers, scoring_config=None) -> dict:
+    """Rank numeric bonus answers by distance from the official answer."""
+    actual = parse_bonus_number(correct_answer)
+    config = normalize_closest_config(points_value, scoring_config)
+    standings = {
+        "actual": actual,
+        "groups": [],
+        "invalid": [],
+        "config": config,
+    }
+    if actual is None:
+        return standings
+
+    by_distance = {}
+    for ans in answers:
+        predicted = parse_bonus_number(_row_get(ans, "answer"))
+        if predicted is None:
+            standings["invalid"].append(ans)
+            continue
+        distance = abs(predicted - actual)
+        by_distance.setdefault(distance, []).append(ans)
+
+    better_count = 0
+    for group_index, distance in enumerate(sorted(by_distance), start=1):
+        participants = by_distance[distance]
+        rank = group_index if config["tie_policy"] == "full_dense" else better_count + 1
+        points = _closest_group_points(
+            rank,
+            len(participants),
+            config["rank_points"],
+            config["tie_policy"],
+        )
+        standings["groups"].append({
+            "rank": rank,
+            "distance": distance,
+            "points": points,
+            "participants": participants,
+        })
+        better_count += len(participants)
+    return standings
+
+
+def closest_podium_bonus_points(points_value: int, correct_answer, answers, scoring_config=None) -> dict[int, int]:
+    """Points for numeric closest-answer bonus questions.
 
     Ties receive the full points for their competition rank. If two people tie
     for first, the next distance is rank 3 and receives the third-place tier.
     """
-    actual = parse_bonus_number(correct_answer)
     scores = {ans["participant_id"]: 0 for ans in answers}
-    if actual is None:
-        return scores
-
-    by_distance = {}
-    for ans in answers:
-        predicted = parse_bonus_number(ans["answer"])
-        if predicted is None:
-            continue
-        distance = abs(predicted - actual)
-        by_distance.setdefault(distance, []).append(ans["participant_id"])
-
-    tiers = {
-        1: points_value,
-        2: max(points_value - 2, 0),
-        3: max(points_value - 4, 0),
-    }
-    better_count = 0
-    for distance in sorted(by_distance):
-        participant_ids = by_distance[distance]
-        rank = better_count + 1
-        points = tiers.get(rank, 0)
-        for participant_id in participant_ids:
-            scores[participant_id] = points
-        better_count += len(participant_ids)
+    standings = closest_bonus_standings(points_value, correct_answer, answers, scoring_config)
+    for group in standings["groups"]:
+        for ans in group["participants"]:
+            scores[_row_get(ans, "participant_id")] = group["points"]
     return scores
 
 
@@ -562,7 +663,10 @@ async def calculate_bonus_scores(question_id: int):
             answers = await rows.fetchall()
             if question["scoring_mode"] == "closest_podium":
                 points_by_participant = closest_podium_bonus_points(
-                    question["points_value"], question["correct_answer"], answers
+                    question["points_value"],
+                    question["correct_answer"],
+                    answers,
+                    question["scoring_config"],
                 )
             else:
                 points_by_participant = {}
