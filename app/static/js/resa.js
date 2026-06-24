@@ -694,6 +694,12 @@ function initBonusForms() {
         setError('Indique ta réponse avant de valider.');
         return;
       }
+      var number = form.querySelector('input[type="number"][name="answer"]');
+      if (number && !number.value.trim()) {
+        e.preventDefault();
+        setError('Indique ta réponse avant de valider.');
+        return;
+      }
       setError('');
     });
     form.querySelectorAll('input[name="answer"]').forEach(function(input) {

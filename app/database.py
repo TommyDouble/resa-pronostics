@@ -115,11 +115,13 @@ CREATE TABLE IF NOT EXISTS pre_tournament_predictions (
 CREATE TABLE IF NOT EXISTS bonus_questions (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   question_text  TEXT    NOT NULL,
-  phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','round_of_32','round_of_16','quarter','semi','third_place','final')),
+  phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','group','round_of_32','round_of_16','quarter','semi','third_place','final')),
   answer_type    TEXT    NOT NULL CHECK(answer_type IN ('choice','number','text')),
   options        TEXT,
   points_value   INTEGER NOT NULL DEFAULT 5,
   correct_answer TEXT,
+  scoring_mode   TEXT    NOT NULL DEFAULT 'exact' CHECK(scoring_mode IN ('exact','closest_podium')),
+  is_published   INTEGER NOT NULL DEFAULT 1,
   deadline       TEXT    NOT NULL,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -330,34 +332,62 @@ CREATE INDEX IF NOT EXISTS idx_trophy_awards_participant
             except Exception:
                 pass
 
-        # Migration: étendre les phases autorisées des questions bonus
-        # (huitièmes, 3e place, finale). SQLite ne modifie pas un CHECK:
-        # on reconstruit la table si l'ancien schéma est détecté.
+        # Migration: étendre les phases / modes des questions bonus.
+        # SQLite ne modifie pas un CHECK: on reconstruit la table si l'ancien
+        # schéma est détecté, en conservant les anciennes questions publiées.
+        bonus_cols_rows = await (await db.execute("PRAGMA table_info(bonus_questions)")).fetchall()
+        bonus_col_names = {c["name"] for c in bonus_cols_rows}
         schema_row = await db.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='bonus_questions'"
         )
         schema = await schema_row.fetchone()
-        if schema and "round_of_16" not in schema["sql"]:
+        bonus_schema = schema["sql"] if schema else ""
+        if (
+            schema
+            and (
+                "'group'" not in bonus_schema
+                or "scoring_mode" not in bonus_col_names
+                or "is_published" not in bonus_col_names
+            )
+        ):
+            is_published_expr = (
+                "COALESCE(is_published, 1)" if "is_published" in bonus_col_names else "1"
+            )
+            scoring_mode_expr = (
+                "COALESCE(scoring_mode, 'exact')" if "scoring_mode" in bonus_col_names else "'exact'"
+            )
             await db.execute("PRAGMA foreign_keys = OFF")
             await db.executescript("""
 CREATE TABLE bonus_questions_new (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   question_text  TEXT    NOT NULL,
-  phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','round_of_32','round_of_16','quarter','semi','third_place','final')),
+  phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','group','round_of_32','round_of_16','quarter','semi','third_place','final')),
   answer_type    TEXT    NOT NULL CHECK(answer_type IN ('choice','number','text')),
   options        TEXT,
   points_value   INTEGER NOT NULL DEFAULT 5,
   correct_answer TEXT,
+  scoring_mode   TEXT    NOT NULL DEFAULT 'exact' CHECK(scoring_mode IN ('exact','closest_podium')),
+  is_published   INTEGER NOT NULL DEFAULT 1,
   deadline       TEXT    NOT NULL,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
-INSERT INTO bonus_questions_new
-  SELECT id, question_text, phase, answer_type, options, points_value, correct_answer, deadline, created_at
-  FROM bonus_questions;
+            """)
+            await db.execute(
+                f"""INSERT INTO bonus_questions_new
+                      (id, question_text, phase, answer_type, options, points_value,
+                       correct_answer, scoring_mode, is_published, deadline, created_at)
+                    SELECT id, question_text, phase, answer_type, options, points_value,
+                           correct_answer, {scoring_mode_expr}, {is_published_expr},
+                           deadline, created_at
+                    FROM bonus_questions"""
+            )
+            await db.executescript("""
 DROP TABLE bonus_questions;
 ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
             """)
             await db.execute("PRAGMA foreign_keys = ON")
+
+        await ensure_bonus_question_drafts(db)
 
         # Les anciens brouillons comptent désormais comme des réponses valides.
         await db.execute(
@@ -375,6 +405,93 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await _migrate_trophy_sporting_day(db)
         await _backfill_trophy_awards(db)
         await db.commit()
+
+
+async def ensure_bonus_question_drafts(db):
+    """Prépare les deux bonus J3 en brouillon, une seule fois par base."""
+    key = "bonus_drafts_group_j3_2026_v1"
+    renamed_drafts = [
+        (
+            "Combien de buts seront marqués sur les 24 matchs de la troisième journée des groupes ?",
+            "Feu d'artifice J3 - Combien de buts seront marqués sur les 24 matchs de la troisième journée des groupes ?",
+        ),
+        (
+            "Y aura-t-il au moins un match avec 5 buts ou plus pendant la troisième journée des groupes ?",
+            "Match popcorn J3 - Y aura-t-il au moins un match avec 5 buts ou plus pendant la troisième journée des groupes ?",
+        ),
+    ]
+    for old_text, new_text in renamed_drafts:
+        new_exists = await (await db.execute(
+            "SELECT 1 FROM bonus_questions WHERE question_text=?", (new_text,)
+        )).fetchone()
+        if new_exists:
+            continue
+        await db.execute(
+            """UPDATE bonus_questions
+               SET question_text=?
+               WHERE question_text=? AND is_published=0""",
+            (new_text, old_text),
+        )
+
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    drafts = [
+        {
+            "question_text": "Feu d'artifice J3 - Combien de buts seront marqués sur les 24 matchs de la troisième journée des groupes ?",
+            "phase": "group",
+            "answer_type": "number",
+            "options": None,
+            "points_value": 6,
+            "correct_answer": None,
+            "scoring_mode": "closest_podium",
+            "is_published": 0,
+            "deadline": "2026-06-24T16:59:00",
+        },
+        {
+            "question_text": "Match popcorn J3 - Y aura-t-il au moins un match avec 5 buts ou plus pendant la troisième journée des groupes ?",
+            "phase": "group",
+            "answer_type": "choice",
+            "options": '["Oui","Non"]',
+            "points_value": 6,
+            "correct_answer": None,
+            "scoring_mode": "exact",
+            "is_published": 0,
+            "deadline": "2026-06-24T16:59:00",
+        },
+    ]
+    for draft in drafts:
+        exists = await (await db.execute(
+            """SELECT 1 FROM bonus_questions
+               WHERE question_text=? AND deadline=?""",
+            (draft["question_text"], draft["deadline"]),
+        )).fetchone()
+        if exists:
+            continue
+        await db.execute(
+            """INSERT INTO bonus_questions
+               (question_text, phase, answer_type, options, points_value,
+                correct_answer, scoring_mode, is_published, deadline)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                draft["question_text"],
+                draft["phase"],
+                draft["answer_type"],
+                draft["options"],
+                draft["points_value"],
+                draft["correct_answer"],
+                draft["scoring_mode"],
+                draft["is_published"],
+                draft["deadline"],
+            ),
+        )
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
 
 
 async def _migrate_reveal_sporting_day(db):

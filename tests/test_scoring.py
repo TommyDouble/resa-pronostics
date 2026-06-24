@@ -5,6 +5,7 @@ from app.scoring import (
     calculate_finalists_points,
     calculate_match_score,
     calculate_pre_tournament_points,
+    closest_podium_bonus_points,
     parse_revelation_winners,
 )
 
@@ -234,3 +235,45 @@ class TestAnswersMatch:
     def test_empty(self):
         assert not answers_match("text", "", "x")
         assert not answers_match("text", "x", "")
+
+
+class TestClosestPodiumBonusPoints:
+    def answer(self, participant_id, answer):
+        return {"participant_id": participant_id, "answer": answer}
+
+    def test_unique_podium(self):
+        scores = closest_podium_bonus_points(
+            6,
+            "60",
+            [
+                self.answer(1, "60"),
+                self.answer(2, "59"),
+                self.answer(3, "62"),
+                self.answer(4, "70"),
+            ],
+        )
+
+        assert scores == {1: 6, 2: 4, 3: 2, 4: 0}
+
+    def test_generous_tie_skips_following_rank(self):
+        scores = closest_podium_bonus_points(
+            6,
+            "60",
+            [
+                self.answer(1, "59"),
+                self.answer(2, "61"),
+                self.answer(3, "62"),
+                self.answer(4, "63"),
+            ],
+        )
+
+        assert scores == {1: 6, 2: 6, 3: 2, 4: 0}
+
+    def test_invalid_numeric_answers_score_zero(self):
+        scores = closest_podium_bonus_points(
+            6,
+            "60",
+            [self.answer(1, "beaucoup"), self.answer(2, "60")],
+        )
+
+        assert scores == {1: 0, 2: 6}

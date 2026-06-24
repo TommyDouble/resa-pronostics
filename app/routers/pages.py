@@ -2,6 +2,7 @@
 from collections import defaultdict
 from datetime import date, timedelta
 import io
+import json
 import logging
 import os
 import unicodedata
@@ -50,6 +51,7 @@ from app.scoring import (
     get_remontada,
     is_match_prediction_correct,
     is_match_score_exact,
+    parse_bonus_number,
     predicted_match_winner,
 )
 from app.templating import create_templates
@@ -350,7 +352,8 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
     # Pending bonus questions
     bonus_row = await db.execute(
         """SELECT COUNT(*) as cnt FROM bonus_questions bq
-           WHERE bq.deadline > ? AND NOT EXISTS (
+           WHERE bq.is_published=1
+             AND bq.deadline > ? AND NOT EXISTS (
              SELECT 1 FROM bonus_answers ba
              WHERE ba.question_id = bq.id AND ba.participant_id = ?
            )""",
@@ -1949,6 +1952,7 @@ async def bonus_page(request: Request, token: str):
                  ON ba.question_id = bq.id AND ba.participant_id = ?
                LEFT JOIN scores s
                  ON s.bonus_question_id = bq.id AND s.participant_id = ?
+               WHERE bq.is_published=1
                ORDER BY
                  CASE WHEN bq.deadline > ? THEN 0 ELSE 1 END,
                  bq.deadline ASC,
@@ -1992,12 +1996,24 @@ async def submit_bonus(request: Request, token: str, question_id: int,
                        answer: str = Form(...)):
     p = await require_participant(token)
     async with get_db() as db:
-        q_row = await db.execute("SELECT * FROM bonus_questions WHERE id=?", (question_id,))
+        q_row = await db.execute(
+            "SELECT * FROM bonus_questions WHERE id=? AND is_published=1",
+            (question_id,),
+        )
         q = await q_row.fetchone()
         if not q:
             raise HTTPException(404)
         if q["deadline"] < _now_utc():
             raise HTTPException(403, "Deadline dépassée")
+        answer = answer.strip()
+        if not answer:
+            raise HTTPException(400, "Réponse vide")
+        if q["answer_type"] == "choice" and q["options"]:
+            options = json.loads(q["options"])
+            if answer not in options:
+                raise HTTPException(400, "Réponse invalide")
+        if q["answer_type"] == "number" and parse_bonus_number(answer) is None:
+            raise HTTPException(400, "Réponse numérique invalide")
         await db.execute(
             """INSERT INTO bonus_answers (participant_id, question_id, answer)
                VALUES (?,?,?)

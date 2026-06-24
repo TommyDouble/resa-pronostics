@@ -28,6 +28,7 @@ from app.pre_tournament import (
 from app.scoring import (
     calculate_bonus_scores,
     get_rankings,
+    parse_bonus_number,
     parse_revelation_winners,
     recalculate_match_scores,
     recalculate_pre_tournament_scores,
@@ -65,7 +66,7 @@ PHASE_LABELS = {
 }
 
 BONUS_PHASES = {
-    "pre_tournament", "round_of_32", "round_of_16",
+    "pre_tournament", "group", "round_of_32", "round_of_16",
     "quarter", "semi", "third_place", "final",
 }
 
@@ -254,14 +255,15 @@ async def dashboard(request: Request):
             """SELECT id, question_text,
                  (SELECT COUNT(*) FROM bonus_answers WHERE question_id=bonus_questions.id) AS answers
                FROM bonus_questions
-               WHERE deadline <= ? AND correct_answer IS NULL
+               WHERE is_published=1 AND deadline <= ? AND correct_answer IS NULL
                ORDER BY deadline""",
             (now,),
         )
         bonus_to_close = [dict(r) for r in await bonus_close_rows.fetchall()]
         bonus_soon_rows = await db.execute(
             """SELECT id, question_text, deadline FROM bonus_questions
-               WHERE deadline > ? AND deadline <= datetime(?, '+48 hours')
+               WHERE is_published=1
+                 AND deadline > ? AND deadline <= datetime(?, '+48 hours')
                ORDER BY deadline""",
             (now, now),
         )
@@ -861,6 +863,9 @@ async def force_bonus_answer(request: Request,
                 _flash(request, f"Réponse invalide : choisis parmi {', '.join(options)}.", "err")
                 return redirect
             answer = matched
+        if question["answer_type"] == "number" and parse_bonus_number(answer) is None:
+            _flash(request, "Réponse invalide : indique un nombre.", "err")
+            return redirect
         old_row = await db.execute(
             "SELECT answer FROM bonus_answers WHERE participant_id=? AND question_id=?",
             (participant_id, question_id),
@@ -1421,12 +1426,11 @@ async def create_bonus(request: Request,
                        answer_type: str = Form(...), points_value: int = Form(...),
                        deadline: str = Form(...), timezone_name: str = Form(default=""),
                        options_text: str = Form(default=""),
-                       correct_answer: str = Form(default="")):
+                       correct_answer: str = Form(default=""),
+                       is_published: int = Form(default=0)):
     await require_admin(request)
-    # Seul le choix unique est autorisé : les réponses libres (texte/nombre)
-    # créent des litiges d'arbitrage (accents, orthographe, formats).
-    if answer_type != "choice":
-        _flash(request, "Seules les questions à choix unique sont autorisées.", "err")
+    if answer_type not in {"choice", "number"}:
+        _flash(request, "Type de question bonus invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
     if phase not in BONUS_PHASES:
         _flash(request, "Phase de question bonus invalide.", "err")
@@ -1436,15 +1440,21 @@ async def create_bonus(request: Request,
     except Exception:
         _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
+    scoring_mode = "closest_podium" if answer_type == "number" else "exact"
     options = _normalize_bonus_options(answer_type, options_text)
-    if not options or len(json.loads(options)) < 2:
+    if answer_type == "choice" and (not options or len(json.loads(options)) < 2):
         _flash(request, "Ajoute au moins deux options de réponse.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
+    if scoring_mode == "closest_podium" and correct_answer.strip():
+        if parse_bonus_number(correct_answer) is None:
+            _flash(request, "La réponse correcte doit être un nombre.", "err")
+            return RedirectResponse("/admin/bonus", status_code=303)
     async with get_db() as db:
         cursor = await db.execute(
             """INSERT INTO bonus_questions
-               (question_text, phase, answer_type, options, points_value, correct_answer, deadline)
-               VALUES (?,?,?,?,?,?,?)""",
+               (question_text, phase, answer_type, options, points_value,
+                correct_answer, scoring_mode, is_published, deadline)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (
                 question_text.strip(),
                 phase,
@@ -1452,6 +1462,8 @@ async def create_bonus(request: Request,
                 options,
                 points_value,
                 correct_answer.strip() or None,
+                scoring_mode,
+                1 if is_published else 0,
                 deadline_utc,
             )
         )
@@ -1469,11 +1481,13 @@ async def update_bonus_question(
     question_id: int,
     question_text: str = Form(...),
     phase: str = Form(...),
+    answer_type: str = Form(default=""),
     points_value: int = Form(...),
     deadline: str = Form(...),
     timezone_name: str = Form(default=""),
     options_text: str = Form(default=""),
     correct_answer: str = Form(default=""),
+    is_published: int = Form(default=0),
 ):
     await require_admin(request)
     if phase not in BONUS_PHASES:
@@ -1485,20 +1499,35 @@ async def update_bonus_question(
         _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
     async with get_db() as db:
-        row = await db.execute("SELECT answer_type FROM bonus_questions WHERE id=?", (question_id,))
+        row = await db.execute(
+            """SELECT bq.*,
+                      (SELECT COUNT(*) FROM bonus_answers ba WHERE ba.question_id=bq.id) AS answer_count
+               FROM bonus_questions bq
+               WHERE bq.id=?""",
+            (question_id,),
+        )
         existing = await row.fetchone()
         if not existing:
             raise HTTPException(404)
-        # Le type est figé à la création (choix unique pour les nouvelles questions).
-        answer_type = existing["answer_type"]
+        type_can_change = not existing["is_published"] and existing["answer_count"] == 0
+        answer_type = answer_type if type_can_change and answer_type else existing["answer_type"]
+        if answer_type not in {"choice", "number"}:
+            _flash(request, "Type de question bonus invalide.", "err")
+            return RedirectResponse("/admin/bonus", status_code=303)
+        scoring_mode = "closest_podium" if answer_type == "number" else "exact"
         options = _normalize_bonus_options(answer_type, options_text)
         if answer_type == "choice" and (not options or len(json.loads(options)) < 2):
             _flash(request, "Ajoute au moins deux options de réponse.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)
+        if scoring_mode == "closest_podium" and correct_answer.strip():
+            if parse_bonus_number(correct_answer) is None:
+                _flash(request, "La réponse correcte doit être un nombre.", "err")
+                return RedirectResponse("/admin/bonus", status_code=303)
         await db.execute(
             """UPDATE bonus_questions
                SET question_text=?, phase=?, answer_type=?, options=?,
-                   points_value=?, correct_answer=?, deadline=?
+                   points_value=?, correct_answer=?, scoring_mode=?,
+                   is_published=?, deadline=?
                WHERE id=?""",
             (
                 question_text.strip(),
@@ -1507,6 +1536,8 @@ async def update_bonus_question(
                 options,
                 points_value,
                 correct_answer.strip() or None,
+                scoring_mode,
+                1 if is_published else 0,
                 deadline_utc,
                 question_id,
             ),
@@ -1522,9 +1553,16 @@ async def set_bonus_answer(request: Request, question_id: int,
                             correct_answer: str = Form(...)):
     await require_admin(request)
     async with get_db() as db:
+        row = await db.execute("SELECT scoring_mode FROM bonus_questions WHERE id=?", (question_id,))
+        question = await row.fetchone()
+        if not question:
+            raise HTTPException(404)
+        if question["scoring_mode"] == "closest_podium" and parse_bonus_number(correct_answer) is None:
+            _flash(request, "La réponse correcte doit être un nombre.", "err")
+            return RedirectResponse("/admin/bonus", status_code=303)
         await db.execute(
             "UPDATE bonus_questions SET correct_answer=? WHERE id=?",
-            (correct_answer, question_id)
+            (correct_answer.strip() or None, question_id)
         )
         await db.commit()
     await calculate_bonus_scores(question_id)

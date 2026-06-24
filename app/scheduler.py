@@ -206,7 +206,8 @@ async def _job_pre_tournament_reminder(db, now_iso: str):
 async def _job_bonus_reminders(db, now_iso: str):
     rows = await db.execute(
         """SELECT * FROM bonus_questions
-           WHERE deadline > ?
+           WHERE is_published=1
+             AND deadline > ?
              AND datetime(deadline) <= datetime(?, '+24 hours')""",
         (now_iso, now_iso),
     )

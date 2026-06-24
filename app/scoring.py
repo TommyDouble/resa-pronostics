@@ -1,5 +1,6 @@
 """Score calculation logic per spec."""
 import json
+from decimal import Decimal, InvalidOperation
 
 from app.database import get_db
 from app.timeutils import sporting_day
@@ -163,7 +164,7 @@ _SCOPE_POINTS = {
                   WHERE s.participant_id = p.id AND m.phase = 'group'), 0)
           + COALESCE((SELECT SUM(s.points) FROM scores s
                       JOIN bonus_questions bq ON bq.id = s.bonus_question_id
-                      WHERE s.participant_id = p.id AND bq.phase = 'pre_tournament'), 0)
+                      WHERE s.participant_id = p.id AND bq.phase IN ('pre_tournament', 'group')), 0)
           + COALESCE((SELECT SUM(ps.points) FROM pre_tournament_scores ps WHERE ps.participant_id = p.id), 0)
     """,
 }
@@ -494,6 +495,52 @@ def answers_match(answer_type: str, given: str, correct: str) -> bool:
     return given == correct
 
 
+def parse_bonus_number(value) -> Decimal | None:
+    """Parse a bonus numeric answer with comma/dot tolerance."""
+    raw = str(value or "").strip().replace(",", ".")
+    if not raw:
+        return None
+    try:
+        return Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def closest_podium_bonus_points(points_value: int, correct_answer, answers) -> dict[int, int]:
+    """Generous podium for numeric bonuses: 1st/2nd/3rd distance groups.
+
+    Ties receive the full points for their competition rank. If two people tie
+    for first, the next distance is rank 3 and receives the third-place tier.
+    """
+    actual = parse_bonus_number(correct_answer)
+    scores = {ans["participant_id"]: 0 for ans in answers}
+    if actual is None:
+        return scores
+
+    by_distance = {}
+    for ans in answers:
+        predicted = parse_bonus_number(ans["answer"])
+        if predicted is None:
+            continue
+        distance = abs(predicted - actual)
+        by_distance.setdefault(distance, []).append(ans["participant_id"])
+
+    tiers = {
+        1: points_value,
+        2: max(points_value - 2, 0),
+        3: max(points_value - 4, 0),
+    }
+    better_count = 0
+    for distance in sorted(by_distance):
+        participant_ids = by_distance[distance]
+        rank = better_count + 1
+        points = tiers.get(rank, 0)
+        for participant_id in participant_ids:
+            scores[participant_id] = points
+        better_count += len(participant_ids)
+    return scores
+
+
 async def calculate_bonus_scores(question_id: int):
     """Calculate scores for a bonus question after correct answer is set."""
     async with get_db() as db:
@@ -513,11 +560,20 @@ async def calculate_bonus_scores(question_id: int):
                 "SELECT * FROM bonus_answers WHERE question_id = ?", (question_id,)
             )
             answers = await rows.fetchall()
-            for ans in answers:
-                correct = answers_match(
-                    question["answer_type"], ans["answer"], question["correct_answer"]
+            if question["scoring_mode"] == "closest_podium":
+                points_by_participant = closest_podium_bonus_points(
+                    question["points_value"], question["correct_answer"], answers
                 )
-                points = question["points_value"] if correct else 0
+            else:
+                points_by_participant = {}
+            for ans in answers:
+                if question["scoring_mode"] == "closest_podium":
+                    points = points_by_participant.get(ans["participant_id"], 0)
+                else:
+                    correct = answers_match(
+                        question["answer_type"], ans["answer"], question["correct_answer"]
+                    )
+                    points = question["points_value"] if correct else 0
                 await db.execute(
                     """INSERT INTO scores (participant_id, bonus_question_id, points)
                        VALUES (?, ?, ?)""",

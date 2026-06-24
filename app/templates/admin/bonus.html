@@ -44,13 +44,22 @@
       <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
       <div class="field"><input type="text" name="question_text" placeholder="Ex: Combien de buts lors des 1/8 ?" required style="flex:1;"></div>
     </div>
-    <input type="hidden" name="answer_type" value="choice">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Type</div>
+        <div class="field">
+          <select name="answer_type" style="flex:1;">
+            <option value="choice">Choix unique</option>
+            <option value="number">Nombre le plus proche</option>
+          </select>
+        </div>
+      </div>
       <div>
         <div class="lbl" style="margin-bottom:5px;">Phase</div>
         <div class="field">
           <select name="phase" style="flex:1;">
             <option value="pre_tournament">Pré-tournoi</option>
+            <option value="group">Phase de groupes</option>
             <option value="round_of_32">Seizièmes</option>
             <option value="round_of_16">Huitièmes</option>
             <option value="quarter">Quarts</option>
@@ -60,15 +69,21 @@
           </select>
         </div>
       </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div>
-        <div class="lbl" style="margin-bottom:5px;">Points (3–10)</div>
+        <div class="lbl" style="margin-bottom:5px;">Points max (3–10)</div>
         <div class="field"><input type="number" name="points_value" min="3" max="10" value="6" required></div>
       </div>
+      <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;padding-top:22px;cursor:pointer;">
+        <input type="checkbox" name="is_published" value="1" checked>
+        <span>Publier immédiatement</span>
+      </label>
     </div>
     <div>
-      <div class="lbl" style="margin-bottom:5px;">Options de réponse (choix unique, au moins 2)</div>
-      <textarea name="options_text" class="textarea" rows="3" placeholder="Une option par ligne, ou séparées par des virgules" required></textarea>
-      <p class="muted helper-text">Les questions sont toujours à choix unique : pas de réponse libre, donc pas de litige d'arbitrage (accents, orthographe…).</p>
+      <div class="lbl" style="margin-bottom:5px;">Options de réponse</div>
+      <textarea name="options_text" class="textarea" rows="3" placeholder="Choix unique : une option par ligne, ou séparées par des virgules"></textarea>
+      <p class="muted helper-text">Pour “Nombre le plus proche”, les options sont ignorées et les points suivent le podium généreux.</p>
     </div>
     <div>
       <div class="lbl" style="margin-bottom:5px;">Deadline (<span data-local-timezone>{{ display_tz_label }}</span>)</div>
@@ -96,12 +111,17 @@
     <div style="flex:1;min-width:240px;">
       <b style="font-size:14px;">{{ q.question_text }}</b>
       <div class="muted" style="font-size:11px;margin-top:3px;">
-        {{ phase_labels.get(q.phase, q.phase) }} · {{ q.answer_type }} · {{ q.points_value }} pts · deadline:
+        {{ phase_labels.get(q.phase, q.phase) }} ·
+        {% if q.scoring_mode == 'closest_podium' %}nombre le plus proche{% elif q.answer_type == 'choice' %}choix unique{% else %}{{ q.answer_type }}{% endif %}
+        · {{ q.points_value }} pts max · deadline:
         <span data-local-utc="{{ q.deadline|utc_iso }}">{{ q.deadline|local_datetime }}</span>
       </div>
     </div>
+    <span class="chip {{ 'ok' if q.is_published else 'warn' }}">
+      {{ 'Publié' if q.is_published else 'Brouillon' }}
+    </span>
     <span class="chip {{ 'ok' if q.correct_answer else 'warn' }}">
-      {{ q.correct_count }}/{{ q.answer_count }} correcte{{ 's' if q.correct_count > 1 else '' }}
+      {{ q.correct_count }}/{{ q.answer_count }} avec points
     </span>
     {% if q.correct_answer %}
     <span class="chip ok">Réponse: {{ q.correct_answer }}</span>
@@ -117,9 +137,16 @@
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
       <div>
-        <div class="lbl" style="margin-bottom:5px;">Type (figé)</div>
-        <div class="field" style="background:var(--n100);">
-          <input type="text" value="{{ {'choice': 'Choix unique', 'number': 'Numérique', 'text': 'Texte libre'}.get(q.answer_type, q.answer_type) }}" readonly tabindex="-1">
+        <div class="lbl" style="margin-bottom:5px;">Type{% if q.is_published or q.answer_count %} (figé){% endif %}</div>
+        <div class="field" {% if q.is_published or q.answer_count %}style="background:var(--n100);"{% endif %}>
+          {% if not q.is_published and q.answer_count == 0 %}
+          <select name="answer_type">
+            <option value="choice" {{ 'selected' if q.answer_type == 'choice' else '' }}>Choix unique</option>
+            <option value="number" {{ 'selected' if q.answer_type == 'number' else '' }}>Nombre le plus proche</option>
+          </select>
+          {% else %}
+          <input type="text" value="{% if q.scoring_mode == 'closest_podium' %}Nombre le plus proche{% else %}{{ {'choice': 'Choix unique', 'number': 'Numérique', 'text': 'Texte libre'}.get(q.answer_type, q.answer_type) }}{% endif %}" readonly tabindex="-1">
+          {% endif %}
         </div>
       </div>
       <div>
@@ -127,6 +154,7 @@
         <div class="field">
           <select name="phase">
             <option value="pre_tournament" {{ 'selected' if q.phase == 'pre_tournament' else '' }}>Pré-tournoi</option>
+            <option value="group" {{ 'selected' if q.phase == 'group' else '' }}>Phase de groupes</option>
             <option value="round_of_32" {{ 'selected' if q.phase == 'round_of_32' else '' }}>Seizièmes</option>
             <option value="round_of_16" {{ 'selected' if q.phase == 'round_of_16' else '' }}>Huitièmes</option>
             <option value="quarter" {{ 'selected' if q.phase == 'quarter' else '' }}>Quarts</option>
@@ -144,6 +172,9 @@
     <div>
       <div class="lbl" style="margin-bottom:5px;">Options si choix unique</div>
       <textarea name="options_text" class="textarea" rows="3">{{ q.options_text }}</textarea>
+      {% if q.scoring_mode == 'closest_podium' %}
+      <p class="muted helper-text">Nombre le plus proche : les options sont ignorées. Barème: {{ q.points_value }}, {{ [q.points_value - 2, 0]|max }}, {{ [q.points_value - 4, 0]|max }} pts.</p>
+      {% endif %}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div>
@@ -166,6 +197,10 @@
         {% endif %}
       </div>
     </div>
+    <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;cursor:pointer;">
+      <input type="checkbox" name="is_published" value="1" {{ 'checked' if q.is_published else '' }}>
+      <span>Publié côté participants</span>
+    </label>
     <div class="row2">
       <button type="submit" class="btn sm">Enregistrer et recalculer</button>
       <a href="/admin/pronostics?view=bonus" class="btn ghost sm">Toutes les réponses</a>
