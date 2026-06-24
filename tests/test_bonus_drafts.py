@@ -76,6 +76,8 @@ def test_seeded_j3_bonus_drafts_visible_admin_hidden_participant(admin_client, p
     assert "Recommandé pour une question fun" in admin_html
     assert "Preset de répartition" in admin_html
     assert "Enregistrer le brouillon" in admin_html
+    assert "Aperçu participant" in admin_html
+    assert "Miniature non interactive du rendu côté participant" in admin_html
     assert "Plein palier, rangs sautés" in admin_html
     assert J3_GOALS not in participant_html
     assert J3_POPCORN not in participant_html
