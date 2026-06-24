@@ -5,6 +5,8 @@ from app.scoring import (
     calculate_finalists_points,
     calculate_match_score,
     calculate_pre_tournament_points,
+    default_bonus_points_explanation,
+    bonus_points_summary_label,
     closest_podium_bonus_points,
     normalize_closest_config,
     parse_revelation_winners,
@@ -333,3 +335,24 @@ class TestClosestPodiumBonusPoints:
             "tie_policy": "full_skip",
             "rank_points": [9, 0, 0],
         }
+
+    def test_public_points_labels_for_closest_and_exact(self):
+        assert bonus_points_summary_label(6, "choice", "exact", None) == "6 pts si correct"
+        assert (
+            bonus_points_summary_label(
+                6,
+                "number",
+                "closest_podium",
+                {"award_mode": "podium_custom", "tie_policy": "full_skip", "rank_points": [6, 4, 2]},
+            )
+            == "6 / 4 / 2 pts"
+        )
+        assert (
+            default_bonus_points_explanation(
+                6,
+                "number",
+                "closest_podium",
+                {"award_mode": "podium_custom", "tie_policy": "full_dense", "rank_points": [6, 4, 2]},
+            )
+            == "Réponses classées par écart : 1er 6 pts, 2e 4 pts, 3e 2 pts. Ex aequo : les ex aequo reçoivent le plein palier sans sauter le rang suivant."
+        )

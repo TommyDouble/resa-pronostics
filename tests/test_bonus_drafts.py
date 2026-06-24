@@ -22,6 +22,15 @@ def _bonus_question_by_text(text):
     return run(_get())
 
 
+def _bonus_question_columns():
+    async def _columns():
+        async with get_db() as db:
+            rows = await (await db.execute("PRAGMA table_info(bonus_questions)")).fetchall()
+            return {row["name"] for row in rows}
+
+    return run(_columns())
+
+
 def _ensure_j3_drafts():
     async def _ensure():
         async with get_db() as db:
@@ -65,6 +74,10 @@ def _add_bonus_answer(question_id, name, answer):
     return run(_add())
 
 
+def test_bonus_points_explanation_column_exists(admin_client):
+    assert "points_explanation" in _bonus_question_columns()
+
+
 def test_seeded_j3_bonus_drafts_visible_admin_hidden_participant(admin_client, participant):
     _ensure_j3_drafts()
     admin_html = unescape(admin_client.get("/admin/bonus").text)
@@ -78,6 +91,9 @@ def test_seeded_j3_bonus_drafts_visible_admin_hidden_participant(admin_client, p
     assert "Enregistrer le brouillon" in admin_html
     assert "Aperçu participant" in admin_html
     assert "Miniature non interactive du rendu côté participant" in admin_html
+    assert "Explication visible côté participants" in admin_html
+    assert "Barème ·" in admin_html
+    assert "6 / 4 / 2 pts" in admin_html
     assert "Plein palier, rangs sautés" in admin_html
     assert J3_GOALS not in participant_html
     assert J3_POPCORN not in participant_html
@@ -95,8 +111,9 @@ def test_seeded_j3_bonus_drafts_visible_admin_hidden_participant(admin_client, p
     assert goals["is_published"] == 0
 
 
-def test_admin_can_prepare_draft_then_publish(admin_client):
+def test_admin_can_prepare_draft_then_publish(admin_client, participant):
     title = f"Question brouillon {uuid.uuid4()}"
+    custom_explanation = "Barème maison : tout ou rien, 6 points si tu coches la bonne réponse."
     response = admin_client.post(
         "/admin/bonus/create",
         data={
@@ -122,6 +139,7 @@ def test_admin_can_prepare_draft_then_publish(admin_client):
                 "answer_type": "choice",
                 "points_value": "6",
                 "options_text": "Oui\nNon",
+                "points_explanation": custom_explanation,
                 "deadline": "2035-01-01T12:00",
                 "is_published": "1",
             },
@@ -130,6 +148,13 @@ def test_admin_can_prepare_draft_then_publish(admin_client):
         assert response.status_code == 303
         question = _bonus_question_by_text(title)
         assert question["is_published"] == 1
+        assert question["points_explanation"] == custom_explanation
+
+        participant_html = unescape(admin_client.get(f"/p/{participant['token']}/bonus").text)
+        fragment = participant_html[participant_html.index(title):]
+        assert "Phase de groupes · 6 pts" not in fragment
+        assert "Barème · 6 pts si correct" in fragment
+        assert custom_explanation in fragment
     finally:
         _delete_bonus(question["id"])
 

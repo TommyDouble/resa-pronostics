@@ -26,8 +26,11 @@ from app.pre_tournament import (
     get_pre_tournament_questions,
 )
 from app.scoring import (
+    bonus_points_explanation,
+    bonus_points_summary_label,
     calculate_bonus_scores,
     closest_bonus_standings,
+    default_bonus_points_explanation,
     get_rankings,
     normalize_closest_config,
     parse_bonus_number,
@@ -187,6 +190,25 @@ def _closest_form_config(
     return rank_points[0], serialize_closest_config(
         rank_points[0], award_mode, tie_policy, rank_points, preset_key
     )
+
+
+def _clean_points_explanation(
+    value: str,
+    points_value: int,
+    answer_type: str,
+    scoring_mode: str,
+    scoring_config: str | None,
+) -> str | None:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return None
+    default_text = default_bonus_points_explanation(
+        points_value,
+        answer_type,
+        scoring_mode,
+        scoring_config,
+    )
+    return None if cleaned == default_text else cleaned
 
 
 def _push_test_url(token: str, destination: str) -> str:
@@ -1441,6 +1463,19 @@ async def bonus_admin(request: Request):
             question["closest_tie_policy"] = closest_config["tie_policy"]
             question["closest_rank_points"] = closest_config["rank_points"]
             question["preview_can_edit"] = question["deadline"] > now
+            question["points_summary_label"] = bonus_points_summary_label(
+                question["points_value"],
+                question["answer_type"],
+                question["scoring_mode"],
+                question.get("scoring_config"),
+            )
+            question["points_explanation_effective"] = bonus_points_explanation(
+                question["points_value"],
+                question["answer_type"],
+                question["scoring_mode"],
+                question.get("scoring_config"),
+                question.get("points_explanation"),
+            )
         answer_rows = await db.execute(
             """SELECT
                   ba.question_id,
@@ -1501,6 +1536,7 @@ async def create_bonus(request: Request,
                        answer_type: str = Form(...), points_value: int = Form(...),
                        deadline: str = Form(...), timezone_name: str = Form(default=""),
                        options_text: str = Form(default=""),
+                       points_explanation: str = Form(default=""),
                        correct_answer: str = Form(default=""),
                        is_published: int = Form(default=0),
                        closest_preset_key: str = Form(default="fun_balanced"),
@@ -1540,13 +1576,20 @@ async def create_bonus(request: Request,
         if parse_bonus_number(correct_answer) is None:
             _flash(request, "La réponse correcte doit être un nombre.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)
+    points_explanation_value = _clean_points_explanation(
+        points_explanation,
+        points_value,
+        answer_type,
+        scoring_mode,
+        scoring_config,
+    )
     async with get_db() as db:
         cursor = await db.execute(
             """INSERT INTO bonus_questions
                (question_text, phase, answer_type, options, points_value,
-                correct_answer, scoring_mode, scoring_config, is_published,
-                deadline)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                correct_answer, scoring_mode, scoring_config, points_explanation,
+                is_published, deadline)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 question_text.strip(),
                 phase,
@@ -1556,6 +1599,7 @@ async def create_bonus(request: Request,
                 correct_answer.strip() or None,
                 scoring_mode,
                 scoring_config,
+                points_explanation_value,
                 1 if is_published else 0,
                 deadline_utc,
             )
@@ -1579,6 +1623,7 @@ async def update_bonus_question(
     deadline: str = Form(...),
     timezone_name: str = Form(default=""),
     options_text: str = Form(default=""),
+    points_explanation: str = Form(default=""),
     correct_answer: str = Form(default=""),
     is_published: int = Form(default=0),
     closest_preset_key: str = Form(default="custom"),
@@ -1632,11 +1677,18 @@ async def update_bonus_question(
             if parse_bonus_number(correct_answer) is None:
                 _flash(request, "La réponse correcte doit être un nombre.", "err")
                 return RedirectResponse("/admin/bonus", status_code=303)
+        points_explanation_value = _clean_points_explanation(
+            points_explanation,
+            points_value,
+            answer_type,
+            scoring_mode,
+            scoring_config,
+        )
         await db.execute(
             """UPDATE bonus_questions
                SET question_text=?, phase=?, answer_type=?, options=?,
                    points_value=?, correct_answer=?, scoring_mode=?,
-                   scoring_config=?, is_published=?, deadline=?
+                   scoring_config=?, points_explanation=?, is_published=?, deadline=?
                WHERE id=?""",
             (
                 question_text.strip(),
@@ -1647,6 +1699,7 @@ async def update_bonus_question(
                 correct_answer.strip() or None,
                 scoring_mode,
                 scoring_config,
+                points_explanation_value,
                 1 if is_published else 0,
                 deadline_utc,
                 question_id,

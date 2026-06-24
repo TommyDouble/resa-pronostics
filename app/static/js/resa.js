@@ -715,6 +715,7 @@ function initAdminBonusQuestionForms() {
     var typeSelect = form.querySelector('select[name="answer_type"]');
     var presetSelect = form.querySelector('select[name="closest_preset_key"]');
     var preview = form.querySelector('[data-bonus-preview]');
+    var explanationField = form.querySelector('textarea[name="points_explanation"]');
 
     function currentType() {
       return typeSelect ? typeSelect.value : (form.dataset.bonusInitialType || 'choice');
@@ -747,19 +748,102 @@ function initAdminBonusQuestionForms() {
         date.getFullYear() + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes());
     }
 
+    function formatPoints(value) {
+      var points = parseInt(value, 10);
+      if (isNaN(points)) points = 0;
+      points = Math.max(points, 0);
+      return points + (points === 1 ? ' pt' : ' pts');
+    }
+
+    function customRankValue(name, fallback) {
+      var field = activeField(name);
+      var value = field ? parseInt(field.value, 10) : fallback;
+      return isNaN(value) ? fallback : Math.max(value, 0);
+    }
+
+    function currentRankPoints(type) {
+      if (type !== 'number') return [];
+      var preset = presetSelect ? presetSelect.value : 'fun_balanced';
+      if (preset === 'winner_takes_all') return [6, 0, 0];
+      if (preset === 'top2') return [6, 3, 0];
+      if (preset !== 'custom') return [6, 4, 2];
+      var ranks = [
+        customRankValue('closest_rank1_points', 6),
+        customRankValue('closest_rank2_points', 4),
+        customRankValue('closest_rank3_points', 2)
+      ];
+      var mode = activeField('closest_award_mode');
+      if (mode && mode.value === 'winner_takes_all') return [ranks[0], 0, 0];
+      return ranks;
+    }
+
+    function rankPointsLabel(rankPoints) {
+      var positive = rankPoints.filter(function(points) { return points > 0; });
+      if (!positive.length) return '0 pt';
+      if (positive.length === 1) return formatPoints(positive[0]);
+      return positive.join(' / ') + ' pts';
+    }
+
+    function tiePolicyText() {
+      var policy = activeField('closest_tie_policy');
+      var value = policy ? policy.value : 'full_skip';
+      if (value === 'full_dense') {
+        return 'les ex aequo reçoivent le plein palier sans sauter le rang suivant.';
+      }
+      if (value === 'share_occupied') {
+        return 'les ex aequo se partagent les points des places occupées.';
+      }
+      return 'les ex aequo reçoivent le plein palier et les rangs suivants sont sautés.';
+    }
+
     function previewPointsLabel(type) {
       if (type === 'number') {
+        var ranks = currentRankPoints(type);
         var preset = presetSelect ? presetSelect.value : 'fun_balanced';
-        if (preset === 'custom') {
-          var rank1 = activeField('closest_rank1_points');
-          var customPoints = rank1 ? parseInt(rank1.value, 10) : 6;
-          return (isNaN(customPoints) ? 6 : Math.max(customPoints, 0)) + ' pts';
+        var mode = activeField('closest_award_mode');
+        if (preset === 'winner_takes_all' || (preset === 'custom' && mode && mode.value === 'winner_takes_all')) {
+          return formatPoints(ranks[0]) + ' au plus proche';
         }
-        return '6 pts';
+        return rankPointsLabel(ranks);
       }
       var pointsField = activeField('points_value');
       var points = pointsField ? parseInt(pointsField.value, 10) : 6;
-      return (isNaN(points) ? 6 : Math.max(points, 0)) + ' pts';
+      return formatPoints(isNaN(points) ? 6 : points) + ' si correct';
+    }
+
+    function defaultPointsExplanation(type) {
+      if (type !== 'number') {
+        var pointsField = activeField('points_value');
+        var points = pointsField ? parseInt(pointsField.value, 10) : 6;
+        return 'Bonne réponse : ' + formatPoints(isNaN(points) ? 6 : points) + '.';
+      }
+      var ranks = currentRankPoints(type);
+      var preset = presetSelect ? presetSelect.value : 'fun_balanced';
+      var mode = activeField('closest_award_mode');
+      if (preset === 'winner_takes_all' || (preset === 'custom' && mode && mode.value === 'winner_takes_all')) {
+        return 'Le ou les plus proches remportent ' + formatPoints(ranks[0]) + '. Les autres ne marquent pas.';
+      }
+      var tierLabels = [];
+      ranks.forEach(function(points, index) {
+        if (points <= 0) return;
+        tierLabels.push((index === 0 ? '1er' : (index + 1) + 'e') + ' ' + formatPoints(points));
+      });
+      return 'Réponses classées par écart : ' + (tierLabels.length ? tierLabels.join(', ') : 'aucun point') +
+        '. Ex aequo : ' + tiePolicyText();
+    }
+
+    function syncExplanationField(type) {
+      var auto = defaultPointsExplanation(type);
+      if (!explanationField) return auto;
+      var previousAuto = explanationField.dataset.autoPointsExplanation || '';
+      var current = explanationField.value.trim();
+      var isCustom = explanationField.dataset.customPointsExplanation === '1';
+      if (!isCustom || !current || current === previousAuto) {
+        explanationField.value = auto;
+        explanationField.dataset.customPointsExplanation = '0';
+      }
+      explanationField.dataset.autoPointsExplanation = auto;
+      return explanationField.value.trim() || auto;
     }
 
     function updatePreviewOptions() {
@@ -802,6 +886,7 @@ function initAdminBonusQuestionForms() {
       setText('[data-preview-title]', (question && question.value.trim()) || 'Intitulé de la question');
       setText('[data-preview-phase]', phase && phase.selectedOptions.length ? phase.selectedOptions[0].textContent : 'Pré-tournoi');
       setText('[data-preview-points]', previewPointsLabel(type));
+      setText('[data-preview-explanation]', syncExplanationField(type));
       setText('[data-preview-deadline]', formatLocalDeadline(deadlineValue));
 
       if (status) {
@@ -836,7 +921,16 @@ function initAdminBonusQuestionForms() {
 
     if (typeSelect) typeSelect.addEventListener('change', update);
     if (presetSelect) presetSelect.addEventListener('change', update);
+    if (explanationField) {
+      explanationField.addEventListener('input', function() {
+        var auto = explanationField.dataset.autoPointsExplanation || defaultPointsExplanation(currentType());
+        var current = explanationField.value.trim();
+        explanationField.dataset.customPointsExplanation = current && current !== auto ? '1' : '0';
+        updatePreview();
+      });
+    }
     form.querySelectorAll('input, select, textarea').forEach(function(control) {
+      if (control === explanationField) return;
       control.addEventListener('input', updatePreview);
       control.addEventListener('change', updatePreview);
     });

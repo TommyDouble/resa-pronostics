@@ -42,7 +42,7 @@
   {% for q in bonus_questions %}
   <div class="card" style="padding:14px;">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span class="chip acc tip" tabindex="0" data-tip="Points attribués si ta réponse est correcte.">{{ phase_labels.get(q.phase, q.phase) }} · {{ q.points_value }} pts</span>
+      <span class="chip acc">{{ phase_labels.get(q.phase, q.phase) }}</span>
       {% if q.has_score %}
         <span class="chip {{ 'ok' if q.points > 0 else 'lock' }}">{{ q.points }} pt{{ 's' if q.points != 1 else '' }}</span>
       {% elif q.can_edit and q.has_answer %}
@@ -62,6 +62,15 @@
     <p style="font-family:var(--sketch);font-weight:600;font-size:24px;line-height:1.1;margin:9px 0 12px;">
       {{ q.question_text }}
     </p>
+
+    <details style="border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:12px;background:var(--paper2);">
+      <summary style="cursor:pointer;font-weight:800;font-size:12px;color:var(--n900);">
+        Barème · {{ q.points_summary_label }}
+      </summary>
+      <div class="muted" style="font-size:12px;line-height:1.45;margin-top:6px;">
+        {{ q.points_explanation_effective }}
+      </div>
+    </details>
 
     {% if q.has_answer %}
     <div class="banner acc" style="margin-bottom:12px;">

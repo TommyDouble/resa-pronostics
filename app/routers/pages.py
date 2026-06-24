@@ -44,6 +44,8 @@ from app.pre_tournament import (
 from app.prizes import get_prize_info
 from app.settings_store import knockout_predictions_open
 from app.scoring import (
+    bonus_points_explanation,
+    bonus_points_summary_label,
     get_department_rankings,
     get_latest_finalized_climbers,
     get_rank_evolution,
@@ -1967,6 +1969,19 @@ async def bonus_page(request: Request, token: str):
             q["has_answer"] = q["answer"] is not None
             q["has_score"] = q["points"] is not None
             q["can_edit"] = q["is_open"] and not q["has_score"]
+            q["points_summary_label"] = bonus_points_summary_label(
+                q["points_value"],
+                q["answer_type"],
+                q["scoring_mode"],
+                q.get("scoring_config"),
+            )
+            q["points_explanation_effective"] = bonus_points_explanation(
+                q["points_value"],
+                q["answer_type"],
+                q["scoring_mode"],
+                q.get("scoring_config"),
+                q.get("points_explanation"),
+            )
             if q["is_open"] and not q["has_answer"]:
                 pending_count += 1
             bonus_questions.append(q)

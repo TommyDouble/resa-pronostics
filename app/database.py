@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS bonus_questions (
   correct_answer TEXT,
   scoring_mode   TEXT    NOT NULL DEFAULT 'exact' CHECK(scoring_mode IN ('exact','closest_podium')),
   scoring_config TEXT,
+  points_explanation TEXT,
   is_published   INTEGER NOT NULL DEFAULT 1,
   deadline       TEXT    NOT NULL,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -361,6 +362,9 @@ CREATE INDEX IF NOT EXISTS idx_trophy_awards_participant
             scoring_config_expr = (
                 "scoring_config" if "scoring_config" in bonus_col_names else "NULL"
             )
+            points_explanation_expr = (
+                "points_explanation" if "points_explanation" in bonus_col_names else "NULL"
+            )
             await db.execute("PRAGMA foreign_keys = OFF")
             await db.executescript("""
 CREATE TABLE bonus_questions_new (
@@ -373,6 +377,7 @@ CREATE TABLE bonus_questions_new (
   correct_answer TEXT,
   scoring_mode   TEXT    NOT NULL DEFAULT 'exact' CHECK(scoring_mode IN ('exact','closest_podium')),
   scoring_config TEXT,
+  points_explanation TEXT,
   is_published   INTEGER NOT NULL DEFAULT 1,
   deadline       TEXT    NOT NULL,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -381,11 +386,11 @@ CREATE TABLE bonus_questions_new (
             await db.execute(
                 f"""INSERT INTO bonus_questions_new
                       (id, question_text, phase, answer_type, options, points_value,
-                       correct_answer, scoring_mode, scoring_config, is_published,
-                       deadline, created_at)
+                       correct_answer, scoring_mode, scoring_config, points_explanation,
+                       is_published, deadline, created_at)
                     SELECT id, question_text, phase, answer_type, options, points_value,
                            correct_answer, {scoring_mode_expr}, {scoring_config_expr},
-                           {is_published_expr}, deadline, created_at
+                           {points_explanation_expr}, {is_published_expr}, deadline, created_at
                     FROM bonus_questions"""
             )
             await db.executescript("""
@@ -393,6 +398,11 @@ DROP TABLE bonus_questions;
 ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
             """)
             await db.execute("PRAGMA foreign_keys = ON")
+
+        try:
+            await db.execute("ALTER TABLE bonus_questions ADD COLUMN points_explanation TEXT")
+        except Exception:
+            pass
 
         await ensure_bonus_question_drafts(db)
 

@@ -41,12 +41,12 @@
   </div>
 {%- endmacro %}
 
-{% macro participant_preview(title, phase_label, points_label, answer_type='choice', options_text='', deadline_label='à définir', can_edit=True) -%}
+{% macro participant_preview(title, phase_label, points_label, points_explanation, answer_type='choice', options_text='', deadline_label='à définir', can_edit=True) -%}
   <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;" data-bonus-preview>
     {{ step_head('5', 'Aperçu participant', 'Miniature non interactive du rendu côté participant.') }}
     <div style="max-width:480px;margin:0 auto;background:var(--paper);border:1.5px solid var(--line);border-radius:var(--r-card);padding:14px;box-shadow:var(--sh);">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span class="chip acc"><span data-preview-phase>{{ phase_label }}</span> · <span data-preview-points>{{ points_label }}</span></span>
+        <span class="chip acc" data-preview-phase>{{ phase_label }}</span>
         <span class="chip {{ 'warn' if can_edit else 'lock' }}" data-preview-status>{{ 'À répondre' if can_edit else 'Non répondue' }}</span>
         <span class="muted" style="font-size:11px;margin-left:auto;">
           Deadline · <span data-preview-deadline>{{ deadline_label }}</span>
@@ -55,6 +55,14 @@
       <p data-preview-title style="font-family:var(--sketch);font-weight:600;font-size:24px;line-height:1.1;margin:9px 0 12px;">
         {{ title or 'Intitulé de la question' }}
       </p>
+      <details open style="border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:12px;background:var(--paper2);">
+        <summary style="cursor:pointer;font-weight:800;font-size:12px;color:var(--n900);">
+          Barème · <span data-preview-points>{{ points_label }}</span>
+        </summary>
+        <div data-preview-explanation class="muted" style="font-size:12px;line-height:1.45;margin-top:6px;">
+          {{ points_explanation }}
+        </div>
+      </details>
       <div data-preview-locked style="{{ '' if not can_edit else 'display:none;' }}">
         <div class="banner" style="background:var(--n100);color:var(--n600);margin-bottom:12px;">
           <span>Deadline dépassée — aucune réponse enregistrée.</span>
@@ -235,6 +243,11 @@
           <p class="muted helper-text" style="margin-bottom:0;">Le score du 1er rang devient les points max affichés sur la question.</p>
         </div>
       </div>
+      <div style="margin-top:10px;">
+        <div class="lbl" style="margin-bottom:5px;">Explication visible côté participants</div>
+        <textarea name="points_explanation" class="textarea" rows="3" data-points-explanation data-custom-points-explanation="0">Bonne réponse : 6 pts.</textarea>
+        <p class="muted helper-text" style="margin-bottom:0;">Laisse le texte auto si ça convient. Si tu vides le champ, il sera régénéré depuis le barème.</p>
+      </div>
     </section>
 
     <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
@@ -255,7 +268,7 @@
       </div>
     </section>
 
-    {{ participant_preview('', 'Pré-tournoi', '6 pts', 'choice', '', 'à définir', True) }}
+    {{ participant_preview('', 'Pré-tournoi', '6 pts si correct', 'Bonne réponse : 6 pts.', 'choice', '', 'à définir', True) }}
   </form>
 </div>
 
@@ -267,7 +280,7 @@
 {% for q in questions %}
 {% set is_closest = q.scoring_mode == 'closest_podium' %}
 {% set type_label = 'nombre le plus proche' if is_closest else ('choix unique' if q.answer_type == 'choice' else q.answer_type) %}
-{% set bar_label = (q.closest_rank_points|join(' / ')) ~ ' pts' if is_closest else q.points_value ~ ' pts' %}
+{% set bar_label = q.points_summary_label %}
 <div class="card">
   <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
     <div style="flex:1;min-width:240px;">
@@ -398,6 +411,11 @@
           <p class="muted helper-text" style="margin-bottom:0;">Le score du 1er rang devient les points max affichés sur la question.</p>
         </div>
       </div>
+      <div style="margin-top:10px;">
+        <div class="lbl" style="margin-bottom:5px;">Explication visible côté participants</div>
+        <textarea name="points_explanation" class="textarea" rows="3" data-points-explanation data-custom-points-explanation="{{ '1' if q.points_explanation else '0' }}">{{ q.points_explanation or q.points_explanation_effective }}</textarea>
+        <p class="muted helper-text" style="margin-bottom:0;">Laisse le texte auto si ça convient. Si tu vides le champ, il sera régénéré depuis le barème.</p>
+      </div>
     </section>
 
     <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
@@ -433,7 +451,7 @@
       </div>
     </section>
 
-    {{ participant_preview(q.question_text, phase_labels.get(q.phase, q.phase), q.points_value ~ ' pts', q.answer_type, q.options_text, q.deadline|local_datetime, q.preview_can_edit) }}
+    {{ participant_preview(q.question_text, phase_labels.get(q.phase, q.phase), q.points_summary_label, q.points_explanation_effective, q.answer_type, q.options_text, q.deadline|local_datetime, q.preview_can_edit) }}
   </form>
 
   <form method="post" action="/admin/bonus/{{ q.id }}/delete"

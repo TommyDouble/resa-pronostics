@@ -593,6 +593,87 @@ def serialize_closest_config(
     return json.dumps(config, ensure_ascii=False, separators=(",", ":"))
 
 
+def _format_points(value) -> str:
+    points = int(value)
+    return f"{points} pt" if points == 1 else f"{points} pts"
+
+
+def _rank_points_label(rank_points: list[int]) -> str:
+    positive_points = [points for points in rank_points if points > 0]
+    if not positive_points:
+        return "0 pt"
+    if len(positive_points) == 1:
+        return _format_points(positive_points[0])
+    return f"{' / '.join(str(points) for points in positive_points)} pts"
+
+
+def bonus_points_summary_label(
+    points_value: int,
+    answer_type: str,
+    scoring_mode: str = "exact",
+    scoring_config=None,
+) -> str:
+    """Short public label for a bonus question points rule."""
+    if scoring_mode == "closest_podium" or answer_type == "number":
+        config = normalize_closest_config(points_value, scoring_config)
+        if config["award_mode"] == "winner_takes_all":
+            return f"{_format_points(config['rank_points'][0])} au plus proche"
+        return _rank_points_label(config["rank_points"])
+    return f"{_format_points(points_value)} si correct"
+
+
+def default_bonus_points_explanation(
+    points_value: int,
+    answer_type: str,
+    scoring_mode: str = "exact",
+    scoring_config=None,
+) -> str:
+    """Default public explanation for a bonus question points rule."""
+    if scoring_mode != "closest_podium" and answer_type != "number":
+        return f"Bonne réponse : {_format_points(points_value)}."
+
+    config = normalize_closest_config(points_value, scoring_config)
+    rank_points = config["rank_points"]
+    if config["award_mode"] == "winner_takes_all":
+        return (
+            f"Le ou les plus proches remportent {_format_points(rank_points[0])}. "
+            "Les autres ne marquent pas."
+        )
+
+    tiers = []
+    for index, points in enumerate(rank_points, start=1):
+        if points <= 0:
+            continue
+        label = "1er" if index == 1 else f"{index}e"
+        tiers.append(f"{label} {_format_points(points)}")
+    tier_text = ", ".join(tiers) if tiers else "aucun point"
+    tie_text = {
+        "full_skip": "les ex aequo reçoivent le plein palier et les rangs suivants sont sautés.",
+        "full_dense": "les ex aequo reçoivent le plein palier sans sauter le rang suivant.",
+        "share_occupied": "les ex aequo se partagent les points des places occupées.",
+    }.get(config["tie_policy"], "les ex aequo reçoivent le plein palier.")
+    return f"Réponses classées par écart : {tier_text}. Ex aequo : {tie_text}"
+
+
+def bonus_points_explanation(
+    points_value: int,
+    answer_type: str,
+    scoring_mode: str = "exact",
+    scoring_config=None,
+    custom_explanation: str | None = None,
+) -> str:
+    """Effective public explanation, using the admin text when present."""
+    cleaned = (custom_explanation or "").strip()
+    if cleaned:
+        return cleaned
+    return default_bonus_points_explanation(
+        points_value,
+        answer_type,
+        scoring_mode,
+        scoring_config,
+    )
+
+
 def _closest_group_points(rank: int, tie_size: int, rank_points: list[int], tie_policy: str):
     if tie_policy == "share_occupied":
         total = Decimal(0)
