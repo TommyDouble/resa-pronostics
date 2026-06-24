@@ -307,3 +307,23 @@ def test_bonus_reminder_only_for_unanswered(client):
     run(run_pending_notifications(now_local=evening()))
     assert get_log(p_answered["id"], "bonus_reminder") == []
     assert len(get_log(p_silent["id"], "bonus_reminder")) == 1
+
+
+def test_bonus_reminder_ignores_unpublished_questions(client):
+    p_silent = make_participant()
+    deadline = (now_utc() + timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    async def _seed():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO bonus_questions
+                   (question_text, phase, answer_type, options, points_value,
+                    deadline, is_published)
+                   VALUES ('Brouillon bonus ?', 'group', 'choice', '["Oui","Non"]', 5, ?, 0)""",
+                (deadline,),
+            )
+            await db.commit()
+
+    run(_seed())
+    run(run_pending_notifications(now_local=evening()))
+    assert get_log(p_silent["id"], "bonus_reminder") == []

@@ -89,11 +89,8 @@
     {% if q.can_edit %}
     <form method="post" action="/p/{{ token }}/bonus/{{ q.id }}" class="bonus-answer-form" novalidate>
       {% if q.answer_type == 'number' %}
-      <div class="stepper" style="margin-bottom:14px;">
-        <div class="b" data-action="minus">–</div>
-        <input type="number" name="answer" min="0" value="{{ q.answer or 0 }}" style="width:70px;">
-        <div class="b" data-action="plus">+</div>
-        <span class="muted" style="font-size:12px;margin-left:6px;">réponse numérique</span>
+      <div class="field" style="margin-bottom:14px;">
+        <input type="number" name="answer" min="0" value="{{ q.answer or '' }}" placeholder="Ta réponse…" inputmode="numeric">
       </div>
       {% elif q.answer_type == 'choice' and q.options %}
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
