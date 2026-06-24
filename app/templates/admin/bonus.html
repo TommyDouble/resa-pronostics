@@ -41,6 +41,57 @@
   </div>
 {%- endmacro %}
 
+{% macro participant_preview(title, phase_label, points_label, answer_type='choice', options_text='', deadline_label='à définir', can_edit=True) -%}
+  <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;" data-bonus-preview>
+    {{ step_head('5', 'Aperçu participant', 'Miniature non interactive du rendu côté participant.') }}
+    <div style="max-width:480px;margin:0 auto;background:var(--paper);border:1.5px solid var(--line);border-radius:var(--r-card);padding:14px;box-shadow:var(--sh);">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="chip acc"><span data-preview-phase>{{ phase_label }}</span> · <span data-preview-points>{{ points_label }}</span></span>
+        <span class="chip {{ 'warn' if can_edit else 'lock' }}" data-preview-status>{{ 'À répondre' if can_edit else 'Non répondue' }}</span>
+        <span class="muted" style="font-size:11px;margin-left:auto;">
+          Deadline · <span data-preview-deadline>{{ deadline_label }}</span>
+        </span>
+      </div>
+      <p data-preview-title style="font-family:var(--sketch);font-weight:600;font-size:24px;line-height:1.1;margin:9px 0 12px;">
+        {{ title or 'Intitulé de la question' }}
+      </p>
+      <div data-preview-locked style="{{ '' if not can_edit else 'display:none;' }}">
+        <div class="banner" style="background:var(--n100);color:var(--n600);margin-bottom:12px;">
+          <span>Deadline dépassée — aucune réponse enregistrée.</span>
+        </div>
+      </div>
+      <div data-preview-answer-area style="{{ '' if can_edit else 'display:none;' }}">
+        <div data-preview-choice style="{{ 'display:none;' if answer_type == 'number' else '' }}">
+          <div data-preview-choice-list style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+            {% set opts = options_text.split('\n') if options_text else [] %}
+            {% for opt in opts if opt.strip() %}
+            <label style="display:flex;align-items:center;gap:8px;cursor:default;">
+              <input type="radio" disabled>
+              <span>{{ opt.strip() }}</span>
+            </label>
+            {% else %}
+            <label style="display:flex;align-items:center;gap:8px;cursor:default;">
+              <input type="radio" disabled>
+              <span>Option 1</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:default;">
+              <input type="radio" disabled>
+              <span>Option 2</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div data-preview-number style="{{ '' if answer_type == 'number' else 'display:none;' }}">
+          <div class="field" style="margin-bottom:14px;">
+            <input type="number" placeholder="Ta réponse…" inputmode="numeric" disabled>
+          </div>
+        </div>
+        <button class="btn full" type="button" disabled style="opacity:.85;">Valider ma réponse</button>
+      </div>
+    </div>
+  </section>
+{%- endmacro %}
+
 <h1>Questions bonus</h1>
 
 <!-- Pre-tournament block -->
@@ -203,6 +254,8 @@
         <button type="submit" class="btn">Enregistrer le brouillon</button>
       </div>
     </section>
+
+    {{ participant_preview('', 'Pré-tournoi', '6 pts', 'choice', '', 'à définir', True) }}
   </form>
 </div>
 
@@ -379,6 +432,8 @@
         <a href="/admin/pronostics?view=bonus" class="btn ghost sm">Toutes les réponses</a>
       </div>
     </section>
+
+    {{ participant_preview(q.question_text, phase_labels.get(q.phase, q.phase), q.points_value ~ ' pts', q.answer_type, q.options_text, q.deadline|local_datetime, q.preview_can_edit) }}
   </form>
 
   <form method="post" action="/admin/bonus/{{ q.id }}/delete"
