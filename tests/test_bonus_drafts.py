@@ -73,6 +73,8 @@ def test_seeded_j3_bonus_drafts_visible_admin_hidden_participant(admin_client, p
     assert J3_GOALS in admin_html
     assert J3_POPCORN in admin_html
     assert "Brouillon" in admin_html
+    assert "Recommandé pour une question fun" in admin_html
+    assert "Plein palier, rangs sautés" in admin_html
     assert J3_GOALS not in participant_html
     assert J3_POPCORN not in participant_html
 

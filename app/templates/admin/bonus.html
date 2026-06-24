@@ -82,9 +82,19 @@
     </div>
     <div style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:10px;background:var(--n50);">
       <div class="lbl" style="margin-bottom:8px;">Répartition si nombre le plus proche</div>
+      <div class="banner soft" style="margin-bottom:10px;">
+        <span>Astuce</span>
+        <span>
+          Recommandé pour une question fun : <b>Podium configurable</b>,
+          <b>plein palier, rangs sautés</b>, puis <b>6 / 4 / 2 pts</b>.
+        </span>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">Mode</div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">
+            Mode
+            <span class="help-tip" tabindex="0" data-tip="Podium configurable récompense les meilleurs rangs. Winner takes all donne tous les points uniquement au meilleur rang.">?</span>
+          </div>
           <div class="field">
             <select name="closest_award_mode">
               <option value="podium_custom">Podium configurable</option>
@@ -93,7 +103,10 @@
           </div>
         </div>
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">Ex aequo</div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">
+            Ex aequo
+            <span class="help-tip" tabindex="0" data-tip="Rangs sautés: deux 1ers puis le suivant est 3e. Rangs non sautés: deux 1ers puis le suivant est 2e. Partage: les ex aequo se partagent les places occupées.">?</span>
+          </div>
           <div class="field">
             <select name="closest_tie_policy">
               <option value="full_skip">Plein palier, rangs sautés</option>
@@ -103,17 +116,20 @@
           </div>
         </div>
       </div>
+      <p class="muted helper-text">
+        Repère : “winner takes all” est plus cruel ; “partage” évite de distribuer trop de points quand beaucoup de joueurs sont ex aequo.
+      </p>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">1er</div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">1er <span class="help-tip" tabindex="0" data-tip="Points donnés au ou aux participants les plus proches de la bonne réponse.">?</span></div>
           <div class="field"><input type="number" name="closest_rank1_points" min="0" max="50" value="6"></div>
         </div>
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">2e</div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">2e <span class="help-tip" tabindex="0" data-tip="Points donnés au rang suivant selon la règle d'ex aequo choisie.">?</span></div>
           <div class="field"><input type="number" name="closest_rank2_points" min="0" max="50" value="4"></div>
         </div>
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">3e</div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">3e <span class="help-tip" tabindex="0" data-tip="Mets 0 si tu veux arrêter les points au top 2.">?</span></div>
           <div class="field"><input type="number" name="closest_rank3_points" min="0" max="50" value="2"></div>
         </div>
       </div>
@@ -210,9 +226,19 @@
     {% if q.scoring_mode == 'closest_podium' %}
     <div style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:10px;background:var(--n50);">
       <div class="lbl" style="margin-bottom:8px;">Répartition des points</div>
+      <div class="banner soft" style="margin-bottom:10px;">
+        <span>Astuce</span>
+        <span>
+          Recommandé pour une question fun : <b>Podium configurable</b>,
+          <b>plein palier, rangs sautés</b>, puis <b>6 / 4 / 2 pts</b>.
+        </span>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">Mode d'attribution</div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">
+            Mode d'attribution
+            <span class="help-tip" tabindex="0" data-tip="Podium configurable récompense les meilleurs rangs. Winner takes all donne tous les points uniquement au meilleur rang.">?</span>
+          </div>
           <div class="field">
             <select name="closest_award_mode">
               <option value="podium_custom" {{ 'selected' if q.closest_award_mode == 'podium_custom' else '' }}>Podium configurable</option>
@@ -221,7 +247,10 @@
           </div>
         </div>
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">Gestion des ex aequo</div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">
+            Gestion des ex aequo
+            <span class="help-tip" tabindex="0" data-tip="Rangs sautés: deux 1ers puis le suivant est 3e. Rangs non sautés: deux 1ers puis le suivant est 2e. Partage: les ex aequo se partagent les places occupées.">?</span>
+          </div>
           <div class="field">
             <select name="closest_tie_policy">
               <option value="full_skip" {{ 'selected' if q.closest_tie_policy == 'full_skip' else '' }}>Plein palier, rangs sautés</option>
@@ -231,17 +260,20 @@
           </div>
         </div>
       </div>
+      <p class="muted helper-text">
+        Repère : “winner takes all” est plus cruel ; “partage” évite de distribuer trop de points quand beaucoup de joueurs sont ex aequo.
+      </p>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">1er</div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">1er <span class="help-tip" tabindex="0" data-tip="Points donnés au ou aux participants les plus proches de la bonne réponse.">?</span></div>
           <div class="field"><input type="number" name="closest_rank1_points" min="0" max="50" value="{{ q.closest_rank_points[0] }}"></div>
         </div>
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">2e</div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">2e <span class="help-tip" tabindex="0" data-tip="Points donnés au rang suivant selon la règle d'ex aequo choisie.">?</span></div>
           <div class="field"><input type="number" name="closest_rank2_points" min="0" max="50" value="{{ q.closest_rank_points[1] }}"></div>
         </div>
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">3e</div>
+          <div class="muted" style="font-size:11px;margin-bottom:5px;">3e <span class="help-tip" tabindex="0" data-tip="Mets 0 si tu veux arrêter les points au top 2.">?</span></div>
           <div class="field"><input type="number" name="closest_rank3_points" min="0" max="50" value="{{ q.closest_rank_points[2] }}"></div>
         </div>
       </div>
