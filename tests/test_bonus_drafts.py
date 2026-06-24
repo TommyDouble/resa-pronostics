@@ -1,4 +1,5 @@
 from html import unescape
+import json
 import uuid
 
 from app.database import ensure_bonus_question_drafts, get_db
@@ -42,6 +43,28 @@ def _delete_bonus(question_id):
     run(_delete())
 
 
+def _add_bonus_answer(question_id, name, answer):
+    token = str(uuid.uuid4())
+
+    async def _add():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO participants (name, email, token, is_confirmed)
+                   VALUES (?,?,?,1)""",
+                (name, f"{token}@test.local", token),
+            )
+            participant_id = cursor.lastrowid
+            await db.execute(
+                """INSERT INTO bonus_answers (participant_id, question_id, answer)
+                   VALUES (?,?,?)""",
+                (participant_id, question_id, answer),
+            )
+            await db.commit()
+            return participant_id
+
+    return run(_add())
+
+
 def test_seeded_j3_bonus_drafts_visible_admin_hidden_participant(admin_client, participant):
     _ensure_j3_drafts()
     admin_html = unescape(admin_client.get("/admin/bonus").text)
@@ -57,6 +80,11 @@ def test_seeded_j3_bonus_drafts_visible_admin_hidden_participant(admin_client, p
     assert goals["phase"] == "group"
     assert goals["answer_type"] == "number"
     assert goals["scoring_mode"] == "closest_podium"
+    assert json.loads(goals["scoring_config"]) == {
+        "award_mode": "podium_custom",
+        "tie_policy": "full_skip",
+        "rank_points": [6, 4, 2],
+    }
     assert goals["is_published"] == 0
 
 
@@ -110,3 +138,64 @@ def test_unpublished_bonus_cannot_be_submitted_directly(admin_client, participan
     )
 
     assert response.status_code == 404
+
+
+def test_admin_can_configure_closest_points_and_preview_standings(admin_client):
+    title = f"Question closest {uuid.uuid4()}"
+    response = admin_client.post(
+        "/admin/bonus/create",
+        data={
+            "question_text": title,
+            "phase": "group",
+            "answer_type": "number",
+            "points_value": "6",
+            "deadline": "2035-01-01T12:00",
+            "closest_award_mode": "podium_custom",
+            "closest_tie_policy": "full_skip",
+            "closest_rank1_points": "6",
+            "closest_rank2_points": "4",
+            "closest_rank3_points": "2",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    question = _bonus_question_by_text(title)
+    _add_bonus_answer(question["id"], "Alice Closest", "60")
+    _add_bonus_answer(question["id"], "Bob Closest", "59")
+    _add_bonus_answer(question["id"], "Carla Closest", "61")
+
+    try:
+        response = admin_client.post(
+            f"/admin/bonus/{question['id']}/update",
+            data={
+                "question_text": title,
+                "phase": "group",
+                "points_value": "6",
+                "deadline": "2035-01-01T12:00",
+                "correct_answer": "60",
+                "closest_award_mode": "winner_takes_all",
+                "closest_tie_policy": "full_skip",
+                "closest_rank1_points": "9",
+                "closest_rank2_points": "4",
+                "closest_rank3_points": "2",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+
+        question = _bonus_question_by_text(title)
+        assert question["points_value"] == 9
+        assert json.loads(question["scoring_config"]) == {
+            "award_mode": "winner_takes_all",
+            "tie_policy": "full_skip",
+            "rank_points": [9, 0, 0],
+        }
+
+        html = unescape(admin_client.get("/admin/bonus").text)
+        fragment = html[html.index(title):]
+        assert "Classement de cette question" in fragment
+        assert "#1" in fragment and "Alice Closest" in fragment
+        assert "#2" in fragment and "Bob Closest" in fragment and "Carla Closest" in fragment
+        assert "Winner takes all" in fragment
+    finally:
+        _delete_bonus(question["id"])
