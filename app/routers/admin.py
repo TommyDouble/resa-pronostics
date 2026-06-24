@@ -1413,6 +1413,7 @@ async def correct_result(request: Request, match_id: int,
 async def bonus_admin(request: Request):
     await require_admin(request)
     async with get_db() as db:
+        now = _now_utc()
         pt_deadline = await get_pre_tournament_deadline(db)
         rows = await db.execute(
             """SELECT bq.*,
@@ -1439,6 +1440,7 @@ async def bonus_admin(request: Request):
             question["closest_award_mode"] = closest_config["award_mode"]
             question["closest_tie_policy"] = closest_config["tie_policy"]
             question["closest_rank_points"] = closest_config["rank_points"]
+            question["preview_can_edit"] = question["deadline"] > now
         answer_rows = await db.execute(
             """SELECT
                   ba.question_id,

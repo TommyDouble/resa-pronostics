@@ -714,9 +714,106 @@ function initAdminBonusQuestionForms() {
   document.querySelectorAll('[data-admin-bonus-form]').forEach(function(form) {
     var typeSelect = form.querySelector('select[name="answer_type"]');
     var presetSelect = form.querySelector('select[name="closest_preset_key"]');
+    var preview = form.querySelector('[data-bonus-preview]');
 
     function currentType() {
       return typeSelect ? typeSelect.value : (form.dataset.bonusInitialType || 'choice');
+    }
+
+    function activeField(name) {
+      return form.querySelector('[name="' + name + '"]:not(:disabled)') ||
+        form.querySelector('[name="' + name + '"]');
+    }
+
+    function parseOptions(value) {
+      return (value || '')
+        .split(/[\n,]/)
+        .map(function(option) { return option.trim(); })
+        .filter(Boolean);
+    }
+
+    function setText(selector, value) {
+      if (!preview) return;
+      var el = preview.querySelector(selector);
+      if (el) el.textContent = value;
+    }
+
+    function formatLocalDeadline(value) {
+      if (!value) return 'à définir';
+      var date = new Date(value);
+      if (isNaN(date.getTime())) return 'à définir';
+      var pad = function(n) { return String(n).padStart(2, '0'); };
+      return pad(date.getDate()) + '/' + pad(date.getMonth() + 1) + '/' +
+        date.getFullYear() + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+    }
+
+    function previewPointsLabel(type) {
+      if (type === 'number') {
+        var preset = presetSelect ? presetSelect.value : 'fun_balanced';
+        if (preset === 'custom') {
+          var rank1 = activeField('closest_rank1_points');
+          var customPoints = rank1 ? parseInt(rank1.value, 10) : 6;
+          return (isNaN(customPoints) ? 6 : Math.max(customPoints, 0)) + ' pts';
+        }
+        return '6 pts';
+      }
+      var pointsField = activeField('points_value');
+      var points = pointsField ? parseInt(pointsField.value, 10) : 6;
+      return (isNaN(points) ? 6 : Math.max(points, 0)) + ' pts';
+    }
+
+    function updatePreviewOptions() {
+      if (!preview) return;
+      var list = preview.querySelector('[data-preview-choice-list]');
+      if (!list) return;
+      var optionsField = form.querySelector('textarea[name="options_text"]');
+      var options = parseOptions(optionsField ? optionsField.value : '');
+      if (!options.length) options = ['Option 1', 'Option 2'];
+      list.innerHTML = '';
+      options.slice(0, 8).forEach(function(option) {
+        var label = document.createElement('label');
+        label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:default;';
+        var input = document.createElement('input');
+        input.type = 'radio';
+        input.disabled = true;
+        var span = document.createElement('span');
+        span.textContent = option;
+        label.appendChild(input);
+        label.appendChild(span);
+        list.appendChild(label);
+      });
+    }
+
+    function updatePreview() {
+      if (!preview) return;
+      var type = currentType();
+      var question = form.querySelector('input[name="question_text"]');
+      var phase = form.querySelector('select[name="phase"]');
+      var deadline = form.querySelector('input[name="deadline"]');
+      var status = preview.querySelector('[data-preview-status]');
+      var answerArea = preview.querySelector('[data-preview-answer-area]');
+      var locked = preview.querySelector('[data-preview-locked]');
+      var choice = preview.querySelector('[data-preview-choice]');
+      var number = preview.querySelector('[data-preview-number]');
+      var deadlineValue = deadline ? deadline.value : '';
+      var deadlineDate = deadlineValue ? new Date(deadlineValue) : null;
+      var isOpen = !deadlineDate || isNaN(deadlineDate.getTime()) || deadlineDate.getTime() > Date.now();
+
+      setText('[data-preview-title]', (question && question.value.trim()) || 'Intitulé de la question');
+      setText('[data-preview-phase]', phase && phase.selectedOptions.length ? phase.selectedOptions[0].textContent : 'Pré-tournoi');
+      setText('[data-preview-points]', previewPointsLabel(type));
+      setText('[data-preview-deadline]', formatLocalDeadline(deadlineValue));
+
+      if (status) {
+        status.textContent = isOpen ? 'À répondre' : 'Non répondue';
+        status.classList.remove('warn', 'lock', 'ok', 'gr');
+        status.classList.add(isOpen ? 'warn' : 'lock');
+      }
+      if (answerArea) answerArea.style.display = isOpen ? '' : 'none';
+      if (locked) locked.style.display = isOpen ? 'none' : '';
+      if (choice) choice.style.display = type === 'choice' ? '' : 'none';
+      if (number) number.style.display = type === 'number' ? '' : 'none';
+      updatePreviewOptions();
     }
 
     function setSection(selector, visible) {
@@ -734,10 +831,15 @@ function initAdminBonusQuestionForms() {
       setSection('[data-bonus-choice-only]', !isNumber);
       setSection('[data-bonus-number-only]', isNumber);
       setSection('[data-bonus-custom-only]', isCustom);
+      updatePreview();
     }
 
     if (typeSelect) typeSelect.addEventListener('change', update);
     if (presetSelect) presetSelect.addEventListener('change', update);
+    form.querySelectorAll('input, select, textarea').forEach(function(control) {
+      control.addEventListener('input', updatePreview);
+      control.addEventListener('change', updatePreview);
+    });
     update();
   });
 }
