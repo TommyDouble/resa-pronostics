@@ -555,17 +555,36 @@ def normalize_closest_config(points_value: int, raw_config=None) -> dict:
     if award_mode == "winner_takes_all":
         rank_points = [rank_points[0], 0, 0]
 
+    preset_key = config.get("preset_key")
+    if preset_key not in {"fun_balanced", "winner_takes_all", "top2", "custom"}:
+        if award_mode == "winner_takes_all" and rank_points[0] == 6:
+            preset_key = "winner_takes_all"
+        elif award_mode == "podium_custom" and tie_policy == "full_skip" and rank_points == [6, 4, 2]:
+            preset_key = "fun_balanced"
+        elif award_mode == "podium_custom" and tie_policy == "full_skip" and rank_points == [6, 3, 0]:
+            preset_key = "top2"
+        else:
+            preset_key = "custom"
+
     return {
+        "preset_key": preset_key,
         "award_mode": award_mode,
         "tie_policy": tie_policy,
         "rank_points": rank_points,
     }
 
 
-def serialize_closest_config(points_value: int, award_mode: str, tie_policy: str, rank_points: list[int]) -> str:
+def serialize_closest_config(
+    points_value: int,
+    award_mode: str,
+    tie_policy: str,
+    rank_points: list[int],
+    preset_key: str = "custom",
+) -> str:
     config = normalize_closest_config(
         points_value,
         {
+            "preset_key": preset_key,
             "award_mode": award_mode,
             "tie_policy": tie_policy,
             "rank_points": rank_points,

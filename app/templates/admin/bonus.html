@@ -2,6 +2,45 @@
 {% block title %}Questions bonus — Admin RESA{% endblock %}
 {% block admin_content %}
 
+{% macro phase_options(selected='pre_tournament') -%}
+  <option value="pre_tournament" {{ 'selected' if selected == 'pre_tournament' else '' }}>Pré-tournoi</option>
+  <option value="group" {{ 'selected' if selected == 'group' else '' }}>Phase de groupes</option>
+  <option value="round_of_32" {{ 'selected' if selected == 'round_of_32' else '' }}>Seizièmes</option>
+  <option value="round_of_16" {{ 'selected' if selected == 'round_of_16' else '' }}>Huitièmes</option>
+  <option value="quarter" {{ 'selected' if selected == 'quarter' else '' }}>Quarts</option>
+  <option value="semi" {{ 'selected' if selected == 'semi' else '' }}>Demies</option>
+  <option value="third_place" {{ 'selected' if selected == 'third_place' else '' }}>3e place</option>
+  <option value="final" {{ 'selected' if selected == 'final' else '' }}>Finale</option>
+{%- endmacro %}
+
+{% macro closest_preset_options(selected='fun_balanced') -%}
+  <option value="fun_balanced" {{ 'selected' if selected == 'fun_balanced' else '' }}>Fun équilibré · 6 / 4 / 2</option>
+  <option value="winner_takes_all" {{ 'selected' if selected == 'winner_takes_all' else '' }}>Winner takes all · 6 au meilleur rang</option>
+  <option value="top2" {{ 'selected' if selected == 'top2' else '' }}>Top 2 · 6 / 3</option>
+  <option value="custom" {{ 'selected' if selected == 'custom' else '' }}>Avancé personnalisé</option>
+{%- endmacro %}
+
+{% macro closest_award_options(selected='podium_custom') -%}
+  <option value="podium_custom" {{ 'selected' if selected == 'podium_custom' else '' }}>Podium configurable</option>
+  <option value="winner_takes_all" {{ 'selected' if selected == 'winner_takes_all' else '' }}>Winner takes all</option>
+{%- endmacro %}
+
+{% macro closest_tie_options(selected='full_skip') -%}
+  <option value="full_skip" {{ 'selected' if selected == 'full_skip' else '' }}>Plein palier, rangs sautés</option>
+  <option value="full_dense" {{ 'selected' if selected == 'full_dense' else '' }}>Plein palier, rangs non sautés</option>
+  <option value="share_occupied" {{ 'selected' if selected == 'share_occupied' else '' }}>Partage des places occupées</option>
+{%- endmacro %}
+
+{% macro step_head(number, title, text='') -%}
+  <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;">
+    <span class="chip gr" style="min-width:28px;justify-content:center;">{{ number }}</span>
+    <div>
+      <div class="lbl" style="font-size:12px;color:var(--n900);">{{ title }}</div>
+      {% if text %}<div class="muted" style="font-size:12px;margin-top:2px;">{{ text }}</div>{% endif %}
+    </div>
+  </div>
+{%- endmacro %}
+
 <h1>Questions bonus</h1>
 
 <!-- Pre-tournament block -->
@@ -35,122 +74,135 @@
 <!-- Create question -->
 <div class="card" id="add-bonus-card" style="display:none;">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-    <div class="lbl" style="font-size:13px;">Nouvelle question bonus</div>
+    <div>
+      <div class="lbl" style="font-size:13px;">Nouvelle question bonus</div>
+      <div class="muted" style="font-size:12px;margin-top:2px;">Créée en brouillon par défaut, puis publiée manuellement.</div>
+    </div>
     <span class="sp"></span>
     <button type="button" class="btn ghost sm" onclick="document.getElementById('add-bonus-card').style.display='none'">Fermer</button>
   </div>
-  <form method="post" action="/admin/bonus/create" style="display:flex;flex-direction:column;gap:10px;">
-    <div>
-      <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
-      <div class="field"><input type="text" name="question_text" placeholder="Ex: Combien de buts lors des 1/8 ?" required style="flex:1;"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">Type</div>
-        <div class="field">
-          <select name="answer_type" style="flex:1;">
-            <option value="choice">Choix unique</option>
-            <option value="number">Nombre le plus proche</option>
-          </select>
-        </div>
-      </div>
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">Phase</div>
-        <div class="field">
-          <select name="phase" style="flex:1;">
-            <option value="pre_tournament">Pré-tournoi</option>
-            <option value="group">Phase de groupes</option>
-            <option value="round_of_32">Seizièmes</option>
-            <option value="round_of_16">Huitièmes</option>
-            <option value="quarter">Quarts</option>
-            <option value="semi">Demies</option>
-            <option value="third_place">3e place</option>
-            <option value="final">Finale</option>
-          </select>
-        </div>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">Points max (3–10)</div>
-        <div class="field"><input type="number" name="points_value" min="3" max="10" value="6" required></div>
-      </div>
-      <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;padding-top:22px;cursor:pointer;">
-        <input type="checkbox" name="is_published" value="1" checked>
-        <span>Publier immédiatement</span>
-      </label>
-    </div>
-    <div style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:10px;background:var(--n50);">
-      <div class="lbl" style="margin-bottom:8px;">Répartition si nombre le plus proche</div>
-      <div class="banner soft" style="margin-bottom:10px;">
-        <span>Astuce</span>
-        <span>
-          Recommandé pour une question fun : <b>Podium configurable</b>,
-          <b>plein palier, rangs sautés</b>, puis <b>6 / 4 / 2 pts</b>.
-        </span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+  <form method="post" action="/admin/bonus/create" data-admin-bonus-form data-bonus-initial-type="choice" style="display:flex;flex-direction:column;gap:12px;">
+    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;">
+      {{ step_head('1', 'Question', 'Intitulé, type, phase et deadline.') }}
+      <div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(180px,.6fr);gap:10px;margin-bottom:10px;">
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">
-            Mode
-            <span class="help-tip" tabindex="0" data-tip="Podium configurable récompense les meilleurs rangs. Winner takes all donne tous les points uniquement au meilleur rang.">?</span>
-          </div>
-          <div class="field">
-            <select name="closest_award_mode">
-              <option value="podium_custom">Podium configurable</option>
-              <option value="winner_takes_all">Winner takes all</option>
-            </select>
-          </div>
+          <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
+          <div class="field"><input type="text" name="question_text" placeholder="Ex: Combien de buts lors des 1/8 ?" required style="flex:1;"></div>
         </div>
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">
-            Ex aequo
-            <span class="help-tip" tabindex="0" data-tip="Rangs sautés: deux 1ers puis le suivant est 3e. Rangs non sautés: deux 1ers puis le suivant est 2e. Partage: les ex aequo se partagent les places occupées.">?</span>
-          </div>
+          <div class="lbl" style="margin-bottom:5px;">Type</div>
           <div class="field">
-            <select name="closest_tie_policy">
-              <option value="full_skip">Plein palier, rangs sautés</option>
-              <option value="full_dense">Plein palier, rangs non sautés</option>
-              <option value="share_occupied">Partage des places occupées</option>
+            <select name="answer_type" style="flex:1;">
+              <option value="choice">Choix unique</option>
+              <option value="number">Nombre le plus proche</option>
             </select>
           </div>
         </div>
       </div>
-      <p class="muted helper-text">
-        Repère : “winner takes all” est plus cruel ; “partage” évite de distribuer trop de points quand beaucoup de joueurs sont ex aequo.
-      </p>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">1er <span class="help-tip" tabindex="0" data-tip="Points donnés au ou aux participants les plus proches de la bonne réponse.">?</span></div>
-          <div class="field"><input type="number" name="closest_rank1_points" min="0" max="50" value="6"></div>
+          <div class="lbl" style="margin-bottom:5px;">Phase</div>
+          <div class="field"><select name="phase" style="flex:1;">{{ phase_options() }}</select></div>
         </div>
         <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">2e <span class="help-tip" tabindex="0" data-tip="Points donnés au rang suivant selon la règle d'ex aequo choisie.">?</span></div>
-          <div class="field"><input type="number" name="closest_rank2_points" min="0" max="50" value="4"></div>
-        </div>
-        <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">3e <span class="help-tip" tabindex="0" data-tip="Mets 0 si tu veux arrêter les points au top 2.">?</span></div>
-          <div class="field"><input type="number" name="closest_rank3_points" min="0" max="50" value="2"></div>
+          <div class="lbl" style="margin-bottom:5px;">Deadline (<span data-local-timezone>{{ display_tz_label }}</span>)</div>
+          <div class="field"><input type="datetime-local" name="deadline" required style="flex:1;"></div>
         </div>
       </div>
-    </div>
-    <div>
-      <div class="lbl" style="margin-bottom:5px;">Options de réponse</div>
-      <textarea name="options_text" class="textarea" rows="3" placeholder="Choix unique : une option par ligne, ou séparées par des virgules"></textarea>
-      <p class="muted helper-text">Pour “Nombre le plus proche”, les options sont ignorées.</p>
-    </div>
-    <div>
-      <div class="lbl" style="margin-bottom:5px;">Deadline (<span data-local-timezone>{{ display_tz_label }}</span>)</div>
-      <div class="field"><input type="datetime-local" name="deadline" required style="flex:1;"></div>
-    </div>
-    <div>
-      <div class="lbl" style="margin-bottom:5px;">Réponse correcte optionnelle</div>
-      <div class="field"><input type="text" name="correct_answer" placeholder="À compléter plus tard si besoin"></div>
-    </div>
-    <div class="row2">
-      <button type="button" class="btn ghost" onclick="document.getElementById('add-bonus-card').style.display='none'">Annuler</button>
-      <button type="submit" class="btn">Publier</button>
-    </div>
+    </section>
+
+    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
+      {{ step_head('2', 'Réponses attendues', 'Choisis ce que les participants pourront saisir.') }}
+      <div data-bonus-choice-only>
+        <div class="lbl" style="margin-bottom:5px;">Options de choix unique</div>
+        <textarea name="options_text" class="textarea" rows="3" placeholder="Une option par ligne, ou séparées par des virgules"></textarea>
+        <p class="muted helper-text" style="margin-bottom:0;">Exemple : Oui / Non, France / Brésil, etc.</p>
+      </div>
+      <div data-bonus-number-only>
+        <div class="banner soft">
+          <span>Nombre libre</span>
+          <span>Les participants saisiront une valeur numérique. Les options sont ignorées.</span>
+        </div>
+      </div>
+    </section>
+
+    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;">
+      {{ step_head('3', 'Barème', 'Définis la règle de points affichée et calculée.') }}
+      <div data-bonus-choice-only>
+        <div class="lbl" style="margin-bottom:5px;">Points si réponse exacte</div>
+        <div class="field" style="max-width:220px;"><input type="number" name="points_value" min="1" max="50" value="6" required></div>
+      </div>
+      <div data-bonus-number-only>
+        <input type="hidden" name="points_value" value="6">
+        <div class="banner soft" style="margin-bottom:10px;">
+          <span>Astuce</span>
+          <span>
+            Recommandé pour une question fun : <b>Fun équilibré</b>,
+            <b>plein palier, rangs sautés</b>, puis <b>6 / 4 / 2 pts</b>.
+          </span>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Preset de répartition</div>
+          <div class="field">
+            <select name="closest_preset_key">
+              {{ closest_preset_options('fun_balanced') }}
+            </select>
+          </div>
+          <p class="muted helper-text">Choisis un preset pour aller vite, ou “Avancé personnalisé” pour régler les rangs et les ex aequo.</p>
+        </div>
+        <div data-bonus-custom-only style="margin-top:10px;border-top:1px dashed var(--n300);padding-top:10px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div>
+              <div class="muted" style="font-size:11px;margin-bottom:5px;">
+                Mode d'attribution
+                <span class="help-tip" tabindex="0" data-tip="Podium configurable récompense les meilleurs rangs. Winner takes all donne tous les points uniquement au meilleur rang.">?</span>
+              </div>
+              <div class="field"><select name="closest_award_mode">{{ closest_award_options() }}</select></div>
+            </div>
+            <div>
+              <div class="muted" style="font-size:11px;margin-bottom:5px;">
+                Gestion des ex aequo
+                <span class="help-tip" tabindex="0" data-tip="Rangs sautés: deux 1ers puis le suivant est 3e. Rangs non sautés: deux 1ers puis le suivant est 2e. Partage: les ex aequo se partagent les places occupées.">?</span>
+              </div>
+              <div class="field"><select name="closest_tie_policy">{{ closest_tie_options() }}</select></div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+            <div>
+              <div class="muted" style="font-size:11px;margin-bottom:5px;">1er</div>
+              <div class="field"><input type="number" name="closest_rank1_points" min="0" max="50" value="6"></div>
+            </div>
+            <div>
+              <div class="muted" style="font-size:11px;margin-bottom:5px;">2e</div>
+              <div class="field"><input type="number" name="closest_rank2_points" min="0" max="50" value="4"></div>
+            </div>
+            <div>
+              <div class="muted" style="font-size:11px;margin-bottom:5px;">3e</div>
+              <div class="field"><input type="number" name="closest_rank3_points" min="0" max="50" value="2"></div>
+            </div>
+          </div>
+          <p class="muted helper-text" style="margin-bottom:0;">Le score du 1er rang devient les points max affichés sur la question.</p>
+        </div>
+      </div>
+    </section>
+
+    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
+      {{ step_head('4', 'Correction et publication', 'Tu peux enregistrer sans réponse correcte, puis publier plus tard.') }}
+      <div style="display:grid;grid-template-columns:1fr minmax(220px,.5fr);gap:10px;align-items:end;">
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Réponse correcte optionnelle</div>
+          <div class="field"><input type="text" name="correct_answer" placeholder="Déclenche le recalcul si renseignée"></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;cursor:pointer;padding-bottom:12px;">
+          <input type="checkbox" name="is_published" value="1">
+          <span>Publier immédiatement</span>
+        </label>
+      </div>
+      <div class="row2" style="margin-top:10px;">
+        <button type="button" class="btn ghost" onclick="document.getElementById('add-bonus-card').style.display='none'">Annuler</button>
+        <button type="submit" class="btn">Enregistrer le brouillon</button>
+      </div>
+    </section>
   </form>
 </div>
 
@@ -160,14 +212,15 @@
   Questions créées
 </h2>
 {% for q in questions %}
+{% set is_closest = q.scoring_mode == 'closest_podium' %}
+{% set type_label = 'nombre le plus proche' if is_closest else ('choix unique' if q.answer_type == 'choice' else q.answer_type) %}
+{% set bar_label = (q.closest_rank_points|join(' / ')) ~ ' pts' if is_closest else q.points_value ~ ' pts' %}
 <div class="card">
   <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
     <div style="flex:1;min-width:240px;">
       <b style="font-size:14px;">{{ q.question_text }}</b>
       <div class="muted" style="font-size:11px;margin-top:3px;">
-        {{ phase_labels.get(q.phase, q.phase) }} ·
-        {% if q.scoring_mode == 'closest_podium' %}nombre le plus proche{% elif q.answer_type == 'choice' %}choix unique{% else %}{{ q.answer_type }}{% endif %}
-        · {{ q.points_value }} pts max · deadline:
+        {{ phase_labels.get(q.phase, q.phase) }} · {{ type_label }} · barème {{ bar_label }} · deadline:
         <span data-local-utc="{{ q.deadline|utc_iso }}">{{ q.deadline|local_datetime }}</span>
       </div>
     </div>
@@ -184,137 +237,148 @@
     {% endif %}
   </div>
 
-  <form method="post" action="/admin/bonus/{{ q.id }}/update" style="display:flex;flex-direction:column;gap:10px;">
-    <div>
-      <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
-      <div class="field"><input type="text" name="question_text" value="{{ q.question_text }}" required></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+  <form method="post" action="/admin/bonus/{{ q.id }}/update" data-admin-bonus-form data-bonus-initial-type="{{ q.answer_type }}" style="display:flex;flex-direction:column;gap:12px;">
+    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;">
+      {{ step_head('1', 'Question', 'Modifie le libellé, la phase et la deadline.') }}
       <div>
-        <div class="lbl" style="margin-bottom:5px;">Type{% if q.is_published or q.answer_count %} (figé){% endif %}</div>
-        <div class="field" {% if q.is_published or q.answer_count %}style="background:var(--n100);"{% endif %}>
+        <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
+        <div class="field"><input type="text" name="question_text" value="{{ q.question_text }}" required></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px;">
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Type{% if q.is_published or q.answer_count %} (figé){% endif %}</div>
           {% if not q.is_published and q.answer_count == 0 %}
-          <select name="answer_type">
-            <option value="choice" {{ 'selected' if q.answer_type == 'choice' else '' }}>Choix unique</option>
-            <option value="number" {{ 'selected' if q.answer_type == 'number' else '' }}>Nombre le plus proche</option>
-          </select>
+          <div class="field">
+            <select name="answer_type">
+              <option value="choice" {{ 'selected' if q.answer_type == 'choice' else '' }}>Choix unique</option>
+              <option value="number" {{ 'selected' if q.answer_type == 'number' else '' }}>Nombre le plus proche</option>
+            </select>
+          </div>
           {% else %}
-          <input type="text" value="{% if q.scoring_mode == 'closest_podium' %}Nombre le plus proche{% else %}{{ {'choice': 'Choix unique', 'number': 'Numérique', 'text': 'Texte libre'}.get(q.answer_type, q.answer_type) }}{% endif %}" readonly tabindex="-1">
+          <div class="field readonly">
+            <input type="text" value="{{ 'Nombre le plus proche' if is_closest else {'choice': 'Choix unique', 'number': 'Numérique', 'text': 'Texte libre'}.get(q.answer_type, q.answer_type) }}" readonly tabindex="-1">
+          </div>
           {% endif %}
         </div>
-      </div>
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">Phase</div>
-        <div class="field">
-          <select name="phase">
-            <option value="pre_tournament" {{ 'selected' if q.phase == 'pre_tournament' else '' }}>Pré-tournoi</option>
-            <option value="group" {{ 'selected' if q.phase == 'group' else '' }}>Phase de groupes</option>
-            <option value="round_of_32" {{ 'selected' if q.phase == 'round_of_32' else '' }}>Seizièmes</option>
-            <option value="round_of_16" {{ 'selected' if q.phase == 'round_of_16' else '' }}>Huitièmes</option>
-            <option value="quarter" {{ 'selected' if q.phase == 'quarter' else '' }}>Quarts</option>
-            <option value="semi" {{ 'selected' if q.phase == 'semi' else '' }}>Demies</option>
-            <option value="third_place" {{ 'selected' if q.phase == 'third_place' else '' }}>3e place</option>
-            <option value="final" {{ 'selected' if q.phase == 'final' else '' }}>Finale</option>
-          </select>
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Phase</div>
+          <div class="field"><select name="phase">{{ phase_options(q.phase) }}</select></div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Deadline</div>
+          <div class="field"><input type="datetime-local" name="deadline" value="{{ q.deadline|local_input }}" data-local-input-utc="{{ q.deadline|utc_iso }}" required></div>
         </div>
       </div>
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">Points</div>
-        <div class="field"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
+    </section>
+
+    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
+      {{ step_head('2', 'Réponses attendues', 'Ce bloc change selon le type de question.') }}
+      <div data-bonus-choice-only>
+        <div class="lbl" style="margin-bottom:5px;">Options de choix unique</div>
+        <textarea name="options_text" class="textarea" rows="3">{{ q.options_text }}</textarea>
+        <p class="muted helper-text" style="margin-bottom:0;">Une option par ligne, ou séparées par des virgules.</p>
       </div>
-    </div>
-    {% if q.scoring_mode == 'closest_podium' %}
-    <div style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:10px;background:var(--n50);">
-      <div class="lbl" style="margin-bottom:8px;">Répartition des points</div>
-      <div class="banner soft" style="margin-bottom:10px;">
-        <span>Astuce</span>
-        <span>
-          Recommandé pour une question fun : <b>Podium configurable</b>,
-          <b>plein palier, rangs sautés</b>, puis <b>6 / 4 / 2 pts</b>.
-        </span>
+      <div data-bonus-number-only>
+        <div class="banner soft">
+          <span>Nombre libre</span>
+          <span>Les participants saisissent un nombre. Le classement dépend de l'écart à la réponse correcte.</span>
+        </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-        <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">
-            Mode d'attribution
-            <span class="help-tip" tabindex="0" data-tip="Podium configurable récompense les meilleurs rangs. Winner takes all donne tous les points uniquement au meilleur rang.">?</span>
+    </section>
+
+    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;">
+      {{ step_head('3', 'Barème', 'Une seule source de vérité pour les points.') }}
+      <div data-bonus-choice-only>
+        <div class="lbl" style="margin-bottom:5px;">Points si réponse exacte</div>
+        <div class="field" style="max-width:220px;"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
+      </div>
+      <div data-bonus-number-only>
+        <input type="hidden" name="points_value" value="{{ q.points_value }}">
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.35fr);gap:10px;align-items:end;">
+          <div>
+            <div class="lbl" style="margin-bottom:5px;">Preset de répartition</div>
+            <div class="field">
+              <select name="closest_preset_key">
+                {{ closest_preset_options(q.closest_preset_key) }}
+              </select>
+            </div>
           </div>
+          <div class="banner soft" style="min-height:44px;">
+            <span>Actuel</span>
+            <span>{{ bar_label }}</span>
+          </div>
+        </div>
+        <p class="muted helper-text">
+          “Fun équilibré” est le réglage doux recommandé pour une question fun. “Avancé personnalisé” permet de changer le mode d'attribution, les ex aequo et chaque palier.
+        </p>
+        <div data-bonus-custom-only style="margin-top:10px;border-top:1px dashed var(--n300);padding-top:10px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div>
+              <div class="muted" style="font-size:11px;margin-bottom:5px;">
+                Mode d'attribution
+                <span class="help-tip" tabindex="0" data-tip="Podium configurable récompense les meilleurs rangs. Winner takes all donne tous les points uniquement au meilleur rang.">?</span>
+              </div>
+              <div class="field"><select name="closest_award_mode">{{ closest_award_options(q.closest_award_mode) }}</select></div>
+            </div>
+            <div>
+              <div class="muted" style="font-size:11px;margin-bottom:5px;">
+                Gestion des ex aequo
+                <span class="help-tip" tabindex="0" data-tip="Rangs sautés: deux 1ers puis le suivant est 3e. Rangs non sautés: deux 1ers puis le suivant est 2e. Partage: les ex aequo se partagent les places occupées.">?</span>
+              </div>
+              <div class="field"><select name="closest_tie_policy">{{ closest_tie_options(q.closest_tie_policy) }}</select></div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+            <div>
+              <div class="muted" style="font-size:11px;margin-bottom:5px;">1er</div>
+              <div class="field"><input type="number" name="closest_rank1_points" min="0" max="50" value="{{ q.closest_rank_points[0] }}"></div>
+            </div>
+            <div>
+              <div class="muted" style="font-size:11px;margin-bottom:5px;">2e</div>
+              <div class="field"><input type="number" name="closest_rank2_points" min="0" max="50" value="{{ q.closest_rank_points[1] }}"></div>
+            </div>
+            <div>
+              <div class="muted" style="font-size:11px;margin-bottom:5px;">3e</div>
+              <div class="field"><input type="number" name="closest_rank3_points" min="0" max="50" value="{{ q.closest_rank_points[2] }}"></div>
+            </div>
+          </div>
+          <p class="muted helper-text" style="margin-bottom:0;">Le score du 1er rang devient les points max affichés sur la question.</p>
+        </div>
+      </div>
+    </section>
+
+    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
+      {{ step_head('4', 'Correction et publication', 'La réponse correcte déclenche le recalcul des points.') }}
+      <div style="display:grid;grid-template-columns:1fr minmax(220px,.4fr);gap:10px;align-items:end;">
+        <div data-bonus-choice-only>
+          <div class="lbl" style="margin-bottom:5px;">Réponse correcte</div>
+          {% if q.answer_type == 'choice' and q.options_text %}
           <div class="field">
-            <select name="closest_award_mode">
-              <option value="podium_custom" {{ 'selected' if q.closest_award_mode == 'podium_custom' else '' }}>Podium configurable</option>
-              <option value="winner_takes_all" {{ 'selected' if q.closest_award_mode == 'winner_takes_all' else '' }}>Winner takes all</option>
+            <select name="correct_answer">
+              <option value="">— Non définie —</option>
+              {% for opt in q.options | fromjson %}
+              <option value="{{ opt }}" {{ 'selected' if q.correct_answer == opt else '' }}>{{ opt }}</option>
+              {% endfor %}
             </select>
           </div>
+          {% else %}
+          <div class="field"><input type="text" name="correct_answer" value="{{ q.correct_answer or '' }}" placeholder="Déclenche le recalcul"></div>
+          {% endif %}
         </div>
-        <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">
-            Gestion des ex aequo
-            <span class="help-tip" tabindex="0" data-tip="Rangs sautés: deux 1ers puis le suivant est 3e. Rangs non sautés: deux 1ers puis le suivant est 2e. Partage: les ex aequo se partagent les places occupées.">?</span>
-          </div>
-          <div class="field">
-            <select name="closest_tie_policy">
-              <option value="full_skip" {{ 'selected' if q.closest_tie_policy == 'full_skip' else '' }}>Plein palier, rangs sautés</option>
-              <option value="full_dense" {{ 'selected' if q.closest_tie_policy == 'full_dense' else '' }}>Plein palier, rangs non sautés</option>
-              <option value="share_occupied" {{ 'selected' if q.closest_tie_policy == 'share_occupied' else '' }}>Partage des places occupées</option>
-            </select>
-          </div>
+        <div data-bonus-number-only>
+          <div class="lbl" style="margin-bottom:5px;">Réponse correcte numérique</div>
+          <div class="field"><input type="text" name="correct_answer" value="{{ q.correct_answer or '' }}" placeholder="Déclenche le recalcul"></div>
         </div>
+        <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;cursor:pointer;padding-bottom:12px;">
+          <input type="checkbox" name="is_published" value="1" {{ 'checked' if q.is_published else '' }}>
+          <span>Publié côté participants</span>
+        </label>
       </div>
-      <p class="muted helper-text">
-        Repère : “winner takes all” est plus cruel ; “partage” évite de distribuer trop de points quand beaucoup de joueurs sont ex aequo.
-      </p>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-        <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">1er <span class="help-tip" tabindex="0" data-tip="Points donnés au ou aux participants les plus proches de la bonne réponse.">?</span></div>
-          <div class="field"><input type="number" name="closest_rank1_points" min="0" max="50" value="{{ q.closest_rank_points[0] }}"></div>
-        </div>
-        <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">2e <span class="help-tip" tabindex="0" data-tip="Points donnés au rang suivant selon la règle d'ex aequo choisie.">?</span></div>
-          <div class="field"><input type="number" name="closest_rank2_points" min="0" max="50" value="{{ q.closest_rank_points[1] }}"></div>
-        </div>
-        <div>
-          <div class="muted" style="font-size:11px;margin-bottom:5px;">3e <span class="help-tip" tabindex="0" data-tip="Mets 0 si tu veux arrêter les points au top 2.">?</span></div>
-          <div class="field"><input type="number" name="closest_rank3_points" min="0" max="50" value="{{ q.closest_rank_points[2] }}"></div>
-        </div>
+      <div class="row2" style="margin-top:10px;">
+        <button type="submit" class="btn sm">Enregistrer et recalculer</button>
+        <a href="/admin/pronostics?view=bonus" class="btn ghost sm">Toutes les réponses</a>
       </div>
-      <p class="muted helper-text" style="margin-bottom:0;">Le 1er champ devient les points max affichés sur la question.</p>
-    </div>
-    {% endif %}
-    {% if q.scoring_mode != 'closest_podium' %}
-    <div>
-      <div class="lbl" style="margin-bottom:5px;">Options si choix unique</div>
-      <textarea name="options_text" class="textarea" rows="3">{{ q.options_text }}</textarea>
-    </div>
-    {% endif %}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">Deadline</div>
-        <div class="field"><input type="datetime-local" name="deadline" value="{{ q.deadline|local_input }}" data-local-input-utc="{{ q.deadline|utc_iso }}" required></div>
-      </div>
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">Réponse correcte</div>
-        {% if q.answer_type == 'choice' and q.options_text %}
-        <div class="field">
-          <select name="correct_answer">
-            <option value="">— Non définie —</option>
-            {% for opt in q.options | fromjson %}
-            <option value="{{ opt }}" {{ 'selected' if q.correct_answer == opt else '' }}>{{ opt }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        {% else %}
-        <div class="field"><input type="text" name="correct_answer" value="{{ q.correct_answer or '' }}" placeholder="Déclenche le recalcul"></div>
-        {% endif %}
-      </div>
-    </div>
-    <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;cursor:pointer;">
-      <input type="checkbox" name="is_published" value="1" {{ 'checked' if q.is_published else '' }}>
-      <span>Publié côté participants</span>
-    </label>
-    <div class="row2">
-      <button type="submit" class="btn sm">Enregistrer et recalculer</button>
-      <a href="/admin/pronostics?view=bonus" class="btn ghost sm">Toutes les réponses</a>
-    </div>
+    </section>
   </form>
 
   <form method="post" action="/admin/bonus/{{ q.id }}/delete"
@@ -323,7 +387,7 @@
     <button type="submit" class="btn ghost sm" style="color:var(--error);">Supprimer</button>
   </form>
 
-  {% if q.scoring_mode == 'closest_podium' %}
+  {% if is_closest %}
   <div style="margin-top:14px;">
     <div class="lbl" style="margin-bottom:8px;">Classement de cette question</div>
     {% set standing = closest_standings_by_question.get(q.id) %}
@@ -371,7 +435,7 @@
     <div class="lbl" style="margin-bottom:8px;">Réponses participants</div>
     {% set answers = answers_by_question.get(q.id, []) %}
     {% if answers %}
-    <div class="card p0" style="box-shadow:none;">
+    <div style="border:1.5px solid var(--n300);border-radius:var(--r-sm);overflow:hidden;">
       <table class="tbl" data-admin-table data-admin-search-placeholder="⌕ Filtrer réponses...">
         <thead>
           <tr>

@@ -150,6 +150,7 @@ def _bonus_int(value, default: int = 0) -> int:
 def _closest_form_config(
     answer_type: str,
     points_value: int,
+    preset_key: str,
     award_mode: str,
     tie_policy: str,
     rank1_points: int,
@@ -158,10 +159,24 @@ def _closest_form_config(
 ) -> tuple[int, str | None]:
     if answer_type != "number":
         return points_value, None
+    presets = {
+        "fun_balanced": ("podium_custom", "full_skip", [6, 4, 2]),
+        "winner_takes_all": ("winner_takes_all", "full_skip", [6, 0, 0]),
+        "top2": ("podium_custom", "full_skip", [6, 3, 0]),
+    }
+    if preset_key in presets:
+        award_mode, tie_policy, rank_points = presets[preset_key]
+    else:
+        preset_key = "custom"
+        rank_points = [
+            _bonus_int(rank1_points, points_value),
+            _bonus_int(rank2_points, max(points_value - 2, 0)),
+            _bonus_int(rank3_points, max(points_value - 4, 0)),
+        ]
     rank_points = [
-        _bonus_int(rank1_points, points_value),
-        _bonus_int(rank2_points, max(points_value - 2, 0)),
-        _bonus_int(rank3_points, max(points_value - 4, 0)),
+        _bonus_int(rank_points[0], points_value),
+        _bonus_int(rank_points[1], max(points_value - 2, 0)),
+        _bonus_int(rank_points[2], max(points_value - 4, 0)),
     ]
     if award_mode == "winner_takes_all":
         rank_points = [rank_points[0], 0, 0]
@@ -170,7 +185,7 @@ def _closest_form_config(
     if tie_policy not in {"full_skip", "full_dense", "share_occupied"}:
         tie_policy = "full_skip"
     return rank_points[0], serialize_closest_config(
-        rank_points[0], award_mode, tie_policy, rank_points
+        rank_points[0], award_mode, tie_policy, rank_points, preset_key
     )
 
 
@@ -1420,6 +1435,7 @@ async def bonus_admin(request: Request):
             closest_config = normalize_closest_config(
                 question["points_value"], question.get("scoring_config")
             )
+            question["closest_preset_key"] = closest_config["preset_key"]
             question["closest_award_mode"] = closest_config["award_mode"]
             question["closest_tie_policy"] = closest_config["tie_policy"]
             question["closest_rank_points"] = closest_config["rank_points"]
@@ -1485,6 +1501,7 @@ async def create_bonus(request: Request,
                        options_text: str = Form(default=""),
                        correct_answer: str = Form(default=""),
                        is_published: int = Form(default=0),
+                       closest_preset_key: str = Form(default="fun_balanced"),
                        closest_award_mode: str = Form(default="podium_custom"),
                        closest_tie_policy: str = Form(default="full_skip"),
                        closest_rank1_points: int = Form(default=6),
@@ -1506,6 +1523,7 @@ async def create_bonus(request: Request,
     points_value, scoring_config = _closest_form_config(
         answer_type,
         points_value,
+        closest_preset_key,
         closest_award_mode,
         closest_tie_policy,
         closest_rank1_points,
@@ -1561,6 +1579,7 @@ async def update_bonus_question(
     options_text: str = Form(default=""),
     correct_answer: str = Form(default=""),
     is_published: int = Form(default=0),
+    closest_preset_key: str = Form(default="custom"),
     closest_award_mode: str = Form(default="podium_custom"),
     closest_tie_policy: str = Form(default="full_skip"),
     closest_rank1_points: int = Form(default=6),
@@ -1596,6 +1615,7 @@ async def update_bonus_question(
         points_value, scoring_config = _closest_form_config(
             answer_type,
             points_value,
+            closest_preset_key,
             closest_award_mode,
             closest_tie_policy,
             closest_rank1_points,

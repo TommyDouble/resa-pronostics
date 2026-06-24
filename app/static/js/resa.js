@@ -709,6 +709,39 @@ function initBonusForms() {
   });
 }
 
+/* ---- Admin: bonus question builder ---- */
+function initAdminBonusQuestionForms() {
+  document.querySelectorAll('[data-admin-bonus-form]').forEach(function(form) {
+    var typeSelect = form.querySelector('select[name="answer_type"]');
+    var presetSelect = form.querySelector('select[name="closest_preset_key"]');
+
+    function currentType() {
+      return typeSelect ? typeSelect.value : (form.dataset.bonusInitialType || 'choice');
+    }
+
+    function setSection(selector, visible) {
+      form.querySelectorAll(selector).forEach(function(section) {
+        section.style.display = visible ? '' : 'none';
+        section.querySelectorAll('input, select, textarea, button').forEach(function(control) {
+          control.disabled = !visible;
+        });
+      });
+    }
+
+    function update() {
+      var isNumber = currentType() === 'number';
+      var isCustom = isNumber && presetSelect && presetSelect.value === 'custom';
+      setSection('[data-bonus-choice-only]', !isNumber);
+      setSection('[data-bonus-number-only]', isNumber);
+      setSection('[data-bonus-custom-only]', isCustom);
+    }
+
+    if (typeSelect) typeSelect.addEventListener('change', update);
+    if (presetSelect) presetSelect.addEventListener('change', update);
+    update();
+  });
+}
+
 /* ---- Flash message auto-dismiss ---- */
 function initFlash() {
   document.querySelectorAll('.flash-msg').forEach(function(msg) {
@@ -1831,6 +1864,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initWinnerFinalistGuard();
   initScorerCombos();
   initBonusForms();
+  initAdminBonusQuestionForms();
   initPush();
   initMatchLive();
   initCountUp();

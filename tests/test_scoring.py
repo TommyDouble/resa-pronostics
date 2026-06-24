@@ -6,7 +6,9 @@ from app.scoring import (
     calculate_match_score,
     calculate_pre_tournament_points,
     closest_podium_bonus_points,
+    normalize_closest_config,
     parse_revelation_winners,
+    serialize_closest_config,
 )
 
 
@@ -305,3 +307,29 @@ class TestClosestPodiumBonusPoints:
         )
 
         assert scores == {1: 5, 2: 5, 3: 2}
+
+    def test_legacy_config_infers_fun_balanced_preset(self):
+        config = normalize_closest_config(
+            6,
+            {"award_mode": "podium_custom", "tie_policy": "full_skip", "rank_points": [6, 4, 2]},
+        )
+
+        assert config["preset_key"] == "fun_balanced"
+
+    def test_serialized_custom_config_keeps_custom_preset(self):
+        config = json.loads(
+            serialize_closest_config(
+                9,
+                "winner_takes_all",
+                "full_skip",
+                [9, 0, 0],
+                "custom",
+            )
+        )
+
+        assert config == {
+            "preset_key": "custom",
+            "award_mode": "winner_takes_all",
+            "tie_policy": "full_skip",
+            "rank_points": [9, 0, 0],
+        }
