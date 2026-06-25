@@ -94,6 +94,19 @@ def _predict(pid, mid, pred="team1", ps1=2, ps2=1):
     run(_c())
 
 
+def _set_match_result(mid, *, result, s1, s2):
+    async def _c():
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE matches
+                      SET result=?, score_team1=?, score_team2=?
+                    WHERE id=?""",
+                (result, s1, s2, mid),
+            )
+            await db.commit()
+    run(_c())
+
+
 def _refresh():
     async def _c():
         async with get_db() as db:
@@ -267,6 +280,35 @@ def test_journee_parfaite_repeatable_counts():
     assert any("2 avril" in event for event in jp["history"])
 
 
+def test_journee_parfaite_waits_for_complete_day_and_removes_stale_award():
+    pid = _new_participant("Presque Parfait")
+    day = "2099-04-03"
+    for idx in range(5):
+        mid = _mk_match(result="team1", s1=1, s2=0, date=day, kickoff=f"{12 + idx}:00")
+        _predict(pid, mid, pred="team1", ps1=1, ps2=0)
+    pending = _mk_match(result=None, s1=None, s2=None, date=day, kickoff="20:00")
+    _predict(pid, pending, pred="team1", ps1=1, ps2=0)
+
+    _refresh()
+    assert ("journee_parfaite", day) not in _awards(pid)
+
+    async def _seed_stale_award():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO trophy_awards
+                   (participant_id, trophy_key, detail, sporting_day)
+                   VALUES (?, 'journee_parfaite', ?, ?)""",
+                (pid, day, day),
+            )
+            await db.commit()
+
+    run(_seed_stale_award())
+    _set_match_result(pending, result="team2", s1=0, s2=1)
+    _refresh()
+
+    assert ("journee_parfaite", day) not in _awards(pid)
+
+
 def test_grimpeur_from_evolutions():
     pid = _new_participant("Grimpeur")
 
@@ -331,6 +373,9 @@ def test_legacy_history_migration_dates_existing_occurrences():
     from app.database import _migrate_trophy_sporting_day
 
     pid = _new_participant("Historique migré")
+    for _ in range(3):
+        mid = _mk_match(result="team1", s1=1, s2=0, date="2099-08-12")
+        _predict(pid, mid, pred="team1", ps1=1, ps2=0)
 
     async def _migrate():
         async with get_db() as db:

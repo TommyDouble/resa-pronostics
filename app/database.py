@@ -411,6 +411,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await _migrate_trophy_detail(db)
         await _migrate_trophy_sporting_day(db)
         await _backfill_trophy_awards(db)
+        await _cleanup_journee_parfaite_awards(db)
         await db.commit()
 
 
@@ -618,6 +619,22 @@ async def _migrate_trophy_sporting_day(db):
 async def _backfill_trophy_awards(db):
     """One-shot : peuple trophy_awards depuis les données existantes."""
     key = "migr_backfill_trophy_awards_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+    from app.trophies import refresh_trophy_awards
+    await refresh_trophy_awards(db)
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
+async def _cleanup_journee_parfaite_awards(db):
+    """One-shot : retire les Journées parfaites attribuées avant la fin du jour."""
+    key = "migr_cleanup_journee_parfaite_complete_day_v1"
     done = await (await db.execute(
         "SELECT 1 FROM app_settings WHERE key=?", (key,)
     )).fetchone()
