@@ -210,15 +210,15 @@ async def refresh_trophy_awards(db) -> None:
     group_done = bool(group_ids) and all(matches[mid]["result"] is not None for mid in group_ids)
     all_done = total_matches > 0 and all(m["result"] is not None for m in matches.values())
 
-    # Journées sportives (matchs avec résultat) : source de vérité de la date
-    # métier des trophées. ``awarded_at`` n'est qu'une date d'écriture en base.
-    matches_by_sday: dict[str, list[int]] = defaultdict(list)
+    # Journées sportives : source de vérité de la date métier des trophées.
+    # ``awarded_at`` n'est qu'une date d'écriture en base.
+    all_matches_by_sday: dict[str, list[int]] = defaultdict(list)
     match_sdays: dict[int, str] = {}
     for mid, m in matches.items():
+        sday = sporting_day(m)
+        all_matches_by_sday[sday].append(mid)
         if m["result"] is not None:
-            sday = sporting_day(m)
             match_sdays[mid] = sday
-            matches_by_sday[sday].append(mid)
     group_final_day = max(
         (match_sdays[mid] for mid in group_ids if mid in match_sdays),
         default=None,
@@ -271,6 +271,7 @@ async def refresh_trophy_awards(db) -> None:
 
     inserts: list[tuple[int, str, str, str | None]] = []
     near_miss_by_pid: dict[int, int] = {}
+    valid_perfect_days_by_pid: dict[int, set[str]] = defaultdict(set)
 
     # --- Trophées par participant (continus + métriques relatives) ---
     for pid, lst in played_by_pid.items():
@@ -317,13 +318,16 @@ async def refresh_trophy_awards(db) -> None:
         )
 
         # Journée parfaite (répétable) : 100 % de bons résultats ET au moins
-        # PERFECT_MIN_EXACT scores exacts sur la journée (sinon trop commun).
+        # PERFECT_MIN_EXACT scores exacts sur une journée sportive finalisée.
         owned = {r["match_id"]: r for r in lst}
-        for sday, mids in matches_by_sday.items():
-            if len(mids) >= PERFECT_MIN_MATCHES and all(mid in owned for mid in mids) \
+        for sday, mids in all_matches_by_sday.items():
+            if len(mids) >= PERFECT_MIN_MATCHES \
+                    and all(matches[mid]["result"] is not None for mid in mids) \
+                    and all(mid in owned for mid in mids) \
                     and all(is_match_prediction_correct(owned[mid], owned[mid]) for mid in mids) \
                     and sum(1 for mid in mids if is_match_score_exact(owned[mid], owned[mid])) >= PERFECT_MIN_EXACT:
                 inserts.append((pid, "journee_parfaite", sday, sday))
+                valid_perfect_days_by_pid[pid].add(sday)
 
         # Extraterrestre (secret, répétable, une par match fou réussi)
         for r in lst:
@@ -420,8 +424,35 @@ async def refresh_trophy_awards(db) -> None:
     # --- Le Jumeau (secret, répétable) : 12 mêmes scores exacts consécutifs ---
     inserts.extend(await _compute_jumeaux(db, participants, match_sdays))
 
+    await _sync_journee_parfaite_awards(
+        db, participants.keys(), valid_perfect_days_by_pid
+    )
+
     if inserts:
         await _upsert_trophy_awards(db, inserts)
+
+
+async def _sync_journee_parfaite_awards(
+    db,
+    participant_ids,
+    valid_days_by_pid: dict[int, set[str]],
+) -> None:
+    """Supprime les Journées parfaites invalidées une fois le jour complet."""
+    for pid in participant_ids:
+        valid_days = sorted(valid_days_by_pid.get(pid, set()))
+        if not valid_days:
+            await db.execute(
+                "DELETE FROM trophy_awards WHERE participant_id=? AND trophy_key='journee_parfaite'",
+                (pid,),
+            )
+            continue
+        placeholders = ",".join("?" for _ in valid_days)
+        await db.execute(
+            f"""DELETE FROM trophy_awards
+                WHERE participant_id=? AND trophy_key='journee_parfaite'
+                  AND (detail IS NULL OR detail NOT IN ({placeholders}))""",
+            (pid, *valid_days),
+        )
 
 
 async def _upsert_trophy_awards(
