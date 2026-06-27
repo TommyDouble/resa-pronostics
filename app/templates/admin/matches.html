@@ -37,7 +37,7 @@
         <td style="font-weight:600;min-width:260px;">
           {% if m.phase != 'group' and m.result is none %}
           <form method="post" action="/admin/matches/{{ m.id }}/teams"
-                style="display:grid;grid-template-columns:minmax(112px,1fr) minmax(112px,1fr) auto;gap:6px;align-items:center;">
+                style="display:grid;grid-template-columns:minmax(96px,1fr) auto minmax(96px,1fr) auto;gap:6px;align-items:center;">
             <input type="hidden" name="phase" value="{{ current_phase }}">
             <select name="team1_name" style="font-size:12px;min-width:0;">
               {% if m.team1_name not in teams_48 %}<option value="">{{ m.team1_name }}</option>{% endif %}
@@ -45,13 +45,17 @@
               <option value="{{ team }}" {{ 'selected' if m.team1_name == team else '' }}>{{ team }}</option>
               {% endfor %}
             </select>
+            <button type="submit" formaction="/admin/matches/{{ m.id }}/teams/team1"
+                    class="btn ghost sm" style="font-size:11px;" title="Fixer cette équipe sans ouvrir le match">Fixer</button>
             <select name="team2_name" style="font-size:12px;min-width:0;">
               {% if m.team2_name not in teams_48 %}<option value="">{{ m.team2_name }}</option>{% endif %}
               {% for team in teams_48 %}
               <option value="{{ team }}" {{ 'selected' if m.team2_name == team else '' }}>{{ team }}</option>
               {% endfor %}
             </select>
-            <button type="submit" class="btn ghost sm" style="font-size:11px;">Confirmer</button>
+            <button type="submit" formaction="/admin/matches/{{ m.id }}/teams/team2"
+                    class="btn ghost sm" style="font-size:11px;" title="Fixer cette équipe sans ouvrir le match">Fixer</button>
+            <button type="submit" class="btn ghost sm" style="grid-column:1 / -1;font-size:11px;">Confirmer les deux (et ouvrir)</button>
           </form>
           <div class="muted" style="font-size:10px;margin-top:4px;">
             {{ m.team1_name }} – {{ m.team2_name }}

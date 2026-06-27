@@ -132,6 +132,98 @@ def test_admin_confirms_round_of_32_and_opens_prediction(admin_client, participa
     assert api.status_code == 200
 
 
+def test_admin_confirms_single_side_without_opening(admin_client):
+    """Fixer une seule équipe ne doit pas ouvrir les pronostics ; l'affiche
+    ne s'ouvre qu'une fois les deux côtés confirmés."""
+    number = _next_match_number()
+
+    async def _seed():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time,
+                    team1_name, team2_name, weight)
+                   VALUES (?, 'round_of_32', '2099-07-01', '20:00',
+                           'Vainqueur M997', 'Vainqueur M999', 2)""",
+                (number,),
+            )
+            await ensure_knockout_slots(db)
+            await db.commit()
+            return cursor.lastrowid
+
+    match_id = run(_seed())
+
+    # Fixer le côté connu (team1) : reste fermé.
+    res = admin_client.post(
+        f"/admin/matches/{match_id}/teams/team1",
+        data={"team1_name": "France", "team2_name": "Vainqueur M999", "phase": "round_of_32"},
+        follow_redirects=False,
+    )
+    assert res.status_code == 303
+    match = _match(match_id)
+    assert match["team1_name"] == "France"
+    assert match["predictions_open"] == 0
+    assert _slot(match_id, "team1")["is_confirmed"] == 1
+    assert _slot(match_id, "team2")["is_confirmed"] == 0
+
+    # Ouvrir est refusé tant que l'adversaire n'est pas confirmé.
+    blocked = admin_client.post(
+        f"/admin/matches/{match_id}/predictions-open/toggle",
+        follow_redirects=False,
+    )
+    assert blocked.status_code == 303
+    assert _match(match_id)["predictions_open"] == 0
+
+    # Fixer le second côté → prêt, mais toujours fermé jusqu'à l'ouverture explicite.
+    res2 = admin_client.post(
+        f"/admin/matches/{match_id}/teams/team2",
+        data={"team1_name": "France", "team2_name": "Brésil", "phase": "round_of_32"},
+        follow_redirects=False,
+    )
+    assert res2.status_code == 303
+    match = _match(match_id)
+    assert match["team2_name"] == "Brésil"
+    assert match["predictions_open"] == 0
+    assert _slot(match_id, "team2")["is_confirmed"] == 1
+
+    # Maintenant l'ouverture est autorisée.
+    opened = admin_client.post(
+        f"/admin/matches/{match_id}/predictions-open/toggle",
+        follow_redirects=False,
+    )
+    assert opened.status_code == 303
+    assert _match(match_id)["predictions_open"] == 1
+
+
+def test_confirm_side_rejects_duplicate_team(admin_client):
+    number = _next_match_number()
+
+    async def _seed():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time,
+                    team1_name, team2_name, weight)
+                   VALUES (?, 'round_of_32', '2099-07-01', '20:00',
+                           'France', 'Vainqueur M998', 2)""",
+                (number,),
+            )
+            await ensure_knockout_slots(db)
+            await db.commit()
+            return cursor.lastrowid
+
+    match_id = run(_seed())
+    res = admin_client.post(
+        f"/admin/matches/{match_id}/teams/team2",
+        data={"team1_name": "France", "team2_name": "France", "phase": "round_of_32"},
+        follow_redirects=False,
+    )
+    assert res.status_code == 303
+    # team2 reste le placeholder, slot non confirmé.
+    assert _match(match_id)["team2_name"] == "Vainqueur M998"
+    assert _slot(match_id, "team2")["is_confirmed"] == 0
+
+
 def test_knockout_result_propagates_to_next_match_and_opens_when_ready(admin_client):
     source_number = _next_match_number()
 
