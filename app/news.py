@@ -16,6 +16,7 @@ STORY_TEMPLATES = {
     "sporting_day_update": "Journées sportives et évolutions",
     "knockout_opening": "Phase finale affiche par affiche",
     "extra_time_results": "Scores après prolongations",
+    "knockout_guide": "Bien jouer la phase finale",
 }
 
 

@@ -1,5 +1,41 @@
 from app.database import get_db, init_db
+from app.routers.pages import _zero_points_reason
 from tests.conftest import run
+
+
+def _ko_match(score1, score2, qualifier=None, result="draw"):
+    return {
+        "phase": "round_of_16",
+        "score_team1": score1,
+        "score_team2": score2,
+        "final_score_team1": score1,
+        "final_score_team2": score2,
+        "qualifier_winner": qualifier,
+        "result": result,
+        "team1_name": "Espagne",
+        "team2_name": "Allemagne",
+        "weight": 2,
+    }
+
+
+def test_zero_reason_no_prediction():
+    match = _ko_match(1, 1, qualifier="team1")
+    assert _zero_points_reason(None, match) == "Pas de prono"
+    assert _zero_points_reason({"exact_score_team1": None}, match) == "Pas de prono"
+
+
+def test_zero_reason_wrong_qualifier():
+    # Prono nul 1-1 + team1, mais team2 qualifiée → mauvais qualifié.
+    match = _ko_match(1, 1, qualifier="team2")
+    pred = {"exact_score_team1": 1, "exact_score_team2": 1, "qualifier_prediction": "team1"}
+    assert _zero_points_reason(pred, match) == "Mauvais qualifié"
+
+
+def test_zero_reason_wrong_outcome():
+    # Prono victoire team1 (2-1) mais team2 qualifiée → mauvaise issue.
+    match = _ko_match(0, 1, qualifier="team2", result="team2")
+    pred = {"exact_score_team1": 2, "exact_score_team2": 1, "qualifier_prediction": None}
+    assert _zero_points_reason(pred, match) == "Mauvaise issue"
 
 
 def open_knockout_predictions(match_id):
@@ -228,6 +264,86 @@ def test_knockout_final_score_cannot_be_lower_than_90(admin_client, participant)
     )
     assert rejected.status_code == 303
     assert get_match_result(match_id)["result"] is None
+
+
+def test_decisive_prono_on_et_match_scores_winner_not_exact(admin_client, participant):
+    """Prono 2-1 (victoire team1). Le match finit 1-1 puis team1 qualifiée a.p.
+    → bon qualifié (+4 pts) mais pas de score exact (2 ≠ 1 à 90')."""
+    match_id = create_knockout_match(participant["id"])
+    open_knockout_predictions(match_id)
+
+    response = admin_client.post(
+        f"/api/predictions?token={participant['token']}",
+        json={
+            "match_id": match_id,
+            "exact_score_team1": 2,
+            "exact_score_team2": 1,
+        },
+    )
+    assert response.status_code == 200
+
+    encoded = admin_client.post(
+        f"/admin/resultats/{match_id}",
+        data={
+            "score_team1": "1",
+            "score_team2": "1",
+            "final_score_team1": "2",
+            "final_score_team2": "1",
+        },
+        follow_redirects=False,
+    )
+    assert encoded.status_code == 303
+
+    match = get_match_result(match_id)
+    assert match["result"] == "draw"
+    assert match["qualifier_winner"] == "team1"
+    # Bon qualifié (team1) à ×2 = 4 pts, mais score 90' faux (2-1 ≠ 1-1) → pas de bonus.
+    assert get_match_score(participant["id"], match_id) == 4
+
+
+def test_prediction_update_from_draw_to_decisive_clears_qualifier(admin_client, participant):
+    """Passer d'un prono nul + qualifié à un prono décisif efface le qualifier_prediction."""
+    match_id = create_knockout_match(participant["id"])
+    open_knockout_predictions(match_id)
+
+    first = admin_client.post(
+        f"/api/predictions?token={participant['token']}",
+        json={
+            "match_id": match_id,
+            "exact_score_team1": 1,
+            "exact_score_team2": 1,
+            "qualifier_prediction": "team1",
+        },
+    )
+    assert first.status_code == 200
+
+    second = admin_client.post(
+        f"/api/predictions?token={participant['token']}",
+        json={
+            "match_id": match_id,
+            "exact_score_team1": 2,
+            "exact_score_team2": 1,
+        },
+    )
+    assert second.status_code == 200
+
+    async def _qualifier():
+        async with get_db() as db:
+            row = await db.execute(
+                "SELECT qualifier_prediction FROM predictions WHERE participant_id=? AND match_id=?",
+                (participant["id"], match_id),
+            )
+            return (await row.fetchone())["qualifier_prediction"]
+
+    assert run(_qualifier()) is None
+
+    admin_client.post(
+        f"/admin/resultats/{match_id}",
+        data={"score_team1": "2", "score_team2": "1"},
+        follow_redirects=False,
+    )
+    # Victoire team1 2-1 pronostiquée et réalisée → 6 pts (×2 + score exact).
+    assert get_match_score(participant["id"], match_id) == 6
 
 
 def test_knockout_result_display_shows_extra_time_detail(admin_client, participant):

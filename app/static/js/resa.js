@@ -79,7 +79,15 @@ function initPredictionScores() {
       }
       var prediction = derivedPrediction(s1, s2);
       if (outcome) {
-        outcome.textContent = prediction.outcome;
+        var outcomeText = prediction.outcome;
+        if (prediction.value === 'draw' && card.dataset.knockout === '1') {
+          var qualifier = selectedQualifier();
+          if (qualifier) {
+            var teamName = qualifier === 'team1' ? card.dataset.team1 : card.dataset.team2;
+            outcomeText = 'Nul · ' + teamName + ' qualifié';
+          }
+        }
+        outcome.textContent = outcomeText;
         outcome.classList.remove('empty');
       }
       if (qualifierRow) {

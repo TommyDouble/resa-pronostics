@@ -36,6 +36,15 @@ def is_placeholder_team(label: str | None) -> bool:
     return any(token in raw for token in ("Groupe", "Équipe", "Equipe", "TBD"))
 
 
+def parse_source_label(label: str | None) -> tuple[str, int] | None:
+    """Décompose « Vainqueur M83 » → ("Vainqueur", 83). None si non reconnu."""
+    match = _SOURCE_RE.match((label or "").strip())
+    if not match:
+        return None
+    kind = "Vainqueur" if match.group(1).lower().startswith("vain") else "Perdant"
+    return kind, int(match.group(2))
+
+
 def _slot_from_label(label: str | None) -> dict:
     raw = (label or "").strip()
     match = _SOURCE_RE.match(raw)
@@ -216,10 +225,14 @@ async def propagate_from_match(db, match_id: int) -> dict:
         desired = names.get(slot["source_outcome"])
         if not desired:
             continue
+        if slot["target_result"] is not None:
+            # Le match en aval est déjà joué : la propagation ne touche à rien
+            # (ni l'affiche, ni le slot) pour éviter un état incohérent.
+            continue
         current = slot[f"target_{SIDE_COLUMNS[slot['side']]}"]
         predictions = await _prediction_count(db, slot["target_id"])
         would_change_confirmed_fixture = current != desired and predictions > 0
-        if slot["target_result"] is not None or would_change_confirmed_fixture:
+        if would_change_confirmed_fixture:
             await db.execute(
                 "UPDATE matches SET predictions_open=0 WHERE id=?",
                 (slot["target_id"],),
@@ -243,13 +256,18 @@ async def propagate_from_match(db, match_id: int) -> dict:
                 f"UPDATE matches SET {SIDE_COLUMNS[slot['side']]}=? WHERE id=?",
                 (desired, slot["target_id"]),
             )
+        was_confirmed = int(slot["is_confirmed"] or 0) == 1
         await db.execute(
             """UPDATE knockout_slots
                SET is_confirmed=1, updated_at=datetime('now')
                WHERE id=?""",
             (slot["slot_id"],),
         )
-        await _open_if_ready(db, slot["target_id"])
+        # On n'auto-ouvre l'affiche que lorsqu'un slot vient d'être confirmé :
+        # une correction d'un match déjà propagé ne doit jamais rouvrir une
+        # affiche que l'organisateur avait fermée à la main.
+        if not was_confirmed:
+            await _open_if_ready(db, slot["target_id"])
         updates.append({
             "match_number": slot["target_match_number"],
             "side": slot["side"],

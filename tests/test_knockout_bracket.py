@@ -1,5 +1,5 @@
 from app.database import get_db
-from app.knockout import ensure_knockout_slots
+from app.knockout import ensure_knockout_slots, propagate_from_match
 from app.scheduler import _gated_matches
 from tests.conftest import run
 
@@ -22,6 +22,16 @@ def _match(match_id):
             return dict(await row.fetchone())
 
     return run(_get())
+
+
+def _propagate(match_id):
+    async def _run():
+        async with get_db() as db:
+            result = await propagate_from_match(db, match_id)
+            await db.commit()
+            return result
+
+    return run(_run())
 
 
 def _prediction_exists(participant_id, match_id):
@@ -258,6 +268,108 @@ def test_knockout_correction_conflict_closes_next_match_without_deleting_predict
     assert target["team1_name"] == "Brésil"
     assert target["predictions_open"] == 0
     assert _prediction_exists(participant["id"], target_id)
+
+
+def _slot(match_id, side):
+    async def _get():
+        async with get_db() as db:
+            row = await db.execute(
+                "SELECT * FROM knockout_slots WHERE match_id=? AND side=?",
+                (match_id, side),
+            )
+            return dict(await row.fetchone())
+
+    return run(_get())
+
+
+def test_propagation_does_not_reopen_manually_closed_match(admin_client):
+    """Une correction d'un match déjà propagé ne rouvre pas une affiche
+    que l'organisateur avait fermée à la main."""
+    source_number = _next_match_number()
+
+    async def _seed():
+        async with get_db() as db:
+            source = await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time,
+                    team1_name, team2_name, weight, predictions_open,
+                    score_team1, score_team2, result)
+                   VALUES (?, 'round_of_32', '2099-07-01', '20:00',
+                           'France', 'Brésil', 2, 1, 2, 0, 'team1')""",
+                (source_number,),
+            )
+            # Affiche aval déjà confirmée des deux côtés (France propagée + Espagne),
+            # ouverte puis refermée manuellement par l'organisateur.
+            target = await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time,
+                    team1_name, team2_name, weight, predictions_open)
+                   VALUES (?, 'round_of_16', '2099-07-04', '20:00',
+                           'France', 'Espagne', 2, 0)""",
+                (source_number + 1,),
+            )
+            await ensure_knockout_slots(db)
+            # team1 vient du match source (déjà confirmé), team2 saisie manuelle.
+            await db.execute(
+                """UPDATE knockout_slots
+                   SET source_kind='match', source_match_number=?,
+                       source_outcome='winner', is_confirmed=1
+                   WHERE match_id=? AND side='team1'""",
+                (source_number, target.lastrowid),
+            )
+            await db.execute(
+                "UPDATE knockout_slots SET is_confirmed=1 WHERE match_id=? AND side='team2'",
+                (target.lastrowid,),
+            )
+            await db.commit()
+            return source.lastrowid, target.lastrowid
+
+    source_id, target_id = run(_seed())
+
+    result = _propagate(source_id)
+    target = _match(target_id)
+    assert target["predictions_open"] == 0
+    assert result["conflicts"] == []
+
+
+def test_propagation_skips_already_played_downstream_match(admin_client):
+    """Si l'affiche aval est déjà jouée, la propagation ne touche ni son slot
+    ni son état d'ouverture, et ne signale pas de conflit."""
+    source_number = _next_match_number()
+
+    async def _seed():
+        async with get_db() as db:
+            source = await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time,
+                    team1_name, team2_name, weight, predictions_open,
+                    score_team1, score_team2, result)
+                   VALUES (?, 'round_of_32', '2099-07-01', '20:00',
+                           'France', 'Brésil', 2, 1, 2, 0, 'team1')""",
+                (source_number,),
+            )
+            target = await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time,
+                    team1_name, team2_name, weight, predictions_open,
+                    score_team1, score_team2, result)
+                   VALUES (?, 'round_of_16', '2099-07-04', '20:00',
+                           ?, 'Espagne', 2, 0, 1, 0, 'team1')""",
+                (source_number + 1, f"Vainqueur M{source_number}"),
+            )
+            await ensure_knockout_slots(db)
+            await db.commit()
+            return source.lastrowid, target.lastrowid
+
+    source_id, target_id = run(_seed())
+
+    result = _propagate(source_id)
+    slot = _slot(target_id, "team1")
+    target = _match(target_id)
+    assert slot["is_confirmed"] == 0
+    assert target["predictions_open"] == 0
+    assert result["conflicts"] == []
+    assert result["updates"] == []
 
 
 def test_scheduler_ignores_closed_knockout_matches(admin_client):

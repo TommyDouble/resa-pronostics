@@ -73,6 +73,9 @@
       <div class="rv-plabel">Ton prono</div>
       {% if m.has_prediction %}
       {{ rv_score(m.exact_score_team1, m.exact_score_team2, m.prediction) }}
+      {% if m.qualifier_pred_label %}
+      <div class="rv-result-note">tu voyais {{ m.qualifier_pred_label|team }} passer</div>
+      {% endif %}
       {% else %}
       <div class="rv-nopred">Pas de prono</div>
       {% endif %}
@@ -82,12 +85,15 @@
       <div class="rv-result-inner">
         <div class="rv-plabel">Résultat</div>
         {{ rv_result_score(m) }}
+        {% if m.qualifier_real_label and m.qualifier_match is not none %}
+        <div class="rv-result-note">Qualifié : {{ m.qualifier_real_label|team }} {{ '✓' if m.qualifier_match else '✗' }}</div>
+        {% endif %}
         {% if m.tier == 'exact' %}
           <div class="rv-points exact">+{{ m.points }} pts · score exact 🎯</div>
         {% elif m.tier == 'correct' %}
           <div class="rv-points ok">+{{ m.points }} pts · bien vu ✓</div>
         {% else %}
-          <div class="rv-points miss">+{{ m.points }} pts</div>
+          <div class="rv-points miss">+{{ m.points }} pts{% if m.zero_reason %} · {{ m.zero_reason }}{% endif %}</div>
         {% endif %}
       </div>
     </div>

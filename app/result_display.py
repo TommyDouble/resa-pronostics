@@ -40,20 +40,31 @@ def result_score_label(match) -> str:
     """Primary official score label.
 
     `score_team1/score_team2` remain the 90-minute score used for pronostics.
-    In knockout matches with goals after 90 minutes, the primary public label is
-    the final score with an "a.p." suffix.
+    Knockout matches surface three outcomes:
+    - decisive in regulation → ``2–1``
+    - goals in extra time, decisive → ``2–1 a.p.``
+    - 90-minute draw settled without a decisive extra-time score → ``1–1 t.a.b.``
     """
     score1, score2 = _score90(match)
     if score1 is None or score2 is None:
         return ""
+    if _row_get(match, "phase") == "group":
+        return _score_pair(score1, score2)
+
     final1, final2 = _final_score(match)
-    if (
-        _row_get(match, "phase") != "group"
-        and final1 is not None
-        and final2 is not None
-        and (final1, final2) != (score1, score2)
-    ):
+    has_final = final1 is not None and final2 is not None
+    changed = has_final and (final1, final2) != (score1, score2)
+    final_decisive = has_final and final1 != final2
+    went_to_penalties = (
+        score1 == score2
+        and _row_get(match, "qualifier_winner") in ("team1", "team2")
+        and not final_decisive
+    )
+    if changed and final_decisive:
         return f"{_score_pair(final1, final2)} a.p."
+    if went_to_penalties:
+        base = _score_pair(final1, final2) if changed else _score_pair(score1, score2)
+        return f"{base} t.a.b."
     return _score_pair(score1, score2)
 
 
