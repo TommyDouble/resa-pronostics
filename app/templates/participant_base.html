@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
-<div class="page-wrap {{ 'wide' if page_wide|default(false) else '' }}">
+<div class="page-wrap {{ 'wide' if page_wide|default(false) else '' }}"
+     {% if client_now_ts is defined %}data-client-now-ts="{{ client_now_ts }}"{% endif %}>
 
   <!-- Desktop top nav (affichée en CSS ≥ 768px) -->
   <nav class="top-nav" id="top-nav">

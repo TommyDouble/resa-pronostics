@@ -12,6 +12,12 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from app.auth import require_admin, verify_password, hash_password
 from app.config import settings
 from app.database import get_db
+from app.knockout import (
+    confirm_match_teams,
+    enrich_knockout_matches,
+    propagate_from_match,
+    set_match_predictions_open,
+)
 from app.mail import (
     send_invitation,
     send_match_reminder as send_match_reminder_email,
@@ -35,11 +41,6 @@ from app.scoring import (
     recalculate_match_scores,
     recalculate_pre_tournament_scores,
     serialize_closest_config,
-)
-from app.settings_store import (
-    KNOCKOUT_OPEN_KEY,
-    knockout_predictions_open,
-    set_setting,
 )
 from app.push import push_enabled, send_push_to_participant
 from app.templating import create_templates
@@ -120,6 +121,83 @@ def _qualifier_winner_for_result(
     return qualifier_winner, None
 
 
+def _parse_optional_score(value) -> tuple[int | None, str | None]:
+    raw = "" if value is None else str(value).strip()
+    if raw == "":
+        return None, None
+    try:
+        score = int(raw)
+    except ValueError:
+        return None, "Score final invalide."
+    if not 0 <= score <= 30:
+        return None, "Les scores doivent être compris entre 0 et 30."
+    return score, None
+
+
+def _match_result_payload(
+    match: dict,
+    score_team1: int,
+    score_team2: int,
+    final_score_team1,
+    final_score_team2,
+    qualifier_winner: str,
+) -> tuple[dict | None, str | None]:
+    if not (0 <= score_team1 <= 30 and 0 <= score_team2 <= 30):
+        return None, "Les scores doivent être compris entre 0 et 30."
+
+    result = _result_from_scores(score_team1, score_team2)
+    if match["phase"] == "group":
+        return {
+            "score_team1": score_team1,
+            "score_team2": score_team2,
+            "final_score_team1": score_team1,
+            "final_score_team2": score_team2,
+            "result": result,
+            "qualifier_winner": None,
+        }, None
+
+    if result in ("team1", "team2"):
+        return {
+            "score_team1": score_team1,
+            "score_team2": score_team2,
+            "final_score_team1": score_team1,
+            "final_score_team2": score_team2,
+            "result": result,
+            "qualifier_winner": result,
+        }, None
+
+    final1, error = _parse_optional_score(final_score_team1)
+    if error:
+        return None, error
+    final2, error = _parse_optional_score(final_score_team2)
+    if error:
+        return None, error
+    if (final1 is None) != (final2 is None):
+        return None, "Renseigne les deux scores finaux après prolongation, ou laisse les deux vides."
+    if final1 is None and final2 is None:
+        final1, final2 = score_team1, score_team2
+
+    if final1 < score_team1 or final2 < score_team2:
+        return None, "Le score final ne peut pas être inférieur au score à 90 minutes."
+
+    final_result = _result_from_scores(final1, final2)
+    if final_result in ("team1", "team2"):
+        qualifier = final_result
+    elif qualifier_winner in ("team1", "team2"):
+        qualifier = qualifier_winner
+    else:
+        return None, "Choisis l'équipe qualifiée pour ce match de phase finale."
+
+    return {
+        "score_team1": score_team1,
+        "score_team2": score_team2,
+        "final_score_team1": final1,
+        "final_score_team2": final2,
+        "result": result,
+        "qualifier_winner": qualifier,
+    }, None
+
+
 def _flash(request: Request, msg: str, kind: str = "ok"):
     request.session.setdefault("flashes", []).append({"msg": msg, "kind": kind})
 
@@ -192,6 +270,21 @@ def _closest_form_config(
 def _push_test_url(token: str, destination: str) -> str:
     _, suffix = PUSH_TEST_DESTINATIONS.get(destination, PUSH_TEST_DESTINATIONS["home"])
     return f"{settings.BASE_URL.rstrip('/')}/p/{token}{suffix}"
+
+
+def _bracket_flash_suffix(propagation: dict) -> str:
+    updates = sorted({u["match_number"] for u in propagation.get("updates", [])})
+    conflicts = sorted({c["match_number"] for c in propagation.get("conflicts", [])})
+    parts = []
+    if updates:
+        parts.append("Affiches mises à jour: " + ", ".join(f"#{n}" for n in updates) + ".")
+    if conflicts:
+        parts.append(
+            "À revalider: "
+            + ", ".join(f"#{n}" for n in conflicts)
+            + " fermé(s), pronos conservés."
+        )
+    return " " + " ".join(parts) if parts else ""
 
 
 # ---- Login ----
@@ -270,6 +363,7 @@ async def dashboard(request: Request):
         next_row = await db.execute(
             """SELECT * FROM matches
                WHERE result IS NULL
+               AND (phase='group' OR predictions_open=1)
                AND datetime(match_date || 'T' || kickoff_time) >= datetime(?)
                ORDER BY match_date, kickoff_time LIMIT 1""",
             (now,)
@@ -360,7 +454,10 @@ async def dashboard(request: Request):
         # 5 derniers matchs joués : score + réussite de la communauté.
         last_enc = await db.execute(
             """SELECT m.match_number, m.team1_name, m.team2_name,
-                      m.score_team1, m.score_team2, m.match_date, m.kickoff_time,
+                      m.phase, m.score_team1, m.score_team2,
+                      m.final_score_team1, m.final_score_team2,
+                      m.result, m.qualifier_winner,
+                      m.match_date, m.kickoff_time,
                       (SELECT COUNT(*) FROM scores s WHERE s.match_id=m.id) AS scored,
                       (SELECT COUNT(*) FROM scores s WHERE s.match_id=m.id AND s.points > 0) AS correct,
                       (SELECT ROUND(AVG(s.points), 1) FROM scores s WHERE s.match_id=m.id) AS avg_pts
@@ -629,7 +726,9 @@ async def predictions_admin(
                       COALESCE(NULLIF(p.nickname, ''), p.name) as participant_name,
                       p.name as full_name,
                       m.match_number, m.phase, m.team1_name, m.team2_name,
-                      m.score_team1, m.score_team2, m.result,
+                      m.score_team1, m.score_team2,
+                      m.final_score_team1, m.final_score_team2,
+                      m.result, m.qualifier_winner,
                       pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
                       pr.qualifier_prediction, pr.admin_entered,
                       pr.submitted_at, COALESCE(s.points, 0) as points
@@ -1266,11 +1365,11 @@ async def matches_list(request: Request, phase: str = "group"):
                      "semi": "Demies", "third_place": "3e place", "final": "Finale"}
             for m in matches:
                 m["round_label"] = short.get(phase, "")
+            await enrich_knockout_matches(db, matches)
         counts = {}
         for ph in PHASE_LABELS:
             c_row = await db.execute("SELECT COUNT(*) as cnt FROM matches WHERE phase=?", (ph,))
             counts[ph] = (await c_row.fetchone())["cnt"]
-        knockout_open = await knockout_predictions_open(db)
     return templates.TemplateResponse(request, "admin/matches.html", {
         "request": request,
         "active": "matches",
@@ -1279,22 +1378,40 @@ async def matches_list(request: Request, phase: str = "group"):
         "current_phase": phase,
         "phase_labels": PHASE_LABELS,
         "phase_counts": counts,
-        "knockout_open": knockout_open,
+        "teams_48": TEAMS_48,
     })
 
 
-@router.post("/matches/knockout-pronos/toggle")
-async def toggle_knockout_pronos(request: Request):
+@router.post("/matches/{match_id}/teams")
+async def confirm_knockout_match_teams(
+    request: Request,
+    match_id: int,
+    team1_name: str = Form(...),
+    team2_name: str = Form(...),
+    phase: str = Form(default="round_of_32"),
+):
     await require_admin(request)
     async with get_db() as db:
-        is_open = await knockout_predictions_open(db)
-        await set_setting(db, KNOCKOUT_OPEN_KEY, "0" if is_open else "1")
+        ok, msg = await confirm_match_teams(db, match_id, team1_name, team2_name)
         await db.commit()
-    if is_open:
-        _flash(request, "Pronostics de phase finale verrouillés.")
-    else:
-        _flash(request, "Pronostics de phase finale ouverts aux participants.")
-    return RedirectResponse("/admin/matches", status_code=303)
+    _flash(request, msg, "ok" if ok else "err")
+    return RedirectResponse(f"/admin/matches?phase={phase}", status_code=303)
+
+
+@router.post("/matches/{match_id}/predictions-open/toggle")
+async def toggle_match_predictions_open(request: Request, match_id: int):
+    await require_admin(request)
+    async with get_db() as db:
+        row = await db.execute("SELECT * FROM matches WHERE id=?", (match_id,))
+        match = await row.fetchone()
+        if not match:
+            raise HTTPException(404)
+        target = not bool(match["predictions_open"])
+        ok, msg = await set_match_predictions_open(db, match_id, target)
+        await db.commit()
+        phase = match["phase"]
+    _flash(request, msg, "ok" if ok else "err")
+    return RedirectResponse(f"/admin/matches?phase={phase}", status_code=303)
 
 
 @router.post("/matches/{match_id}/toggle-top")
@@ -1351,6 +1468,8 @@ async def results_page(request: Request):
 @router.post("/resultats/{match_id}")
 async def encode_result(request: Request, match_id: int,
                         score_team1: int = Form(...), score_team2: int = Form(...),
+                        final_score_team1: str = Form(default=""),
+                        final_score_team2: str = Form(default=""),
                         qualifier_winner: str = Form(default=""),
                         redirect_to: str = Form(default="")):
     await require_admin(request)
@@ -1362,26 +1481,36 @@ async def encode_result(request: Request, match_id: int,
         if not match:
             raise HTTPException(404)
         match_dict = dict(match)
-        result = _result_from_scores(score_team1, score_team2)
-        qualifier, error = _qualifier_winner_for_result(
-            match_dict, score_team1, score_team2, qualifier_winner
+        payload, error = _match_result_payload(
+            match_dict, score_team1, score_team2,
+            final_score_team1, final_score_team2, qualifier_winner
         )
         if error:
             _flash(request, error, "err")
             return RedirectResponse(back, status_code=303)
         await db.execute(
-            "UPDATE matches SET score_team1=?, score_team2=?, result=?, qualifier_winner=? WHERE id=?",
-            (score_team1, score_team2, result, qualifier, match_id)
+            """UPDATE matches
+               SET score_team1=?, score_team2=?, final_score_team1=?,
+                   final_score_team2=?, result=?, qualifier_winner=?
+               WHERE id=?""",
+            (
+                payload["score_team1"], payload["score_team2"],
+                payload["final_score_team1"], payload["final_score_team2"],
+                payload["result"], payload["qualifier_winner"], match_id,
+            )
         )
+        propagation = await propagate_from_match(db, match_id)
         await db.commit()
     await recalculate_match_scores(match_id)
-    _flash(request, f"Résultat encodé. Scores recalculés.")
+    _flash(request, f"Résultat encodé. Scores recalculés.{_bracket_flash_suffix(propagation)}")
     return RedirectResponse(back, status_code=303)
 
 
 @router.post("/resultats/{match_id}/correct")
 async def correct_result(request: Request, match_id: int,
                          score_team1: int = Form(...), score_team2: int = Form(...),
+                         final_score_team1: str = Form(default=""),
+                         final_score_team2: str = Form(default=""),
                          qualifier_winner: str = Form(default="")):
     await require_admin(request)
     async with get_db() as db:
@@ -1390,20 +1519,28 @@ async def correct_result(request: Request, match_id: int,
         if not match:
             raise HTTPException(404)
         match_dict = dict(match)
-        result = _result_from_scores(score_team1, score_team2)
-        qualifier, error = _qualifier_winner_for_result(
-            match_dict, score_team1, score_team2, qualifier_winner
+        payload, error = _match_result_payload(
+            match_dict, score_team1, score_team2,
+            final_score_team1, final_score_team2, qualifier_winner
         )
         if error:
             _flash(request, error, "err")
             return RedirectResponse("/admin/resultats", status_code=303)
         await db.execute(
-            "UPDATE matches SET score_team1=?, score_team2=?, result=?, qualifier_winner=? WHERE id=?",
-            (score_team1, score_team2, result, qualifier, match_id)
+            """UPDATE matches
+               SET score_team1=?, score_team2=?, final_score_team1=?,
+                   final_score_team2=?, result=?, qualifier_winner=?
+               WHERE id=?""",
+            (
+                payload["score_team1"], payload["score_team2"],
+                payload["final_score_team1"], payload["final_score_team2"],
+                payload["result"], payload["qualifier_winner"], match_id,
+            )
         )
+        propagation = await propagate_from_match(db, match_id)
         await db.commit()
     await recalculate_match_scores(match_id)
-    _flash(request, "Correction appliquée. Scores recalculés.")
+    _flash(request, f"Correction appliquée. Scores recalculés.{_bracket_flash_suffix(propagation)}")
     return RedirectResponse("/admin/resultats", status_code=303)
 
 

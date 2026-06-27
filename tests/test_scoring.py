@@ -126,6 +126,25 @@ class TestMatchScore:
         )
         assert calculate_match_score(pred, match) == 0
 
+    def test_knockout_extra_time_final_score_does_not_change_exact_score_reference(self):
+        pred = make_prediction(
+            prediction="draw",
+            exact_score_team1=1,
+            exact_score_team2=1,
+            qualifier_prediction="team1",
+        )
+        match = make_match(
+            phase="round_of_16",
+            result="draw",
+            score_team1=1,
+            score_team2=1,
+            final_score_team1=2,
+            final_score_team2=1,
+            weight=2,
+            qualifier_winner="team1",
+        )
+        assert calculate_match_score(pred, match) == 6
+
 
 class TestPreTournamentPoints:
     def question(self, key, points=5, answer="France"):

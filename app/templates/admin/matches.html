@@ -4,24 +4,6 @@
 
 <h1>Gestion des matchs</h1>
 
-<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
-  <div style="flex:1;min-width:240px;">
-    <b style="font-size:13px;">Pronostics de phase finale</b>
-    <div class="muted" style="font-size:11px;margin-top:2px;">
-      {% if knockout_open %}
-        Ouverts — les participants peuvent pronostiquer les matchs à élimination.
-      {% else %}
-        Verrouillés — à ouvrir quand les affiches se précisent. Les participants voient un cadenas en attendant.
-      {% endif %}
-    </div>
-  </div>
-  <span class="chip {{ 'ok' if knockout_open else 'lock' }}">{{ 'Ouverts' if knockout_open else '🔒 Verrouillés' }}</span>
-  <form method="post" action="/admin/matches/knockout-pronos/toggle"
-        onsubmit="return confirm('{{ 'Verrouiller les pronostics de phase finale ?' if knockout_open else 'Ouvrir les pronostics de phase finale aux participants ?' }}')">
-    <button type="submit" class="btn ghost sm">{{ 'Verrouiller' if knockout_open else 'Ouvrir' }}</button>
-  </form>
-</div>
-
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
   {% for ph, label in phase_labels.items() %}
   <a href="/admin/matches?phase={{ ph }}"
@@ -42,6 +24,7 @@
         <th data-sort="text">Journée</th>
         <th data-sort="text">Match</th>
         <th data-sort="date">Date</th>
+        <th data-sort="number">Pronos</th>
         <th data-sort="number">Top ★</th>
         <th data-sort="number">Statut</th>
       </tr>
@@ -51,8 +34,56 @@
       <tr>
         <td style="color:var(--n600);" data-sort-value="{{ m.match_number }}">{{ m.match_number }}</td>
         <td style="font-size:12px;color:var(--n600);">{{ m.round_label }}{% if m.group_name and m.phase == 'group' %} · {{ m.group_name }}{% endif %}</td>
-        <td style="font-weight:600;">{{ m.team1_name }} – {{ m.team2_name }}</td>
+        <td style="font-weight:600;min-width:260px;">
+          {% if m.phase != 'group' and m.result is none %}
+          <form method="post" action="/admin/matches/{{ m.id }}/teams"
+                style="display:grid;grid-template-columns:minmax(112px,1fr) minmax(112px,1fr) auto;gap:6px;align-items:center;">
+            <input type="hidden" name="phase" value="{{ current_phase }}">
+            <select name="team1_name" style="font-size:12px;min-width:0;">
+              {% if m.team1_name not in teams_48 %}<option value="">{{ m.team1_name }}</option>{% endif %}
+              {% for team in teams_48 %}
+              <option value="{{ team }}" {{ 'selected' if m.team1_name == team else '' }}>{{ team }}</option>
+              {% endfor %}
+            </select>
+            <select name="team2_name" style="font-size:12px;min-width:0;">
+              {% if m.team2_name not in teams_48 %}<option value="">{{ m.team2_name }}</option>{% endif %}
+              {% for team in teams_48 %}
+              <option value="{{ team }}" {{ 'selected' if m.team2_name == team else '' }}>{{ team }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn ghost sm" style="font-size:11px;">Confirmer</button>
+          </form>
+          <div class="muted" style="font-size:10px;margin-top:4px;">
+            {{ m.team1_name }} – {{ m.team2_name }}
+          </div>
+          {% else %}
+          {{ m.team1_name }} – {{ m.team2_name }}
+          {% endif %}
+        </td>
         <td class="muted" style="font-size:12px;" data-sort-value="{{ m|match_utc_iso }}" data-local-utc="{{ m|match_utc_iso }}">{{ m|match_datetime }}</td>
+        <td data-sort-value="{{ 1 if m.phase == 'group' or m.predictions_open_effective else 0 }}">
+          {% if m.phase == 'group' %}
+            <span class="chip ok">ouverts</span>
+          {% else %}
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <span class="chip {{ 'ok' if m.predictions_open_effective else ('warn' if m.bracket_ready else 'lock') }}">
+                {{ 'ouverts' if m.predictions_open_effective else ('prêt' if m.bracket_ready else 'fermés') }}
+              </span>
+              {% if m.prediction_count %}
+              <span class="muted" style="font-size:10px;">{{ m.prediction_count }} prono{{ 's' if m.prediction_count > 1 else '' }}</span>
+              {% endif %}
+              {% if m.result is none %}
+              <form method="post" action="/admin/matches/{{ m.id }}/predictions-open/toggle"
+                    onsubmit="return confirm('{{ 'Fermer les pronostics de ce match ?' if m.predictions_open_effective else 'Ouvrir les pronostics de ce match ?' }}')">
+                <button type="submit" class="btn ghost sm" style="font-size:11px;"
+                        {% if not m.bracket_ready and not m.predictions_open_effective %}disabled{% endif %}>
+                  {{ 'Fermer' if m.predictions_open_effective else 'Ouvrir' }}
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          {% endif %}
+        </td>
         <td data-sort-value="{{ 1 if m.is_top_match else 0 }}">
           <button class="chip {{ 'acc' if m.is_top_match else 'gr' }}"
                   data-toggle-top="{{ m.id }}"
@@ -60,23 +91,24 @@
             {{ '★ ×2' if m.is_top_match else '○ ×1' }}
           </button>
         </td>
-        <td data-sort-value="{{ 2 if m.result is not none else (0 if m.team1_name.startswith('Équipe') or m.team2_name.startswith('Équipe') else 1) }}">
+        <td data-sort-value="{{ 3 if m.result is not none else (2 if m.phase == 'group' or m.bracket_ready else 1) }}">
           {% if m.result is not none %}
-            <span class="chip lock">🔒 joué {{ m.score_team1 }}–{{ m.score_team2 }}</span>
-            {% if m.phase != 'group' and m.qualifier_winner %}
+            <span class="chip lock">🔒 joué {{ m|result_score }}</span>
+            {% set detail = m|result_detail %}
+            {% if detail and detail != 'Score final' %}
               <span class="muted" style="font-size:10px;">
-                vainqueur: {% if m.qualifier_winner == 'team1' %}{{ m.team1_name }}{% else %}{{ m.team2_name }}{% endif %}
+                {{ detail }}
               </span>
             {% endif %}
-          {% elif m.team1_name.startswith('Équipe') or m.team2_name.startswith('Équipe') %}
-            <span class="chip gr">équipes TBD</span>
+          {% elif m.phase != 'group' and not m.bracket_ready %}
+            <span class="chip gr">à confirmer</span>
           {% else %}
             <span class="chip ok">à venir</span>
           {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr data-empty-row><td colspan="6" style="text-align:center;padding:24px;color:var(--n400);">Aucun match.</td></tr>
+      <tr data-empty-row><td colspan="7" style="text-align:center;padding:24px;color:var(--n400);">Aucun match.</td></tr>
       {% endfor %}
     </tbody>
   </table>

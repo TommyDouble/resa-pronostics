@@ -1,4 +1,5 @@
 """UTC storage and Europe/Brussels display helpers."""
+import os
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -14,6 +15,12 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def now_utc() -> datetime:
+    fake_now = os.getenv("FAKE_NOW_UTC", "").strip()
+    if fake_now:
+        try:
+            return parse_utc_iso(fake_now)
+        except Exception:
+            pass
     return datetime.now(timezone.utc)
 
 

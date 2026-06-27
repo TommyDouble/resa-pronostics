@@ -79,8 +79,11 @@ CREATE TABLE IF NOT EXISTS matches (
   weight       INTEGER NOT NULL DEFAULT 1 CHECK(weight IN (1,2)),
   score_team1  INTEGER,
   score_team2  INTEGER,
+  final_score_team1 INTEGER,
+  final_score_team2 INTEGER,
   result       TEXT    CHECK(result IN ('team1','draw','team2') OR result IS NULL),
   qualifier_winner TEXT CHECK(qualifier_winner IN ('team1','team2') OR qualifier_winner IS NULL),
+  predictions_open INTEGER NOT NULL DEFAULT 0 CHECK(predictions_open IN (0,1)),
   created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -161,6 +164,19 @@ CREATE TABLE IF NOT EXISTS admin_users (
 CREATE TABLE IF NOT EXISTS app_settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS knockout_slots (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  match_id            INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  side                TEXT    NOT NULL CHECK(side IN ('team1','team2')),
+  source_kind         TEXT    NOT NULL DEFAULT 'manual' CHECK(source_kind IN ('manual','match')),
+  source_label        TEXT    NOT NULL DEFAULT '',
+  source_match_number INTEGER,
+  source_outcome      TEXT    CHECK(source_outcome IN ('winner','loser') OR source_outcome IS NULL),
+  is_confirmed        INTEGER NOT NULL DEFAULT 0 CHECK(is_confirmed IN (0,1)),
+  updated_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(match_id, side)
 );
 
 CREATE TABLE IF NOT EXISTS pre_tournament_questions (
@@ -244,6 +260,8 @@ CREATE INDEX IF NOT EXISTS idx_participants_token ON participants(token);
 CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id);
 CREATE INDEX IF NOT EXISTS idx_predictions_participant ON predictions(participant_id);
 CREATE INDEX IF NOT EXISTS idx_scores_participant ON scores(participant_id);
+CREATE INDEX IF NOT EXISTS idx_knockout_slots_source
+  ON knockout_slots(source_match_number, source_outcome);
 CREATE INDEX IF NOT EXISTS idx_sporting_evo_climber
   ON sporting_day_rank_evolutions(sporting_day, is_climber);
 
@@ -316,12 +334,57 @@ CREATE INDEX IF NOT EXISTS idx_trophy_awards_participant
 
         match_columns = [
             "qualifier_winner TEXT CHECK(qualifier_winner IN ('team1','team2') OR qualifier_winner IS NULL)",
+            "predictions_open INTEGER NOT NULL DEFAULT 0 CHECK(predictions_open IN (0,1))",
+            "final_score_team1 INTEGER",
+            "final_score_team2 INTEGER",
         ]
         for column in match_columns:
             try:
                 await db.execute(f"ALTER TABLE matches ADD COLUMN {column}")
             except Exception:
                 pass
+
+        await db.execute(
+            """UPDATE matches
+               SET final_score_team1=score_team1
+               WHERE final_score_team1 IS NULL AND score_team1 IS NOT NULL"""
+        )
+        await db.execute(
+            """UPDATE matches
+               SET final_score_team2=score_team2
+               WHERE final_score_team2 IS NULL AND score_team2 IS NOT NULL"""
+        )
+
+        await db.executescript("""
+CREATE TABLE IF NOT EXISTS knockout_slots (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  match_id            INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  side                TEXT    NOT NULL CHECK(side IN ('team1','team2')),
+  source_kind         TEXT    NOT NULL DEFAULT 'manual' CHECK(source_kind IN ('manual','match')),
+  source_label        TEXT    NOT NULL DEFAULT '',
+  source_match_number INTEGER,
+  source_outcome      TEXT    CHECK(source_outcome IN ('winner','loser') OR source_outcome IS NULL),
+  is_confirmed        INTEGER NOT NULL DEFAULT 0 CHECK(is_confirmed IN (0,1)),
+  updated_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(match_id, side)
+);
+CREATE INDEX IF NOT EXISTS idx_knockout_slots_source
+  ON knockout_slots(source_match_number, source_outcome);
+        """)
+        open_migration_key = "migr_match_predictions_open_v1"
+        open_migration_done = await (await db.execute(
+            "SELECT 1 FROM app_settings WHERE key=?", (open_migration_key,)
+        )).fetchone()
+        if not open_migration_done:
+            await db.execute("UPDATE matches SET predictions_open=1 WHERE phase='group'")
+            await db.execute("UPDATE matches SET predictions_open=0 WHERE phase!='group'")
+            await db.execute(
+                "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+                (open_migration_key,),
+            )
+
+        from app.knockout import ensure_knockout_slots
+        await ensure_knockout_slots(db)
 
         pt_question_columns = [
             "points_value INTEGER",

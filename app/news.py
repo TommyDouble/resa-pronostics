@@ -14,6 +14,8 @@ Ajouter une story = (1) une entrée dans STORY_TEMPLATES, (2) le partial des
 STORY_TEMPLATES = {
     "reveal_promo": "Promo « Reveal du jour »",
     "sporting_day_update": "Journées sportives et évolutions",
+    "knockout_opening": "Phase finale affiche par affiche",
+    "extra_time_results": "Scores après prolongations",
 }
 
 
@@ -43,5 +45,23 @@ NEWS_DEFAULTS = [
         "sort_order": 20,
         # Disponible dans l'écran Nouveautés, mais laissée au choix du PO.
         "is_published": 0,
+    },
+    {
+        "slug": "phase-finale-affiche-par-affiche",
+        "title": "La phase finale commence",
+        "body": "Les affiches se débloquent une par une, dès que les qualifiés sont confirmés.",
+        "icon": "🏆",
+        "template_key": "knockout_opening",
+        "sort_order": 30,
+        "is_published": 1,
+    },
+    {
+        "slug": "scores-apres-prolongations",
+        "title": "Score 90 minutes, résultat final",
+        "body": "En phase finale, ton prono reste comparé au score à 90 minutes, même si le résultat raconte les prolongations.",
+        "icon": "⏱️",
+        "template_key": "extra_time_results",
+        "sort_order": 40,
+        "is_published": 1,
     },
 ]

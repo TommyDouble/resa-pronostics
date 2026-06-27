@@ -16,11 +16,13 @@
     <span class="sp"></span>
     <span class="chip ok" id="global-save-badge" style="display:none;">Enregistré ✓</span>
   </div>
-  {% set st = namespace(open=0, todo=0) %}
+  {% set st = namespace(open=0, todo=0, closed=0) %}
   {% for m in current_matches %}
     {% if not m.is_locked and not m.pronos_closed %}
       {% set st.open = st.open + 1 %}
       {% if not m.has_score_prediction %}{% set st.todo = st.todo + 1 %}{% endif %}
+    {% elif not m.is_locked and m.pronos_closed %}
+      {% set st.closed = st.closed + 1 %}
     {% endif %}
   {% endfor %}
   <div class="sub1">
@@ -29,6 +31,8 @@
       <span class="help-tip" tabindex="0" data-tip="1 = victoire de l'équipe de gauche, X = match nul, 2 = victoire de l'équipe de droite.">?</span>
     {% elif st.open > 0 %}
       Tout est pronostiqué ✓ — modifiable jusqu'au coup d'envoi.
+    {% elif st.closed > 0 %}
+      Les affiches de cette section s'ouvriront dès confirmation.
     {% else %}
       Tous les matchs de cette section sont joués.
     {% endif %}
@@ -38,7 +42,7 @@
     <a href="/p/{{ token }}/pronos?section={{ sec.key }}"
        class="{{ 'on' if current_section == sec.key else '' }}"
        title="{{ sec.label }} · {{ sec.done }}/{{ sec.total }} pronos complétés">
-      {% if not knockout_open and not sec.key.startswith('group_match') %}🔒 {% endif %}{{ sec.short_label }}
+      {% if sec.closed_count and sec.open_count == 0 and not sec.key.startswith('group_match') %}🔒 {% endif %}{{ sec.short_label }}
       <span>{{ sec.done }}/{{ sec.total }}</span>
     </a>
     {% endfor %}
@@ -55,10 +59,10 @@
   </div>
   {% endif %}
 
-  {% if not knockout_open and not current_section.startswith('group_match') %}
+  {% if current_section_closed %}
   <div class="banner soft">
     <span>🔒</span>
-    <span>Les pronostics de phase finale ne sont pas encore ouverts. Ils seront débloqués quand les affiches se préciseront — tu seras prévenu.</span>
+    <span>Les pronostics de cette section ne sont pas encore ouverts. Chaque affiche se débloque dès que ses deux équipes sont confirmées.</span>
   </div>
   {% else %}
   <div class="banner soft">
@@ -108,7 +112,7 @@
         <span class="dot gr"></span>
         <span class="cs-line">
           <b>{{ m.team1_name|team }}</b>
-          <span class="cs-score">{{ m.score_team1 }}–{{ m.score_team2 }}</span>
+          <span class="cs-score">{{ m|result_score }}</span>
           <b>{{ m.team2_name|team }}</b>
         </span>
         {% if m.tier == 'exact' %}
@@ -160,8 +164,8 @@
       <div class="result-final">
         <div class="score-team" title="{{ m.team1_name }}">{{ m.team1_name|team }}</div>
         <div class="rf-score">
-          {{ m.score_team1 }}–{{ m.score_team2 }}
-          <small>Score final{% if m.phase != 'group' and m.qualifier_winner %} · {% if m.qualifier_winner == 'team1' %}{{ m.team1_name|team }}{% else %}{{ m.team2_name|team }}{% endif %} qualifié{% endif %}</small>
+          {{ m|result_score }}
+          <small>{{ m|result_detail }}</small>
         </div>
         <div class="score-team r" title="{{ m.team2_name }}">{{ m.team2_name|team }}</div>
       </div>
@@ -212,7 +216,7 @@
 
       {% if m.pronos_closed %}
       <div class="placeholder-note">
-        Les équipes de cette affiche seront confirmées plus tard. Le pronostic ouvrira à ce moment-là.
+        Cette affiche n'est pas encore ouverte. Le pronostic sera disponible dès confirmation par l'organisateur.
       </div>
       {% elif m.phase != 'group' and ('Groupe' in m.team1_name or 'Groupe' in m.team2_name) %}
       <div class="placeholder-note">

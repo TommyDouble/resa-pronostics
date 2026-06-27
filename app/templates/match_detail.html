@@ -30,17 +30,11 @@
       </div>
       <div class="sc" data-score-slot>
         {% if match.score_team1 is not none and match.score_team2 is not none %}
-        {{ match.score_team1 }} – {{ match.score_team2 }}
-        <small>RÉSULTAT OFFICIEL</small>
+        {{ match|result_score }}
+        <small>{{ match|result_detail }}</small>
         {% else %}
         <span class="sc-pending">– : –</span>
         <small>{% if live_state == 'live' %}MATCH EN COURS{% else %}EN ATTENTE DU RÉSULTAT{% endif %}</small>
-        {% endif %}
-        {% if match.phase != 'group' and match.qualifier_winner %}
-        <small>
-          Vainqueur:
-          {% if match.qualifier_winner == 'team1' %}{{ match.team1_name }}{% else %}{{ match.team2_name }}{% endif %}
-        </small>
         {% endif %}
       </div>
       <div class="t">

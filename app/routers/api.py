@@ -8,8 +8,8 @@ from pydantic import BaseModel
 from app.auth import get_participant_by_token
 from app.config import settings
 from app.database import get_db
+from app.knockout import match_predictions_open
 from app.push import push_enabled
-from app.settings_store import knockout_predictions_open
 from app.timeutils import is_match_locked, match_live_state
 
 router = APIRouter()
@@ -61,8 +61,8 @@ async def submit_prediction(body: PredictionIn, token: str = Query(...)):
         if _is_locked(dict(match)):
             raise HTTPException(403, "Ce match est verrouillé")
         is_knockout = match["phase"] != "group"
-        if is_knockout and not await knockout_predictions_open(db):
-            raise HTTPException(403, "Les pronostics de phase finale ne sont pas encore ouverts.")
+        if is_knockout and not match_predictions_open(dict(match)):
+            raise HTTPException(403, "Les pronostics de ce match de phase finale ne sont pas encore ouverts.")
         prediction = _prediction_from_score(score_team1, score_team2)
         qualifier_prediction = None
         if is_knockout and prediction == "draw":
@@ -106,6 +106,8 @@ async def match_status(match_id: int, token: str = Query(...)):
         "state": match_live_state(match),
         "score_team1": match.get("score_team1"),
         "score_team2": match.get("score_team2"),
+        "final_score_team1": match.get("final_score_team1"),
+        "final_score_team2": match.get("final_score_team2"),
         "qualifier_winner": match.get("qualifier_winner"),
     }
 

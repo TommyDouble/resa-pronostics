@@ -26,6 +26,7 @@ from app.config import settings
 from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import get_db
 from app.flags import team_flag
+from app.knockout import match_predictions_open
 from app.mail import send_invitation
 from app.nameutils import build_full_name
 from app.players import (
@@ -42,7 +43,6 @@ from app.pre_tournament import (
     pt_filled_keys,
 )
 from app.prizes import get_prize_info
-from app.settings_store import knockout_predictions_open
 from app.scoring import (
     get_department_rankings,
     get_latest_finalized_climbers,
@@ -65,6 +65,7 @@ from app.timeutils import (
     match_kickoff_utc,
     match_live_state,
     minutes_until_match,
+    now_utc,
     now_utc_iso,
     sporting_day,
     sporting_day_bounds,
@@ -279,6 +280,10 @@ def _prediction_sections(matches: list[dict]) -> list[dict]:
             1 for m in section_matches
             if not m.get("is_locked") and not m.get("pronos_closed")
         )
+        closed_count = sum(
+            1 for m in section_matches
+            if not m.get("is_locked") and m.get("pronos_closed")
+        )
         sections.append({
             "key": key,
             "label": PREDICTION_SECTION_LABELS[key],
@@ -286,6 +291,7 @@ def _prediction_sections(matches: list[dict]) -> list[dict]:
             "total": total,
             "done": done,
             "open_count": open_count,
+            "closed_count": closed_count,
         })
     return sections
 
@@ -387,6 +393,7 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
         "active_nav": active_nav,
         "page_wide": True,
         "token": token,
+        "client_now_ts": int(now_utc().timestamp()),
         "news_story": news_story,
     }
 
@@ -842,6 +849,7 @@ async def participant_home(request: Request, token: str):
         today_matches = [dict(r) for r in await rows.fetchall()]
         for m in today_matches:
             m["is_locked"] = _is_locked(m)
+            m["pronos_closed"] = not match_predictions_open(m)
             m["live_state"] = _live_state(m)
             m["tier"] = _prediction_tier(m, m)
             _enrich_sporting_day_match(m, home_sporting_day)
@@ -849,13 +857,21 @@ async def participant_home(request: Request, token: str):
         urgency = None
         for m in today_matches:
             mins = _minutes_until(m)
-            if not m["is_locked"] and m.get("prediction") is None and 0 < mins < 300:
+            if (
+                not m["is_locked"]
+                and not m.get("pronos_closed")
+                and m.get("prediction") is None
+                and 0 < mins < 300
+            ):
                 m["mins_until"] = mins
                 m["kickoff_ts"] = int(match_kickoff_utc(m).timestamp())
                 urgency = m
                 break
         # Unmatched today alert
-        unpredicted_today = sum(1 for m in today_matches if not m["is_locked"] and not m.get("prediction"))
+        unpredicted_today = sum(
+            1 for m in today_matches
+            if not m["is_locked"] and not m.get("pronos_closed") and not m.get("prediction")
+        )
         # Next upcoming match (today or later) for the "all caught up" state
         next_row = await db.execute(
             """SELECT m.*, p.prediction
@@ -975,9 +991,8 @@ async def predictions_page(request: Request, token: str, section: str = "",
         )
         all_matches = [dict(r) for r in await rows.fetchall()]
         _enrich_prediction_matches(all_matches)
-        knockout_open = await knockout_predictions_open(db)
         for match in all_matches:
-            match["pronos_closed"] = match["phase"] != "group" and not knockout_open
+            match["pronos_closed"] = not match_predictions_open(match)
         sections = _prediction_sections(all_matches)
         requested_section = section
         if not requested_section and match:
@@ -993,6 +1008,19 @@ async def predictions_page(request: Request, token: str, section: str = "",
             match for match in all_matches
             if match.get("section_key") == requested_section
         ]
+        current_section_closed = bool(
+            current_matches
+            and all(
+                m.get("pronos_closed") or m.get("is_locked")
+                for m in current_matches
+                if not m.get("is_locked")
+            )
+            and any(m.get("pronos_closed") for m in current_matches)
+        )
+        any_knockout_open = any(
+            m["phase"] != "group" and match_predictions_open(m)
+            for m in all_matches
+        )
         pt_status = await _pt_status(db, p["id"])
         ctx.update({
             "matches": all_matches,
@@ -1006,7 +1034,8 @@ async def predictions_page(request: Request, token: str, section: str = "",
             "pt_filled_count": pt_status["filled_count"],
             "pt_question_count": pt_status["question_count"],
             "pt_open": pt_status["open"],
-            "knockout_open": knockout_open,
+            "knockout_open": any_knockout_open,
+            "current_section_closed": current_section_closed,
             "page_wide": True,
         })
     return templates.TemplateResponse(request, "predictions.html", {"request": request, **ctx})
@@ -1018,7 +1047,10 @@ async def rules_page(request: Request, token: str):
         ctx = await _get_participant_context(token, db, "rules")
         ctx["page_wide"] = True
         ctx["prize_info"] = await get_prize_info(db)
-        ctx["knockout_open"] = await knockout_predictions_open(db)
+        open_row = await db.execute(
+            "SELECT COUNT(*) AS cnt FROM matches WHERE phase!='group' AND predictions_open=1"
+        )
+        ctx["knockout_open"] = (await open_row.fetchone())["cnt"] > 0
     return templates.TemplateResponse(request, "rules.html", {"request": request, **ctx})
 
 
@@ -1175,7 +1207,8 @@ async def _sporting_day_match_details(db, day: str) -> list[dict]:
     start_utc, end_utc = sporting_day_bounds(day)
     rows = await db.execute(
         """SELECT team1_name, team2_name, match_date, kickoff_time, phase,
-                  score_team1, score_team2, result, qualifier_winner
+                  score_team1, score_team2, final_score_team1, final_score_team2,
+                  result, qualifier_winner
            FROM matches
            WHERE datetime(match_date || 'T' || kickoff_time) >= datetime(?)
              AND datetime(match_date || 'T' || kickoff_time) < datetime(?)

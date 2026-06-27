@@ -30,6 +30,15 @@
 <div class="rv-score"><span class="sd {{ 'win' if winner == 'team1' else ('dim' if winner == 'team2' else '') }}">{{ s1 }}</span><span class="sep">–</span><span class="sd {{ 'win' if winner == 'team2' else ('dim' if winner == 'team1' else '') }}">{{ s2 }}</span></div>
 {% endmacro %}
 
+{% macro rv_result_score(m) %}
+  {% set winner = m.qualifier_winner if m.phase != 'group' and m.qualifier_winner else m.result %}
+  <div class="rv-score rv-score-label {{ 'team1' if winner == 'team1' else ('team2' if winner == 'team2' else '') }}">{{ m|result_score }}</div>
+  {% set detail = m|result_detail %}
+  {% if detail and detail != 'Score final' %}
+    <div class="rv-result-note">{{ detail }}</div>
+  {% endif %}
+{% endmacro %}
+
 <a class="rv-close" href="/p/{{ token }}" aria-label="Fermer">✕</a>
 
 {% if not reveal or not reveal.matches %}
@@ -72,7 +81,7 @@
     <div class="rv-phase rv-result">
       <div class="rv-result-inner">
         <div class="rv-plabel">Résultat</div>
-        {{ rv_score(m.score_team1, m.score_team2, m.result) }}
+        {{ rv_result_score(m) }}
         {% if m.tier == 'exact' %}
           <div class="rv-points exact">+{{ m.points }} pts · score exact 🎯</div>
         {% elif m.tier == 'correct' %}

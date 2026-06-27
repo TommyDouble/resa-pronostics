@@ -17,6 +17,7 @@ from datetime import datetime, time, timedelta
 
 from app.config import settings
 from app.database import get_db
+from app.knockout import match_predictions_open
 from app.notify import (
     notify_bonus_reminder,
     notify_daily_recap,
@@ -30,7 +31,6 @@ from app.pre_tournament import (
     pt_filled_keys,
 )
 from app.scoring import get_sporting_day_states
-from app.settings_store import knockout_predictions_open
 from app.timeutils import (
     DISPLAY_TZ,
     format_sporting_day_fr,
@@ -108,7 +108,6 @@ async def _unpredicted_match_ids(db, participant_id: int, match_ids: list) -> se
 
 async def _gated_matches(db, start_iso: str, end_iso: str) -> list:
     """Matchs dont le coup d'envoi tombe dans [start, end], gating knockout inclus."""
-    knockout_open = await knockout_predictions_open(db)
     rows = await db.execute(
         """SELECT * FROM matches
            WHERE datetime(match_date || 'T' || kickoff_time) >= datetime(?)
@@ -117,7 +116,7 @@ async def _gated_matches(db, start_iso: str, end_iso: str) -> list:
         (start_iso, end_iso),
     )
     matches = [dict(m) for m in await rows.fetchall()]
-    return [m for m in matches if m["phase"] == "group" or knockout_open]
+    return [m for m in matches if match_predictions_open(m)]
 
 
 async def _job_morning_encoding_reminder(db, now_local: datetime):

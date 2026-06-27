@@ -919,6 +919,8 @@ async def all_ephemeral_badges(
 
 async def _load_detail_context(db, occurrences: list[dict]) -> tuple[dict[int, str], dict[int, str]]:
     """Charge les libellés nécessaires aux détails de match et de jumeau."""
+    from app.result_display import result_full_label
+
     detail_ids = {
         int(o["detail"])
         for o in occurrences
@@ -932,14 +934,14 @@ async def _load_detail_context(db, occurrences: list[dict]) -> tuple[dict[int, s
     placeholders = ",".join("?" * len(detail_ids))
     id_list = list(detail_ids)
     mrows = await db.execute(
-        f"SELECT id, team1_name, team2_name, score_team1, score_team2 "
-        f"FROM matches WHERE id IN ({placeholders})",
+        f"""SELECT id, team1_name, team2_name, phase, score_team1, score_team2,
+                   final_score_team1, final_score_team2, result, qualifier_winner
+            FROM matches WHERE id IN ({placeholders})""",
         id_list,
     )
     for r in await mrows.fetchall():
-        match_names[r["id"]] = (
-            f"{r['team1_name']} {r['score_team1']}-{r['score_team2']} {r['team2_name']}"
-        )
+        score_label = result_full_label(r).replace("–", "-")
+        match_names[r["id"]] = f"{r['team1_name']} {score_label} {r['team2_name']}"
     prows = await db.execute(
         f"SELECT id, name, nickname FROM participants WHERE id IN ({placeholders})",
         id_list,

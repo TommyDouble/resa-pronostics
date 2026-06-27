@@ -17,6 +17,12 @@ def _static_version() -> str:
         return "1"
 
 from app.flags import team_flag, team_label
+from app.result_display import (
+    qualified_team_name,
+    result_full_label,
+    result_score_detail,
+    result_score_label,
+)
 from app.timeutils import (
     format_local_datetime,
     format_local_input,
@@ -57,6 +63,10 @@ def create_templates() -> Jinja2Templates:
     templates.env.filters["match_utc_iso"] = format_match_utc_iso_z
     templates.env.filters["flag"] = team_flag
     templates.env.filters["team"] = team_label
+    templates.env.filters["result_score"] = result_score_label
+    templates.env.filters["result_detail"] = result_score_detail
+    templates.env.filters["result_full"] = result_full_label
+    templates.env.filters["qualified_team"] = qualified_team_name
     templates.env.globals["display_tz_label"] = "heure locale"
     templates.env.globals["static_version"] = _static_version()
     return templates

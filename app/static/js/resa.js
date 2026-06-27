@@ -352,12 +352,26 @@ function initStepper(id, min, max) {
 }
 
 /* ---- Countdown timers ---- */
+function resaNowSeconds() {
+  var root = document.querySelector('[data-client-now-ts]');
+  var base = root ? parseInt(root.dataset.clientNowTs, 10) : 0;
+  if (!base) return Math.floor(Date.now() / 1000);
+  if (typeof window.__resaClockOffset !== 'number') {
+    window.__resaClockOffset = base - Math.floor(Date.now() / 1000);
+  }
+  return Math.floor(Date.now() / 1000) + window.__resaClockOffset;
+}
+
+function resaNowDate() {
+  return new Date(resaNowSeconds() * 1000);
+}
+
 function initCountdown() {
   function pad(n) { return n < 10 ? '0' + n : String(n); }
   document.querySelectorAll('[data-countdown]').forEach(function(el) {
     var target = parseInt(el.dataset.countdown);
     function update() {
-      var diff = target - Math.floor(Date.now() / 1000);
+      var diff = target - resaNowSeconds();
       if (diff <= 0) { el.textContent = 'Coup d’envoi !'; return; }
       var d = Math.floor(diff / 86400);
       var h = Math.floor((diff % 86400) / 3600);
@@ -398,7 +412,7 @@ function initLocalTimes() {
     if (mode === 'day') {
       // Séparateurs de journées : relatif quand c'est proche, sinon en toutes lettres.
       var startOfDay = function(x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()); };
-      var diff = Math.round((startOfDay(d) - startOfDay(new Date())) / 86400000);
+      var diff = Math.round((startOfDay(d) - startOfDay(resaNowDate())) / 86400000);
       if (diff === 0) return "Aujourd'hui";
       if (diff === -1) return 'Hier';
       if (diff === 1) return 'Demain';
@@ -828,21 +842,76 @@ function initFavoriteToggles() {
 /* ---- Admin: score validation warning ---- */
 function initResultForms() {
   document.querySelectorAll('.result-form').forEach(function(form) {
-    form.addEventListener('submit', function(e) {
-      var s1 = parseInt(form.querySelector('[name="score_team1"]').value);
-      var s2 = parseInt(form.querySelector('[name="score_team2"]').value);
+    var score1 = form.querySelector('[name="score_team1"]');
+    var score2 = form.querySelector('[name="score_team2"]');
+    var final1 = form.querySelector('[name="final_score_team1"]');
+    var final2 = form.querySelector('[name="final_score_team2"]');
+    var finalFields = form.querySelector('[data-ko-final-fields]');
+    var qualifier = form.querySelector('select[name="qualifier_winner"]');
     var phase = form.dataset.phase;
     var isKnockout = phase && phase !== 'group';
-    var qualifier = form.querySelector('select[name="qualifier_winner"]');
-    if (isKnockout && s1 === s2 && qualifier && !qualifier.value) {
-      alert("Choisis l'équipe qualifiée pour ce match de phase finale.");
-      e.preventDefault();
-      return;
+
+    function scoreValue(input) {
+      if (!input || input.value === '') return null;
+      var value = parseInt(input.value, 10);
+      return isNaN(value) ? null : value;
     }
-    if (s1 === 0 && s2 === 0 && isKnockout) {
-      if (!confirm('Score 0-0 sur un match éliminatoire. Confirmer ?')) {
-        e.preventDefault();
+
+    function setQualifierFromFinal() {
+      if (!isKnockout || !qualifier) return;
+      var f1 = scoreValue(final1);
+      var f2 = scoreValue(final2);
+      if (f1 === null || f2 === null || f1 === f2) {
+        qualifier.disabled = false;
+        return;
       }
+      qualifier.value = f1 > f2 ? 'team1' : 'team2';
+      qualifier.disabled = true;
+    }
+
+    function updateFinalFields() {
+      if (!finalFields) return;
+      var s1 = scoreValue(score1);
+      var s2 = scoreValue(score2);
+      var open = isKnockout && s1 !== null && s2 !== null && s1 === s2;
+      finalFields.classList.toggle('is-open', open);
+      if (!open) {
+        if (final1) final1.value = '';
+        if (final2) final2.value = '';
+        if (qualifier) qualifier.disabled = false;
+      }
+      setQualifierFromFinal();
+    }
+
+    [score1, score2, final1, final2].forEach(function(input) {
+      if (!input) return;
+      input.addEventListener('input', updateFinalFields);
+      input.addEventListener('change', updateFinalFields);
+    });
+    updateFinalFields();
+
+    form.addEventListener('submit', function(e) {
+      if (qualifier && qualifier.disabled) qualifier.disabled = false;
+      var s1 = scoreValue(score1);
+      var s2 = scoreValue(score2);
+      var f1 = scoreValue(final1);
+      var f2 = scoreValue(final2);
+      if (isKnockout && s1 === s2) {
+        if ((f1 !== null && f1 < s1) || (f2 !== null && f2 < s2)) {
+          alert("Le score final ne peut pas être inférieur au score à 90 minutes.");
+          e.preventDefault();
+          return;
+        }
+        if ((f1 === null || f2 === null || f1 === f2) && qualifier && !qualifier.value) {
+          alert("Choisis l'équipe qualifiée pour ce match de phase finale.");
+          e.preventDefault();
+          return;
+        }
+      }
+      if (s1 === 0 && s2 === 0 && isKnockout) {
+        if (!confirm('Score 0-0 sur un match éliminatoire. Confirmer ?')) {
+          e.preventDefault();
+        }
       }
     });
   });
