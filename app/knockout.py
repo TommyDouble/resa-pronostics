@@ -159,6 +159,57 @@ async def confirm_match_teams(db, match_id: int, team1_name: str, team2_name: st
     return True, "Affiche confirmée et pronostics ouverts."
 
 
+async def confirm_match_side(db, match_id: int, side: str, team_name: str) -> tuple[bool, str]:
+    """Fige UNE seule équipe d'une affiche de phase finale, sans l'ouvrir.
+
+    Le match reste fermé : il ne s'ouvrira qu'une fois les deux côtés confirmés,
+    via le bouton « Ouvrir » (``set_match_predictions_open``).
+    """
+    if side not in SIDES:
+        return False, "Côté invalide."
+    team_name = (team_name or "").strip()
+    if not team_name:
+        return False, "L'équipe est requise."
+    if is_placeholder_team(team_name):
+        return False, "Choisis une équipe qualifiée réelle."
+
+    row = await db.execute("SELECT * FROM matches WHERE id=?", (match_id,))
+    match = await row.fetchone()
+    if not match:
+        return False, "Match introuvable."
+    if match["phase"] == "group":
+        return False, "Les équipes de groupes ne se confirment pas ici."
+    if match["result"] is not None:
+        return False, "Impossible de modifier une affiche déjà jouée."
+    other_col = SIDE_COLUMNS[_opposite_side(side)]
+    if match[other_col] == team_name:
+        return False, "Les deux équipes doivent être différentes."
+
+    # Garantit que les deux slots existent pour le suivi du bracket.
+    await ensure_knockout_slots(db)
+
+    await db.execute(
+        f"UPDATE matches SET {SIDE_COLUMNS[side]}=? WHERE id=?",
+        (team_name, match_id),
+    )
+    await db.execute(
+        """INSERT INTO knockout_slots
+           (match_id, side, source_kind, source_label, is_confirmed)
+           VALUES (?, ?, 'manual', 'Saisie admin', 1)
+           ON CONFLICT(match_id, side) DO UPDATE SET
+             source_kind='manual',
+             source_label='Saisie admin',
+             source_match_number=NULL,
+             source_outcome=NULL,
+             is_confirmed=1,
+             updated_at=datetime('now')""",
+        (match_id, side),
+    )
+    if await knockout_match_ready(db, match_id):
+        return True, "Équipe fixée. Les deux côtés sont prêts : tu peux ouvrir les pronostics."
+    return True, "Équipe fixée. L'affiche reste fermée tant que l'adversaire n'est pas confirmé."
+
+
 def _qualified_side(match: dict) -> str:
     if _row_get(match, "phase") == "group":
         return ""
