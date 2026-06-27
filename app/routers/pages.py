@@ -26,6 +26,7 @@ from app.config import settings
 from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import get_db
 from app.flags import team_flag
+from app.knockout import is_placeholder_team, match_predictions_open, parse_source_label
 from app.mail import send_invitation
 from app.nameutils import build_full_name
 from app.players import (
@@ -42,8 +43,9 @@ from app.pre_tournament import (
     pt_filled_keys,
 )
 from app.prizes import get_prize_info
-from app.settings_store import knockout_predictions_open
+from app.result_display import qualified_team_name, result_full_label
 from app.scoring import (
+    actual_match_winner,
     get_department_rankings,
     get_latest_finalized_climbers,
     get_rank_evolution,
@@ -65,6 +67,7 @@ from app.timeutils import (
     match_kickoff_utc,
     match_live_state,
     minutes_until_match,
+    now_utc,
     now_utc_iso,
     sporting_day,
     sporting_day_bounds,
@@ -233,7 +236,65 @@ def _qualifier_label(match: dict) -> str:
     return ""
 
 
+def _enrich_knockout_result_labels(row: dict) -> None:
+    """Pose les libellés de qualifié pour les écrans de résultat (phase finale).
+
+    - ``qualifier_pred_label`` : l'équipe que le participant voyait passer (nul prono).
+    - ``qualifier_real_label`` : l'équipe réellement qualifiée.
+    - ``qualifier_match`` : True/False/None selon que le choix correspond.
+    """
+    row["qualifier_pred_label"] = ""
+    row["qualifier_real_label"] = ""
+    row["qualifier_match"] = None
+    if row.get("phase") == "group":
+        return
+    pred = row.get("qualifier_prediction")
+    if pred in ("team1", "team2"):
+        row["qualifier_pred_label"] = row["team1_name"] if pred == "team1" else row["team2_name"]
+    if row.get("result") is not None:
+        row["qualifier_real_label"] = qualified_team_name(row)
+        real = row.get("qualifier_winner") or (
+            row.get("result") if row.get("result") in ("team1", "team2") else None
+        )
+        if pred in ("team1", "team2") and real in ("team1", "team2"):
+            row["qualifier_match"] = pred == real
+
+
+def _zero_points_reason(prediction: dict | None, match: dict) -> str:
+    """Raison courte d'un 0 point, à afficher à côté du verdict."""
+    if not prediction or prediction.get("exact_score_team1") is None:
+        return "Pas de prono"
+    if match.get("phase") != "group":
+        predicted = predicted_match_winner(prediction, match)
+        actual = actual_match_winner(match)
+        if predicted and actual and predicted != actual:
+            if prediction.get("exact_score_team1") == prediction.get("exact_score_team2"):
+                return "Mauvais qualifié"
+            return "Mauvaise issue"
+    return "Mauvaise issue"
+
+
+def _resolve_team_label(raw: str, by_number: dict[int, tuple[str, str]]) -> str:
+    """« Vainqueur M83 » → « Vainqueur Brésil-France » via les équipes du match source.
+
+    Renvoie le nom réel si ce n'en est pas un placeholder, « À confirmer » si la
+    source n'a pas encore d'équipes réelles.
+    """
+    parsed = parse_source_label(raw)
+    if not parsed:
+        return raw
+    kind, number = parsed
+    src = by_number.get(number)
+    if src and not is_placeholder_team(src[0]) and not is_placeholder_team(src[1]):
+        return f"{kind} {src[0]}-{src[1]}"
+    return "À confirmer"
+
+
 def _enrich_prediction_matches(matches: list[dict]) -> None:
+    by_number = {
+        m["match_number"]: (m.get("team1_name") or "", m.get("team2_name") or "")
+        for m in matches
+    }
     grouped = defaultdict(list)
     for match in matches:
         if match["phase"] == "group":
@@ -267,6 +328,11 @@ def _enrich_prediction_matches(matches: list[dict]) -> None:
         match["qualifier_label"] = _qualifier_label(match)
         match["tier"] = _prediction_tier(match, match)
         match["is_past_day"] = _is_past_day(match)
+        t1_placeholder = is_placeholder_team(match.get("team1_name")) if match["phase"] != "group" else False
+        t2_placeholder = is_placeholder_team(match.get("team2_name")) if match["phase"] != "group" else False
+        match["has_placeholder_team"] = t1_placeholder or t2_placeholder
+        match["team1_label"] = _resolve_team_label(match["team1_name"], by_number) if t1_placeholder else match["team1_name"]
+        match["team2_label"] = _resolve_team_label(match["team2_name"], by_number) if t2_placeholder else match["team2_name"]
 
 
 def _prediction_sections(matches: list[dict]) -> list[dict]:
@@ -279,6 +345,10 @@ def _prediction_sections(matches: list[dict]) -> list[dict]:
             1 for m in section_matches
             if not m.get("is_locked") and not m.get("pronos_closed")
         )
+        closed_count = sum(
+            1 for m in section_matches
+            if not m.get("is_locked") and m.get("pronos_closed")
+        )
         sections.append({
             "key": key,
             "label": PREDICTION_SECTION_LABELS[key],
@@ -286,6 +356,7 @@ def _prediction_sections(matches: list[dict]) -> list[dict]:
             "total": total,
             "done": done,
             "open_count": open_count,
+            "closed_count": closed_count,
         })
     return sections
 
@@ -307,7 +378,7 @@ def _section_help(section_key: str) -> str:
         "group_match_3": "Journée 3 regroupe le troisième match de chaque équipe dans son groupe.",
     }.get(
         section_key,
-        "Les phases finales valent ×2. Les points portent sur l'équipe qui se qualifie.",
+        "En phase finale, les points portent sur l'équipe qualifiée : bon qualifié = 4 pts, +2 si ton score à 90 min est exact.",
     )
 
 
@@ -387,6 +458,7 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
         "active_nav": active_nav,
         "page_wide": True,
         "token": token,
+        "client_now_ts": int(now_utc().timestamp()),
         "news_story": news_story,
     }
 
@@ -576,6 +648,8 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
             e.get("prediction") is not None or e.get("exact_score_team1") is not None
         )
         row["tier"] = _prediction_tier(row, row)
+        row["zero_reason"] = _zero_points_reason(row, row) if row["tier"] == "wrong" else ""
+        _enrich_knockout_result_labels(row)
         _enrich_sporting_day_match(row, row["sd"])
         matches.append(row)
         total += row["points"]
@@ -842,6 +916,7 @@ async def participant_home(request: Request, token: str):
         today_matches = [dict(r) for r in await rows.fetchall()]
         for m in today_matches:
             m["is_locked"] = _is_locked(m)
+            m["pronos_closed"] = not match_predictions_open(m)
             m["live_state"] = _live_state(m)
             m["tier"] = _prediction_tier(m, m)
             _enrich_sporting_day_match(m, home_sporting_day)
@@ -849,13 +924,21 @@ async def participant_home(request: Request, token: str):
         urgency = None
         for m in today_matches:
             mins = _minutes_until(m)
-            if not m["is_locked"] and m.get("prediction") is None and 0 < mins < 300:
+            if (
+                not m["is_locked"]
+                and not m.get("pronos_closed")
+                and m.get("prediction") is None
+                and 0 < mins < 300
+            ):
                 m["mins_until"] = mins
                 m["kickoff_ts"] = int(match_kickoff_utc(m).timestamp())
                 urgency = m
                 break
         # Unmatched today alert
-        unpredicted_today = sum(1 for m in today_matches if not m["is_locked"] and not m.get("prediction"))
+        unpredicted_today = sum(
+            1 for m in today_matches
+            if not m["is_locked"] and not m.get("pronos_closed") and not m.get("prediction")
+        )
         # Next upcoming match (today or later) for the "all caught up" state
         next_row = await db.execute(
             """SELECT m.*, p.prediction
@@ -975,9 +1058,8 @@ async def predictions_page(request: Request, token: str, section: str = "",
         )
         all_matches = [dict(r) for r in await rows.fetchall()]
         _enrich_prediction_matches(all_matches)
-        knockout_open = await knockout_predictions_open(db)
         for match in all_matches:
-            match["pronos_closed"] = match["phase"] != "group" and not knockout_open
+            match["pronos_closed"] = not match_predictions_open(match)
         sections = _prediction_sections(all_matches)
         requested_section = section
         if not requested_section and match:
@@ -993,6 +1075,19 @@ async def predictions_page(request: Request, token: str, section: str = "",
             match for match in all_matches
             if match.get("section_key") == requested_section
         ]
+        current_section_closed = bool(
+            current_matches
+            and all(
+                m.get("pronos_closed") or m.get("is_locked")
+                for m in current_matches
+                if not m.get("is_locked")
+            )
+            and any(m.get("pronos_closed") for m in current_matches)
+        )
+        any_knockout_open = any(
+            m["phase"] != "group" and match_predictions_open(m)
+            for m in all_matches
+        )
         pt_status = await _pt_status(db, p["id"])
         ctx.update({
             "matches": all_matches,
@@ -1006,7 +1101,8 @@ async def predictions_page(request: Request, token: str, section: str = "",
             "pt_filled_count": pt_status["filled_count"],
             "pt_question_count": pt_status["question_count"],
             "pt_open": pt_status["open"],
-            "knockout_open": knockout_open,
+            "knockout_open": any_knockout_open,
+            "current_section_closed": current_section_closed,
             "page_wide": True,
         })
     return templates.TemplateResponse(request, "predictions.html", {"request": request, **ctx})
@@ -1018,7 +1114,10 @@ async def rules_page(request: Request, token: str):
         ctx = await _get_participant_context(token, db, "rules")
         ctx["page_wide"] = True
         ctx["prize_info"] = await get_prize_info(db)
-        ctx["knockout_open"] = await knockout_predictions_open(db)
+        open_row = await db.execute(
+            "SELECT COUNT(*) AS cnt FROM matches WHERE phase!='group' AND predictions_open=1"
+        )
+        ctx["knockout_open"] = (await open_row.fetchone())["cnt"] > 0
     return templates.TemplateResponse(request, "rules.html", {"request": request, **ctx})
 
 
@@ -1175,7 +1274,8 @@ async def _sporting_day_match_details(db, day: str) -> list[dict]:
     start_utc, end_utc = sporting_day_bounds(day)
     rows = await db.execute(
         """SELECT team1_name, team2_name, match_date, kickoff_time, phase,
-                  score_team1, score_team2, result, qualifier_winner
+                  score_team1, score_team2, final_score_team1, final_score_team2,
+                  result, qualifier_winner
            FROM matches
            WHERE datetime(match_date || 'T' || kickoff_time) >= datetime(?)
              AND datetime(match_date || 'T' || kickoff_time) < datetime(?)
@@ -1406,13 +1506,21 @@ async def match_detail_page(request: Request, token: str, match_id: int):
                 if pr["tier"] in tier_stats:
                     tier_stats[pr["tier"]] += 1
         my_pred_dict = dict(my_pred) if my_pred else None
+        my_tier = _prediction_tier(my_pred_dict, match_dict) if my_pred_dict else ""
+        # Libellés de qualifié (réel vs choisi) calculés sur la fusion prono + match.
+        label_row = {**match_dict, "qualifier_prediction": (my_pred_dict or {}).get("qualifier_prediction")}
+        _enrich_knockout_result_labels(label_row)
         ctx.update({
             "match": match_dict,
             "match_phase_label": PHASE_LABELS.get(match["phase"], match["phase"]),
             "live_state": live_state,
             "my_pred": my_pred_dict,
             "my_score": dict(my_score) if my_score else None,
-            "my_tier": _prediction_tier(my_pred_dict, match_dict) if my_pred_dict else "",
+            "my_tier": my_tier,
+            "my_zero_reason": _zero_points_reason(my_pred_dict, match_dict) if my_tier == "wrong" else "",
+            "my_qualifier_real_label": label_row["qualifier_real_label"],
+            "my_qualifier_match": label_row["qualifier_match"],
+            "result_is_tiebreak": ("a.p." in (result_full_label(match_dict) or "")) or ("t.a.b." in (result_full_label(match_dict) or "")),
             "my_dist_key": predicted_match_winner(my_pred_dict, match_dict) if my_pred_dict else "",
             "dist": dist,
             "dist_total": dist_total,

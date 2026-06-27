@@ -115,10 +115,11 @@
         </div>
         <div class="home-match-right">
           {% if m.is_locked and m.result is not none and m.score_team1 is not none %}
-            <div class="home-final-score">{{ m.score_team1 }}–{{ m.score_team2 }}</div>
-            {% if m.phase != 'group' and m.qualifier_winner %}
+            <div class="home-final-score">{{ m|result_score }}</div>
+            {% set detail = m|result_detail %}
+            {% if detail and detail != 'Score final' %}
             <div class="home-match-points">
-              {% if m.qualifier_winner == 'team1' %}{{ m.team1_name }}{% else %}{{ m.team2_name }}{% endif %}
+              {{ detail }}
             </div>
             {% endif %}
             {% if m.get('points') is not none and m.tier %}
@@ -143,6 +144,8 @@
                 <b>{% if m.exact_score_team1 is not none and m.exact_score_team2 is not none %}{{ m.exact_score_team1 }}–{{ m.exact_score_team2 }}{% elif m.prediction == 'team1' %}1{% elif m.prediction == 'draw' %}X{% else %}2{% endif %}</b>
               </span>
             </span>
+          {% elif m.pronos_closed %}
+            <span class="home-to-do">Pas ouvert</span>
           {% else %}
             <span class="home-to-do">À pronostiquer</span>
           {% endif %}

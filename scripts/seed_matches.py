@@ -138,14 +138,17 @@ async def seed():
         await db.commit()
 
         for match in MATCHES:
+            predictions_open = 1 if match[1] == "group" else 0
             await db.execute(
                 """INSERT INTO matches
                    (match_number, phase, group_name, match_date, kickoff_time,
-                    team1_name, team2_name, is_top_match, weight)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                match,
+                    team1_name, team2_name, is_top_match, weight, predictions_open)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (*match, predictions_open),
             )
 
+        from app.knockout import ensure_knockout_slots
+        await ensure_knockout_slots(db)
         await db.commit()
         row = await db.execute("SELECT COUNT(*) as cnt FROM matches")
         print(f"✓ {(await row.fetchone())['cnt']} matchs insérés.")

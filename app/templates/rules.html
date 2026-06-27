@@ -80,7 +80,8 @@
       <li>Le score que tu donnes est celui <b>après 90 minutes</b> (sans les prolongations ni les tirs au but).</li>
       <li>Les points portent sur <b>l'équipe qui se qualifie</b>.</li>
       <li>Si tu prévois un nul après 90 minutes, l'appli te demande aussi <b>quelle équipe passera</b> (après prolongation / tirs au but).</li>
-      <li>Le bonus de score exact n'est accordé que si tu as aussi désigné le bon qualifié.</li>
+      <li>Quand il y a un but en prolongation, le résultat affiche le <b>score final</b> avec la mention <b>a.p.</b>, et rappelle le score à 90 minutes.</li>
+      <li>Si tu désignes le mauvais qualifié : <b>0 point au total</b>, même si ton score à 90 min était exact.</li>
     </ul>
     <div class="rules-example">
       <b>Victoire dans le temps réglementaire</b>
@@ -89,6 +90,10 @@
     <div class="rules-example">
       <b>Nul que tu prévois → tu choisis le qualifié</b>
       <span>Tu pronostiques Espagne 2-2 Allemagne et tu désignes Espagne qualifiée. Si l'Espagne passe réellement : +4 pts (et +2 si le 2-2 était aussi le score réel à 90 min). Si c'est l'Allemagne qui passe : 0 pt.</span>
+    </div>
+    <div class="rules-example">
+      <b>But pendant les prolongations</b>
+      <span>Score à 90 minutes : Espagne 1-1 Allemagne. L'Espagne marque en prolongation : le résultat s'affiche Espagne 2-1 Allemagne a.p. Ton score exact est comparé au 1-1, mais le qualifié est bien l'Espagne.</span>
     </div>
     <div class="rules-example">
       <b>Mauvais qualifié</b>
@@ -156,7 +161,7 @@
     <ul>
       <li>Un match se <b>verrouille à son coup d'envoi</b> officiel : après ça, plus de modification.</li>
       {% if not knockout_open %}
-      <li>Les pronostics des <b>matchs de phase finale</b> ne sont pas encore ouverts : ils seront débloqués quand les affiches se préciseront.</li>
+      <li>Les pronostics des <b>matchs de phase finale</b> s'ouvrent affiche par affiche, dès que les deux équipes sont confirmées.</li>
       {% endif %}
       <li>Le pré-tournoi se verrouille au coup d'envoi du <b>premier match du tournoi</b>.</li>
       <li>Chaque question bonus se verrouille à <b>sa propre date limite</b>.</li>

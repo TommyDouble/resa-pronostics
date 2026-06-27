@@ -16,11 +16,13 @@
     <span class="sp"></span>
     <span class="chip ok" id="global-save-badge" style="display:none;">Enregistré ✓</span>
   </div>
-  {% set st = namespace(open=0, todo=0) %}
+  {% set st = namespace(open=0, todo=0, closed=0) %}
   {% for m in current_matches %}
     {% if not m.is_locked and not m.pronos_closed %}
       {% set st.open = st.open + 1 %}
       {% if not m.has_score_prediction %}{% set st.todo = st.todo + 1 %}{% endif %}
+    {% elif not m.is_locked and m.pronos_closed %}
+      {% set st.closed = st.closed + 1 %}
     {% endif %}
   {% endfor %}
   <div class="sub1">
@@ -29,6 +31,8 @@
       <span class="help-tip" tabindex="0" data-tip="1 = victoire de l'équipe de gauche, X = match nul, 2 = victoire de l'équipe de droite.">?</span>
     {% elif st.open > 0 %}
       Tout est pronostiqué ✓ — modifiable jusqu'au coup d'envoi.
+    {% elif st.closed > 0 %}
+      Les affiches de cette section s'ouvriront dès confirmation.
     {% else %}
       Tous les matchs de cette section sont joués.
     {% endif %}
@@ -38,7 +42,7 @@
     <a href="/p/{{ token }}/pronos?section={{ sec.key }}"
        class="{{ 'on' if current_section == sec.key else '' }}"
        title="{{ sec.label }} · {{ sec.done }}/{{ sec.total }} pronos complétés">
-      {% if not knockout_open and not sec.key.startswith('group_match') %}🔒 {% endif %}{{ sec.short_label }}
+      {% if sec.closed_count and sec.open_count == 0 and not sec.key.startswith('group_match') %}🔒 {% endif %}{{ sec.short_label }}
       <span>{{ sec.done }}/{{ sec.total }}</span>
     </a>
     {% endfor %}
@@ -55,10 +59,10 @@
   </div>
   {% endif %}
 
-  {% if not knockout_open and not current_section.startswith('group_match') %}
+  {% if current_section_closed %}
   <div class="banner soft">
     <span>🔒</span>
-    <span>Les pronostics de phase finale ne sont pas encore ouverts. Ils seront débloqués quand les affiches se préciseront — tu seras prévenu.</span>
+    <span>Les pronostics de cette section ne sont pas encore ouverts. Chaque affiche se débloque dès que ses deux équipes sont confirmées.</span>
   </div>
   {% else %}
   <div class="banner soft">
@@ -108,7 +112,7 @@
         <span class="dot gr"></span>
         <span class="cs-line">
           <b>{{ m.team1_name|team }}</b>
-          <span class="cs-score">{{ m.score_team1 }}–{{ m.score_team2 }}</span>
+          <span class="cs-score">{{ m|result_score }}</span>
           <b>{{ m.team2_name|team }}</b>
         </span>
         {% if m.tier == 'exact' %}
@@ -140,16 +144,8 @@
           <span class="muted">· {{ m.group_name }}</span>
         {% endif %}
         <span class="sp"></span>
-        {% if m.live_state == 'done' %}
-          {% if m.is_top_match %}
-            <span class="chip warn tip" tabindex="0" data-tip="Top Match: bon résultat à +4 points au lieu de +2. Le bonus score exact reste +2.">★ Top Match ×2</span>
-          {% elif m.weight != 1 %}
-            <span class="chip gr tip" tabindex="0" data-tip="Poids du match: les points de bon résultat sont multipliés par {{ m.weight }}.">×{{ m.weight }}</span>
-          {% endif %}
-        {% elif m.is_top_match %}
-          <span class="chip warn tip" tabindex="0" data-tip="Top Match: bon résultat à +4 points au lieu de +2. Le bonus score exact reste +2.">★ Top Match ×2</span>
-        {% else %}
-          <span class="chip gr tip" tabindex="0" data-tip="Poids du match: les points de bon résultat sont multipliés par {{ m.weight }}.">×{{ m.weight }}</span>
+        {% if m.is_top_match %}
+          <span class="chip warn tip" tabindex="0" data-tip="Top Match : bon vainqueur = 4 pts, +2 si ton score est exact.">★ Top Match</span>
         {% endif %}
         {% if m.is_locked %}
           <a href="/p/{{ token }}/match/{{ m.id }}" class="detail-link {{ '' if compact else 'stretch' }}">Détail ›</a>
@@ -160,25 +156,28 @@
       <div class="result-final">
         <div class="score-team" title="{{ m.team1_name }}">{{ m.team1_name|team }}</div>
         <div class="rf-score">
-          {{ m.score_team1 }}–{{ m.score_team2 }}
-          <small>Score final{% if m.phase != 'group' and m.qualifier_winner %} · {% if m.qualifier_winner == 'team1' %}{{ m.team1_name|team }}{% else %}{{ m.team2_name|team }}{% endif %} qualifié{% endif %}</small>
+          {{ m|result_score }}
+          <small>{{ m|result_detail }}</small>
         </div>
         <div class="score-team r" title="{{ m.team2_name }}">{{ m.team2_name|team }}</div>
       </div>
       {% else %}
       <div class="score-entry">
-        <div class="score-team" title="{{ m.team1_name }}">{{ m.team1_name|team }}</div>
+        <div class="score-team" title="{{ m.team1_label or m.team1_name }}">{{ (m.team1_label or m.team1_name)|team }}</div>
         <input class="score-pick" type="number" min="0" max="30" inputmode="numeric"
-               data-side="1" aria-label="Score {{ m.team1_name }}"
+               data-side="1" aria-label="Score {{ m.team1_label or m.team1_name }}"
                value="{{ m.exact_score_team1 if m.exact_score_team1 is not none else '' }}"
                placeholder="-" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>
         <span class="score-dash">-</span>
         <input class="score-pick" type="number" min="0" max="30" inputmode="numeric"
-               data-side="2" aria-label="Score {{ m.team2_name }}"
+               data-side="2" aria-label="Score {{ m.team2_label or m.team2_name }}"
                value="{{ m.exact_score_team2 if m.exact_score_team2 is not none else '' }}"
                placeholder="-" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>
-        <div class="score-team r" title="{{ m.team2_name }}">{{ m.team2_name|team }}</div>
+        <div class="score-team r" title="{{ m.team2_label or m.team2_name }}">{{ (m.team2_label or m.team2_name)|team }}</div>
       </div>
+      {% if m.phase != 'group' and not m.is_locked and not m.pronos_closed %}
+      <p style="margin:4px 0 0;font-size:12px;color:var(--n500);">Score estimé après 90 min — sans prolongation ni tirs au but.</p>
+      {% endif %}
       {% endif %}
 
       <div class="prediction-meta">
@@ -202,7 +201,7 @@
              l'issue 1X2 qui en découle, sans répéter le prono. #}
           <span class="outcome-chip {{ '' if m.has_score_prediction else 'empty' }}" data-outcome>
             {% if m.has_score_prediction %}
-              {% if m.prediction == 'team1' %}Victoire {{ m.team1_name }}{% elif m.prediction == 'team2' %}Victoire {{ m.team2_name }}{% else %}Match nul{% endif %}
+              {% if m.prediction == 'team1' %}Victoire {{ m.team1_name }}{% elif m.prediction == 'team2' %}Victoire {{ m.team2_name }}{% elif m.qualifier_label %}Nul · {{ m.qualifier_label|team }} qualifié{% else %}Match nul{% endif %}
             {% elif m.pronos_closed %}Pas encore ouvert{% else %}Score requis{% endif %}
           </span>
           <span class="sp"></span>
@@ -212,19 +211,19 @@
 
       {% if m.pronos_closed %}
       <div class="placeholder-note">
-        Les équipes de cette affiche seront confirmées plus tard. Le pronostic ouvrira à ce moment-là.
+        Cette affiche n'est pas encore ouverte. Le pronostic sera disponible dès confirmation par l'organisateur.
       </div>
-      {% elif m.phase != 'group' and ('Groupe' in m.team1_name or 'Groupe' in m.team2_name) %}
+      {% elif m.has_placeholder_team %}
       <div class="placeholder-note">
-        Les équipes de cette affiche seront confirmées plus tard. Ton score restera modifiable jusqu'au coup d'envoi.
+        L'adversaire se décide dans un autre match. Ton prono s'ouvrira dès que l'affiche est confirmée.
       </div>
       {% endif %}
 
       {% if m.phase != 'group' %}
       <div class="qualifier-row {% if m.has_score_prediction and m.exact_score_team1 == m.exact_score_team2 %}open{% endif %}">
         <span class="lbl">
-          Qualifié si nul
-          <span class="help-tip" tabindex="0" data-tip="En phase finale, les points portent sur l'équipe qualifiée. Si tu prévois un nul après 90 minutes, choisis qui passera après prolongations ou tirs au but.">?</span>
+          Si nul après 90 min, qui passe ?
+          <span class="help-tip" tabindex="0" data-tip="En phase finale, les points portent sur l'équipe qualifiée. Si tu prévois un nul après 90 min, choisis qui passera. Attention : mauvais qualifié = 0 point au total, même si ton score à 90 min était exact.">?</span>
         </span>
         <button type="button"
                 class="qualifier-btn {{ 'on' if m.qualifier_prediction == 'team1' else '' }}"

@@ -40,9 +40,10 @@ score pronostiqué est nul, le participant doit choisir l'équipe qualifiée. Le
 bonus score exact n'est accordé que si le vainqueur/qualifié pronostiqué est
 correct.
 
-Les pronostics de **phase finale sont verrouillés** tant que l'organisateur ne
-les ouvre pas (toggle dans `/admin/matches`, à activer quand les affiches se
-précisent).
+Les pronostics de **phase finale s'ouvrent par match** : l'organisateur confirme
+les deux équipes dans `/admin/matches`, puis l'affiche devient pronostiquable
+jusqu'au coup d'envoi. Les vainqueurs/perdants sont propagés automatiquement
+vers les tours suivants.
 
 ### Pré-tournoi (5 questions fixes)
 Champion du Monde (+8), finalistes (+7 par finaliste correct, le champion

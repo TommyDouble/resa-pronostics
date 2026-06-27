@@ -80,6 +80,42 @@ def test_sporting_day_story_is_seeded_as_draft_with_four_guided_screens(admin_cl
     assert "Depuis ta visite : +16" in html
 
 
+def test_knockout_story_is_seeded_and_guided(admin_client):
+    async def _find():
+        async with get_db() as db:
+            row = await db.execute(
+                """SELECT id, is_published, template_key FROM news_items
+                   WHERE slug='phase-finale-affiche-par-affiche'"""
+            )
+            return dict(await row.fetchone())
+
+    item = run(_find())
+    assert item["is_published"] == 1
+    assert item["template_key"] == "knockout_opening"
+    html = admin_client.get(f"/admin/nouveautes/{item['id']}/preview").text
+    assert html.count('class="story-screen"') == 4
+    assert "La phase finale s'ouvre affiche par affiche" in html
+    assert "Si tu prévois un nul" in html
+
+
+def test_extra_time_story_is_seeded_and_guided(admin_client):
+    async def _find():
+        async with get_db() as db:
+            row = await db.execute(
+                """SELECT id, is_published, template_key FROM news_items
+                   WHERE slug='scores-apres-prolongations'"""
+            )
+            return dict(await row.fetchone())
+
+    item = run(_find())
+    assert item["is_published"] == 1
+    assert item["template_key"] == "extra_time_results"
+    html = admin_client.get(f"/admin/nouveautes/{item['id']}/preview").text
+    assert html.count('class="story-screen"') == 4
+    assert "score à 90 minutes" in html
+    assert "2-1 a.p." in html
+
+
 def test_admin_news_crud(admin_client):
     # Création
     res = admin_client.post(

@@ -30,17 +30,11 @@
       </div>
       <div class="sc" data-score-slot>
         {% if match.score_team1 is not none and match.score_team2 is not none %}
-        {{ match.score_team1 }} – {{ match.score_team2 }}
-        <small>RÉSULTAT OFFICIEL</small>
+        {{ match|result_score }}
+        <small>{{ match|result_detail }}</small>
         {% else %}
         <span class="sc-pending">– : –</span>
         <small>{% if live_state == 'live' %}MATCH EN COURS{% else %}EN ATTENTE DU RÉSULTAT{% endif %}</small>
-        {% endif %}
-        {% if match.phase != 'group' and match.qualifier_winner %}
-        <small>
-          Vainqueur:
-          {% if match.qualifier_winner == 'team1' %}{{ match.team1_name }}{% else %}{{ match.team2_name }}{% endif %}
-        </small>
         {% endif %}
       </div>
       <div class="t">
@@ -74,9 +68,19 @@
       {% elif my_tier == 'correct' %}
       <span class="chip warn">Bon résultat · +<b data-countup="{{ my_score.points if my_score else 0 }}">{{ my_score.points if my_score else 0 }}</b> pts</span>
       {% else %}
-      <span class="chip gr">0 pt</span>
+      <span class="chip gr">0 pt{% if my_zero_reason %} · {{ my_zero_reason }}{% endif %}</span>
       {% endif %}
     </div>
+    {% if live_state == 'done' and match.phase != 'group' %}
+    <div class="muted" style="font-size:11px;margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+      {% if my_qualifier_real_label %}
+      <span>Qualifié réel : {{ my_qualifier_real_label|team }}{% if my_qualifier_match is not none %} {{ '✓' if my_qualifier_match else '✗' }}{% endif %}</span>
+      {% endif %}
+      {% if result_is_tiebreak %}
+      <span>· Score jugé à 90 min</span>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
   {% else %}
   <div class="card" style="padding:13px;">

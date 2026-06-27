@@ -206,7 +206,7 @@
         {% if evolution_last_match %}
         <span class="evo-ref-last">
           Actualisé après
-          <b>{{ evolution_last_match.team1_name|team }}{% if evolution_last_match.score_team1 is not none and evolution_last_match.score_team2 is not none %} {{ evolution_last_match.score_team1 }}–{{ evolution_last_match.score_team2 }}{% endif %} {{ evolution_last_match.team2_name|team }}</b>
+          <b>{{ evolution_last_match.team1_name|team }}{% if evolution_last_match.score_team1 is not none and evolution_last_match.score_team2 is not none %} {{ evolution_last_match|result_score }}{% endif %} {{ evolution_last_match.team2_name|team }}</b>
           {% if evolution_last_match.phase != 'group' and evolution_last_match.qualifier_name %}<small>· {{ evolution_last_match.qualifier_name|team }} qualifié</small>{% endif %}
         </span>
         {% else %}

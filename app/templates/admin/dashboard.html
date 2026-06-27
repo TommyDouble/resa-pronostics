@@ -44,16 +44,25 @@
         </div>
       </div>
       {% if m.live_state == 'done' %}
-      <span class="dash-score">{{ m.score_team1 }}–{{ m.score_team2 }}</span>
+      <span class="dash-score">{{ m|result_score }}</span>
       {% elif m.live_state in ('live', 'awaiting') %}
       <form class="result-form dash-encode" method="post" action="/admin/resultats/{{ m.id }}" data-phase="{{ m.phase }}">
         <input type="hidden" name="redirect_to" value="dashboard">
-        <input class="score-input" type="number" name="score_team1" min="0" max="30" placeholder="0" required>
-        <span class="score-sep">–</span>
-        <input class="score-input" type="number" name="score_team2" min="0" max="30" placeholder="0" required>
+        <span class="result-score-group">
+          <small>90'</small>
+          <input class="score-input" type="number" name="score_team1" min="0" max="30" placeholder="0" required>
+          <span class="score-sep">–</span>
+          <input class="score-input" type="number" name="score_team2" min="0" max="30" placeholder="0" required>
+        </span>
         {% if m.phase != 'group' %}
+        <span class="result-score-group ko-final-fields" data-ko-final-fields>
+          <small>final a.p.</small>
+          <input class="score-input" type="number" name="final_score_team1" min="0" max="30" placeholder="0">
+          <span class="score-sep">–</span>
+          <input class="score-input" type="number" name="final_score_team2" min="0" max="30" placeholder="0">
+        </span>
         <select name="qualifier_winner">
-          <option value="">Qualifié si nul...</option>
+          <option value="">Qualifié si nul final...</option>
           <option value="team1">{{ m.team1_name }}</option>
           <option value="team2">{{ m.team2_name }}</option>
         </select>
@@ -190,7 +199,7 @@
         </div>
       </div>
       <div class="dash-mini-bar"><span style="width:{{ m.pct_correct }}%;"></span></div>
-      <span class="dash-score">{{ m.score_team1 }}–{{ m.score_team2 }}</span>
+      <span class="dash-score">{{ m|result_score }}</span>
     </div>
     {% else %}
     <p class="muted" style="font-size:13px;padding:12px;">Aucun résultat encodé pour l'instant.</p>

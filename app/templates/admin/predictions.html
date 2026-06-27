@@ -129,7 +129,17 @@
             <span class="muted">—</span>
           {% endif %}
         </td>
-        <td>{% if r.result %}{{ r.score_team1 }}–{{ r.score_team2 }}{% else %}<span class="muted">À venir</span>{% endif %}</td>
+        <td>
+          {% if r.result %}
+            {{ r|result_score }}
+            {% set detail = r|result_detail %}
+            {% if detail and detail != 'Score final' %}
+              <div class="muted" style="font-size:10px;">{{ detail }}</div>
+            {% endif %}
+          {% else %}
+            <span class="muted">À venir</span>
+          {% endif %}
+        </td>
         <td class="s" data-sort-value="{{ r.points }}">{{ r.points }}</td>
         <td class="muted" style="font-size:10px;" data-sort-value="{{ r.submitted_at|utc_iso }}" data-local-utc="{{ r.submitted_at|utc_iso }}">{{ r.submitted_at|local_datetime }}{% if r.admin_entered %}<div><span class="chip warn" style="margin-top:3px;">saisi admin</span></div>{% endif %}</td>
       </tr>
