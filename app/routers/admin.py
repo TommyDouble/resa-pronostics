@@ -13,6 +13,7 @@ from app.auth import require_admin, verify_password, hash_password
 from app.config import settings
 from app.database import get_db
 from app.knockout import (
+    confirm_match_side,
     confirm_match_teams,
     enrich_knockout_matches,
     propagate_from_match,
@@ -1393,6 +1394,24 @@ async def confirm_knockout_match_teams(
     await require_admin(request)
     async with get_db() as db:
         ok, msg = await confirm_match_teams(db, match_id, team1_name, team2_name)
+        await db.commit()
+    _flash(request, msg, "ok" if ok else "err")
+    return RedirectResponse(f"/admin/matches?phase={phase}", status_code=303)
+
+
+@router.post("/matches/{match_id}/teams/{side}")
+async def confirm_knockout_match_side(
+    request: Request,
+    match_id: int,
+    side: str,
+    team1_name: str = Form(default=""),
+    team2_name: str = Form(default=""),
+    phase: str = Form(default="round_of_32"),
+):
+    await require_admin(request)
+    team_name = team1_name if side == "team1" else team2_name
+    async with get_db() as db:
+        ok, msg = await confirm_match_side(db, match_id, side, team_name)
         await db.commit()
     _flash(request, msg, "ok" if ok else "err")
     return RedirectResponse(f"/admin/matches?phase={phase}", status_code=303)
