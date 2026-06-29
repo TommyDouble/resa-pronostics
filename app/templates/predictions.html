@@ -216,10 +216,10 @@
           {# Le score saisi est la source unique : la chip ne fait que confirmer
              l'issue 1X2 qui en découle, sans répéter le prono. #}
           {% if m.phase != 'group' %}
-          <span class="outcome-chip {% if not eff_qualifier or (not m.has_score_prediction and eff_qualifier) %}empty{% endif %}" data-outcome>
-            {% if not eff_qualifier %}Choisis le qualifié
+          <span class="outcome-chip {% if m.pronos_closed or not eff_qualifier or (not m.has_score_prediction and eff_qualifier) %}empty{% endif %}" data-outcome>
+            {% if m.pronos_closed %}Pas encore ouvert
+            {% elif not eff_qualifier %}Choisis le qualifié
             {% elif not m.has_score_prediction %}Score à 90 min ?
-            {% elif m.pronos_closed %}Pas encore ouvert
             {% elif m.exact_score_team1 == m.exact_score_team2 %}
               Nul · {% if eff_qualifier == 'team1' %}{{ m.team1_name|team }}{% else %}{{ m.team2_name|team }}{% endif %} qualifié (prol./t.a.b.)
             {% elif m.prediction == 'team1' %}{{ m.team1_name|team }} qualifié · {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }}

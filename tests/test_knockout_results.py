@@ -437,3 +437,45 @@ def test_knockout_decisive_coherent_qualifier_accepted(admin_client, participant
         },
     )
     assert response.status_code == 200
+
+
+def test_knockout_draw_api_without_qualifier_rejected(admin_client, participant):
+    """Un prono knockout nul (1-1) sans qualifier_prediction est refusé (400)."""
+    match_id = create_knockout_match(participant["id"])
+    open_knockout_predictions(match_id)
+
+    response = admin_client.post(
+        f"/api/predictions?token={participant['token']}",
+        json={
+            "match_id": match_id,
+            "exact_score_team1": 1,
+            "exact_score_team2": 1,
+        },
+    )
+    assert response.status_code == 400
+    assert "qualifié" in response.json()["detail"].lower()
+
+
+def test_group_prediction_without_qualifier_accepted(admin_client, participant):
+    """Un prono de groupe (score seul, sans qualifier_prediction) doit être accepté (non-régression)."""
+    async def _create_group_match():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time,
+                    team1_name, team2_name, weight)
+                   VALUES (930999, 'group', '2099-07-01', '20:00', 'France', 'Brésil', 1)"""
+            )
+            await db.commit()
+            return cursor.lastrowid
+
+    match_id = run(_create_group_match())
+    response = admin_client.post(
+        f"/api/predictions?token={participant['token']}",
+        json={
+            "match_id": match_id,
+            "exact_score_team1": 2,
+            "exact_score_team2": 0,
+        },
+    )
+    assert response.status_code == 200

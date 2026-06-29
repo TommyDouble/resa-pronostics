@@ -148,3 +148,48 @@ def test_force_prediction_rejects_invalid_score(admin_client):
     )
     pred, _ = _prediction(pid, mid)
     assert pred is None
+
+
+def test_force_prediction_knockout_decisive_without_qualifier_rejected(admin_client):
+    """Force 2-0 sur un knockout sans qualifier_prediction : aucune prédiction écrite."""
+    pid = _make_participant("Force KO Décisif Sans Qual")
+    mid = _make_match(920006, phase="round_of_16")
+    admin_client.post(
+        "/admin/pronostics/force",
+        data={"participant_id": pid, "match_id": mid,
+              "score_team1": 2, "score_team2": 0},
+        follow_redirects=False,
+    )
+    pred, _ = _prediction(pid, mid)
+    assert pred is None
+
+
+def test_force_prediction_knockout_decisive_incoherent_qualifier_rejected(admin_client):
+    """Force 2-0 + qualifier=team2 (incohérent) : aucune prédiction incohérente écrite."""
+    pid = _make_participant("Force KO Incohérent")
+    mid = _make_match(920007, phase="round_of_16")
+    admin_client.post(
+        "/admin/pronostics/force",
+        data={"participant_id": pid, "match_id": mid,
+              "score_team1": 2, "score_team2": 0,
+              "qualifier_prediction": "team2"},
+        follow_redirects=False,
+    )
+    pred, _ = _prediction(pid, mid)
+    assert pred is None
+
+
+def test_force_prediction_knockout_decisive_coherent_stores_qualifier(admin_client):
+    """Force 2-0 + qualifier=team1 (cohérent) : qualifier_prediction stocké."""
+    pid = _make_participant("Force KO Cohérent")
+    mid = _make_match(920008, phase="round_of_16")
+    admin_client.post(
+        "/admin/pronostics/force",
+        data={"participant_id": pid, "match_id": mid,
+              "score_team1": 2, "score_team2": 0,
+              "qualifier_prediction": "team1"},
+        follow_redirects=False,
+    )
+    pred, _ = _prediction(pid, mid)
+    assert pred is not None
+    assert pred["qualifier_prediction"] == "team1"
