@@ -100,6 +100,8 @@
     {% endif %}
 
     {% set compact = m.live_state == 'done' and m.is_past_day and m.score_team1 is not none %}
+    {# Qualifié effectif : m.qualifier_prediction, ou dérivé du score pour les anciens pronos décisifs à qualifier NULL. #}
+    {% set eff_qualifier = m.qualifier_prediction if m.qualifier_prediction else ('team1' if (m.phase != 'group' and m.exact_score_team1 is not none and m.exact_score_team2 is not none and m.exact_score_team1 > m.exact_score_team2) else ('team2' if (m.phase != 'group' and m.exact_score_team1 is not none and m.exact_score_team2 is not none and m.exact_score_team2 > m.exact_score_team1) else none)) %}
     <div class="match prediction-card {% if m.is_top_match and not m.is_locked %}top{% endif %} {% if m.is_locked %}past{% endif %} {{ 'complete' if m.has_score_prediction else '' }} {{ 'compact' if compact else '' }}"
          id="match-{{ m.id }}"
          data-match-id="{{ m.id }}"
@@ -162,6 +164,25 @@
         <div class="score-team r" title="{{ m.team2_name }}">{{ m.team2_name|team }}</div>
       </div>
       {% else %}
+      {% if m.phase != 'group' %}
+      <div class="qualifier-row open">
+        <span class="lbl">
+          ① Qui se qualifie ?
+          <span class="help-tip" tabindex="0" data-tip="En phase finale, l'essentiel des points porte sur l'équipe qui se qualifie : bon qualifié = 4 pts. Ajoute le score exact à 90 min pour +2. Mauvais qualifié = 0 point, même avec le bon score.">?</span>
+        </span>
+        <div class="qualifier-choices">
+          <button type="button"
+                  class="qualifier-btn {{ 'on' if eff_qualifier == 'team1' else '' }}"
+                  data-value="team1" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team1_name|team }}</button>
+          <button type="button"
+                  class="qualifier-btn {{ 'on' if eff_qualifier == 'team2' else '' }}"
+                  data-value="team2" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team2_name|team }}</button>
+        </div>
+      </div>
+      {% endif %}
+      {% if m.phase != 'group' and not m.is_locked and not m.pronos_closed %}
+      <p class="score-step-lbl">② Score à 90 min <span class="score-step-hint">— sans prolongation ni tirs au but</span></p>
+      {% endif %}
       <div class="score-entry">
         <div class="score-team" title="{{ m.team1_label or m.team1_name }}">{{ (m.team1_label or m.team1_name)|team }}</div>
         <input class="score-pick" type="number" min="0" max="30" inputmode="numeric"
@@ -175,9 +196,6 @@
                placeholder="-" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>
         <div class="score-team r" title="{{ m.team2_label or m.team2_name }}">{{ (m.team2_label or m.team2_name)|team }}</div>
       </div>
-      {% if m.phase != 'group' and not m.is_locked and not m.pronos_closed %}
-      <p style="margin:4px 0 0;font-size:12px;color:var(--n500);">Score estimé après 90 min — sans prolongation ni tirs au but.</p>
-      {% endif %}
       {% endif %}
 
       <div class="prediction-meta">
@@ -199,11 +217,24 @@
         {% else %}
           {# Le score saisi est la source unique : la chip ne fait que confirmer
              l'issue 1X2 qui en découle, sans répéter le prono. #}
+          {% if m.phase != 'group' %}
+          <span class="outcome-chip {% if m.pronos_closed or not eff_qualifier or (not m.has_score_prediction and eff_qualifier) %}empty{% endif %}" data-outcome>
+            {% if m.pronos_closed %}Pas encore ouvert
+            {% elif not eff_qualifier %}Choisis le qualifié
+            {% elif not m.has_score_prediction %}Score à 90 min ?
+            {% elif m.exact_score_team1 == m.exact_score_team2 %}
+              Nul · Qualifié : {% if eff_qualifier == 'team1' %}{{ m.team1_name|team }}{% else %}{{ m.team2_name|team }}{% endif %} (prol./t.a.b.)
+            {% elif m.prediction == 'team1' %}Qualifié : {{ m.team1_name|team }} · {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }}
+            {% else %}Qualifié : {{ m.team2_name|team }} · {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }}
+            {% endif %}
+          </span>
+          {% else %}
           <span class="outcome-chip {{ '' if m.has_score_prediction else 'empty' }}" data-outcome>
             {% if m.has_score_prediction %}
-              {% if m.prediction == 'team1' %}Victoire {{ m.team1_name }}{% elif m.prediction == 'team2' %}Victoire {{ m.team2_name }}{% elif m.qualifier_label %}Nul · {{ m.qualifier_label|team }} qualifié{% else %}Match nul{% endif %}
+              {% if m.prediction == 'team1' %}Victoire {{ m.team1_name }}{% elif m.prediction == 'team2' %}Victoire {{ m.team2_name }}{% else %}Match nul{% endif %}
             {% elif m.pronos_closed %}Pas encore ouvert{% else %}Score requis{% endif %}
           </span>
+          {% endif %}
           <span class="sp"></span>
           <span class="save-badge">Enregistré ✓</span>
         {% endif %}
@@ -216,24 +247,6 @@
       {% elif m.has_placeholder_team %}
       <div class="placeholder-note">
         L'adversaire se décide dans un autre match. Ton prono s'ouvrira dès que l'affiche est confirmée.
-      </div>
-      {% endif %}
-
-      {% if m.phase != 'group' %}
-      <div class="qualifier-row {% if m.has_score_prediction and m.exact_score_team1 == m.exact_score_team2 %}open{% endif %}">
-        <span class="lbl">
-          Si nul après 90 min, qui passe ?
-          <span class="help-tip" tabindex="0" data-tip="En phase finale, les points portent sur l'équipe qualifiée. Si tu prévois un nul après 90 min, choisis qui passera. Attention : mauvais qualifié = 0 point au total, même si ton score à 90 min était exact.">?</span>
-        </span>
-        <button type="button"
-                class="qualifier-btn {{ 'on' if m.qualifier_prediction == 'team1' else '' }}"
-                data-value="team1" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team1_name|team }}</button>
-        <button type="button"
-                class="qualifier-btn {{ 'on' if m.qualifier_prediction == 'team2' else '' }}"
-                data-value="team2" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team2_name|team }}</button>
-        {% if m.qualifier_label %}
-          <span class="muted qualifier-saved">Qualifié: {{ m.qualifier_label }}</span>
-        {% endif %}
       </div>
       {% endif %}
 

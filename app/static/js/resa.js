@@ -12,11 +12,11 @@ function initPredictionScores() {
     // rien d'interactif, le rendu serveur fait foi.
     if (!score1 || score1.disabled) return;
     var outcome = card.querySelector('[data-outcome]');
-    var qualifierRow = card.querySelector('.qualifier-row');
     var qualifierBtns = card.querySelectorAll('.qualifier-btn');
     var errorBox = card.querySelector('.prediction-error');
     var saveIndicator = card.querySelector('.save-badge');
     var saveTimer = null;
+    var isKnockout = card.dataset.knockout === '1';
 
     function scoreValue(inp) {
       if (!inp || inp.value === '') return null;
@@ -62,36 +62,66 @@ function initPredictionScores() {
       errorBox.classList.toggle('show', !!message);
     }
 
-    function isKnockoutDraw(s1, s2) {
-      return card.dataset.knockout === '1' && s1 === s2;
+    // Active/désactive les inputs score selon la sélection du qualifié (knockout).
+    function syncScoreState() {
+      if (!isKnockout) return;
+      var locked = !selectedQualifier();
+      score1.disabled = locked;
+      score2.disabled = locked;
+    }
+
+    // Retourne true si le score est décisif et incohérent avec le qualifié choisi.
+    function isIncoherent(s1, s2, qualifier) {
+      if (!isKnockout || s1 === s2 || !qualifier) return false;
+      return qualifier !== (s1 > s2 ? 'team1' : 'team2');
     }
 
     function updateOutcome() {
       var s1 = scoreValue(score1);
       var s2 = scoreValue(score2);
-      if (s1 === null || s2 === null) {
+      var qualifier = selectedQualifier();
+
+      if (isKnockout && !qualifier) {
         if (outcome) {
-          outcome.textContent = 'Score requis';
+          outcome.textContent = 'Choisis le qualifié';
           outcome.classList.add('empty');
         }
-        if (qualifierRow) qualifierRow.classList.remove('open');
         return null;
       }
+
+      if (s1 === null || s2 === null) {
+        if (outcome) {
+          outcome.textContent = isKnockout ? 'Score à 90 min ?' : 'Score requis';
+          outcome.classList.add('empty');
+        }
+        return null;
+      }
+
+      // Knockout : incohérence score ↔ qualifié
+      if (isKnockout && isIncoherent(s1, s2, qualifier)) {
+        if (outcome) {
+          outcome.textContent = 'À corriger';
+          outcome.classList.add('empty');
+        }
+        var scoreWinner = s1 > s2 ? card.dataset.team1 : card.dataset.team2;
+        var qualName = qualifier === 'team1' ? card.dataset.team1 : card.dataset.team2;
+        setError(scoreWinner + ' mène à 90 min mais tu as désigné ' + qualName + ' comme équipe qualifiée. Corrige le score ou le qualifié.');
+        return null;
+      }
+
       var prediction = derivedPrediction(s1, s2);
       if (outcome) {
-        var outcomeText = prediction.outcome;
-        if (prediction.value === 'draw' && card.dataset.knockout === '1') {
-          var qualifier = selectedQualifier();
-          if (qualifier) {
-            var teamName = qualifier === 'team1' ? card.dataset.team1 : card.dataset.team2;
-            outcomeText = 'Nul · ' + teamName + ' qualifié';
-          }
+        var outcomeText;
+        if (isKnockout) {
+          var teamName = qualifier === 'team1' ? card.dataset.team1 : card.dataset.team2;
+          outcomeText = s1 === s2
+            ? 'Nul · Qualifié : ' + teamName + ' (prol./t.a.b.)'
+            : 'Qualifié : ' + teamName + ' · ' + s1 + '-' + s2;
+        } else {
+          outcomeText = prediction.outcome;
         }
         outcome.textContent = outcomeText;
         outcome.classList.remove('empty');
-      }
-      if (qualifierRow) {
-        qualifierRow.classList.toggle('open', isKnockoutDraw(s1, s2));
       }
       return prediction;
     }
@@ -120,17 +150,23 @@ function initPredictionScores() {
       var s1 = scoreValue(score1);
       var s2 = scoreValue(score2);
       if (s1 === null || s2 === null) return;
+      var qualifier = selectedQualifier();
+
+      if (isKnockout && !qualifier) {
+        setError("Choisis l'équipe qualifiée.");
+        return;
+      }
+      if (isKnockout && isIncoherent(s1, s2, qualifier)) {
+        // Message déjà affiché par updateOutcome.
+        return;
+      }
+
       var body = {
         match_id: parseInt(matchId, 10),
         exact_score_team1: s1,
         exact_score_team2: s2
       };
-      if (isKnockoutDraw(s1, s2)) {
-        var qualifier = selectedQualifier();
-        if (!qualifier) {
-          setError('Choisis l’équipe qualifiée.');
-          return;
-        }
+      if (isKnockout) {
         body.qualifier_prediction = qualifier;
       }
 
@@ -186,10 +222,15 @@ function initPredictionScores() {
         qualifierBtns.forEach(function(other) { other.classList.remove('on'); });
         btn.classList.add('on');
         setError('');
-        saveScorePrediction();
+        syncScoreState();
+        updateOutcome();
+        if (scoreValue(score1) !== null && scoreValue(score2) !== null) {
+          saveScorePrediction();
+        }
       });
     });
 
+    syncScoreState();
     updateOutcome();
   });
 }

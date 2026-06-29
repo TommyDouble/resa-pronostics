@@ -849,9 +849,12 @@ async def force_prediction(request: Request,
         match_dict = dict(match)
         prediction = _result_from_scores(score_team1, score_team2)
         qualifier = None
-        if match_dict["phase"] != "group" and prediction == "draw":
+        if match_dict["phase"] != "group":
             if qualifier_prediction not in ("team1", "team2"):
-                _flash(request, "Nul en phase finale : indique l'équipe qualifiée.", "err")
+                _flash(request, "Phase finale : indique l'équipe qualifiée.", "err")
+                return redirect
+            if prediction in ("team1", "team2") and qualifier_prediction != prediction:
+                _flash(request, "Le qualifié est incohérent avec le score.", "err")
                 return redirect
             qualifier = qualifier_prediction
         old_row = await db.execute(

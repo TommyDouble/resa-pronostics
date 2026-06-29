@@ -69,8 +69,9 @@
     <input class="score-input" type="number" name="score_team1" min="0" max="30" placeholder="0" required>
     <span style="font-family:var(--sketch);font-size:20px;color:var(--n600);">–</span>
     <input class="score-input" type="number" name="score_team2" min="0" max="30" placeholder="0" required>
-    <select name="qualifier_prediction" id="force-qualifier" style="min-width:170px;display:none;">
-      <option value="">Qualifié si nul...</option>
+    <select name="qualifier_prediction" id="force-qualifier" style="min-width:170px;display:none;"
+            title="Obligatoire en phase finale. Si le score à 90 min est décisif, l'équipe qualifiée doit correspondre au vainqueur du score.">
+      <option value="">Équipe qualifiée…</option>
       <option value="team1">Équipe 1</option>
       <option value="team2">Équipe 2</option>
     </select>

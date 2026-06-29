@@ -65,9 +65,11 @@ async def submit_prediction(body: PredictionIn, token: str = Query(...)):
             raise HTTPException(403, "Les pronostics de ce match de phase finale ne sont pas encore ouverts.")
         prediction = _prediction_from_score(score_team1, score_team2)
         qualifier_prediction = None
-        if is_knockout and prediction == "draw":
+        if is_knockout:
             if body.qualifier_prediction not in ("team1", "team2"):
                 raise HTTPException(400, "Choisis l'équipe qualifiée")
+            if prediction in ("team1", "team2") and body.qualifier_prediction != prediction:
+                raise HTTPException(400, "Le qualifié est incohérent avec le score")
             qualifier_prediction = body.qualifier_prediction
         await db.execute(
             """INSERT INTO predictions (participant_id, match_id, prediction,
