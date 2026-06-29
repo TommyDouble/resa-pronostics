@@ -105,7 +105,7 @@ function initPredictionScores() {
         }
         var scoreWinner = s1 > s2 ? card.dataset.team1 : card.dataset.team2;
         var qualName = qualifier === 'team1' ? card.dataset.team1 : card.dataset.team2;
-        setError(scoreWinner + ' mène à 90 min mais tu as désigné ' + qualName + ' qualifiée. Corrige le score ou le qualifié.');
+        setError(scoreWinner + ' mène à 90 min mais tu as désigné ' + qualName + ' comme équipe qualifiée. Corrige le score ou le qualifié.');
         return null;
       }
 
@@ -115,8 +115,8 @@ function initPredictionScores() {
         if (isKnockout) {
           var teamName = qualifier === 'team1' ? card.dataset.team1 : card.dataset.team2;
           outcomeText = s1 === s2
-            ? 'Nul · ' + teamName + ' qualifié (prol./t.a.b.)'
-            : teamName + ' qualifié · ' + s1 + '-' + s2;
+            ? 'Nul · Qualifié : ' + teamName + ' (prol./t.a.b.)'
+            : 'Qualifié : ' + teamName + ' · ' + s1 + '-' + s2;
         } else {
           outcomeText = prediction.outcome;
         }

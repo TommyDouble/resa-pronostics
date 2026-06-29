@@ -170,13 +170,18 @@
           ① Qui se qualifie ?
           <span class="help-tip" tabindex="0" data-tip="En phase finale, l'essentiel des points porte sur l'équipe qui se qualifie : bon qualifié = 4 pts. Ajoute le score exact à 90 min pour +2. Mauvais qualifié = 0 point, même avec le bon score.">?</span>
         </span>
-        <button type="button"
-                class="qualifier-btn {{ 'on' if eff_qualifier == 'team1' else '' }}"
-                data-value="team1" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team1_name|team }}</button>
-        <button type="button"
-                class="qualifier-btn {{ 'on' if eff_qualifier == 'team2' else '' }}"
-                data-value="team2" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team2_name|team }}</button>
+        <div class="qualifier-choices">
+          <button type="button"
+                  class="qualifier-btn {{ 'on' if eff_qualifier == 'team1' else '' }}"
+                  data-value="team1" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team1_name|team }}</button>
+          <button type="button"
+                  class="qualifier-btn {{ 'on' if eff_qualifier == 'team2' else '' }}"
+                  data-value="team2" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>{{ m.team2_name|team }}</button>
+        </div>
       </div>
+      {% endif %}
+      {% if m.phase != 'group' and not m.is_locked and not m.pronos_closed %}
+      <p class="score-step-lbl">② Score à 90 min <span class="score-step-hint">— sans prolongation ni tirs au but</span></p>
       {% endif %}
       <div class="score-entry">
         <div class="score-team" title="{{ m.team1_label or m.team1_name }}">{{ (m.team1_label or m.team1_name)|team }}</div>
@@ -191,9 +196,6 @@
                placeholder="-" {% if m.is_locked or m.pronos_closed %}disabled{% endif %}>
         <div class="score-team r" title="{{ m.team2_label or m.team2_name }}">{{ (m.team2_label or m.team2_name)|team }}</div>
       </div>
-      {% if m.phase != 'group' and not m.is_locked and not m.pronos_closed %}
-      <p style="margin:4px 0 0;font-size:12px;color:var(--n500);">② Score estimé après 90 min — sans prolongation ni tirs au but.</p>
-      {% endif %}
       {% endif %}
 
       <div class="prediction-meta">
@@ -221,9 +223,9 @@
             {% elif not eff_qualifier %}Choisis le qualifié
             {% elif not m.has_score_prediction %}Score à 90 min ?
             {% elif m.exact_score_team1 == m.exact_score_team2 %}
-              Nul · {% if eff_qualifier == 'team1' %}{{ m.team1_name|team }}{% else %}{{ m.team2_name|team }}{% endif %} qualifié (prol./t.a.b.)
-            {% elif m.prediction == 'team1' %}{{ m.team1_name|team }} qualifié · {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }}
-            {% else %}{{ m.team2_name|team }} qualifié · {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }}
+              Nul · Qualifié : {% if eff_qualifier == 'team1' %}{{ m.team1_name|team }}{% else %}{{ m.team2_name|team }}{% endif %} (prol./t.a.b.)
+            {% elif m.prediction == 'team1' %}Qualifié : {{ m.team1_name|team }} · {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }}
+            {% else %}Qualifié : {{ m.team2_name|team }} · {{ m.exact_score_team1 }}-{{ m.exact_score_team2 }}
             {% endif %}
           </span>
           {% else %}
