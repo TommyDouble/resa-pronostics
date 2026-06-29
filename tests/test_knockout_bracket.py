@@ -127,7 +127,7 @@ def test_admin_confirms_round_of_32_and_opens_prediction(admin_client, participa
 
     api = admin_client.post(
         f"/api/predictions?token={participant['token']}",
-        json={"match_id": match_id, "exact_score_team1": 2, "exact_score_team2": 1},
+        json={"match_id": match_id, "exact_score_team1": 2, "exact_score_team2": 1, "qualifier_prediction": "team1"},
     )
     assert api.status_code == 200
 

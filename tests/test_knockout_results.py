@@ -278,6 +278,7 @@ def test_decisive_prono_on_et_match_scores_winner_not_exact(admin_client, partic
             "match_id": match_id,
             "exact_score_team1": 2,
             "exact_score_team2": 1,
+            "qualifier_prediction": "team1",
         },
     )
     assert response.status_code == 200
@@ -301,8 +302,9 @@ def test_decisive_prono_on_et_match_scores_winner_not_exact(admin_client, partic
     assert get_match_score(participant["id"], match_id) == 4
 
 
-def test_prediction_update_from_draw_to_decisive_clears_qualifier(admin_client, participant):
-    """Passer d'un prono nul + qualifié à un prono décisif efface le qualifier_prediction."""
+def test_prediction_update_from_draw_to_decisive_keeps_qualifier(admin_client, participant):
+    """Passer d'un prono nul + qualifié à un prono décisif conserve le qualifier_prediction
+    (l'API winner-first exige toujours un qualifié pour les matchs knockout)."""
     match_id = create_knockout_match(participant["id"])
     open_knockout_predictions(match_id)
 
@@ -323,6 +325,7 @@ def test_prediction_update_from_draw_to_decisive_clears_qualifier(admin_client, 
             "match_id": match_id,
             "exact_score_team1": 2,
             "exact_score_team2": 1,
+            "qualifier_prediction": "team1",
         },
     )
     assert second.status_code == 200
@@ -335,7 +338,7 @@ def test_prediction_update_from_draw_to_decisive_clears_qualifier(admin_client, 
             )
             return (await row.fetchone())["qualifier_prediction"]
 
-    assert run(_qualifier()) is None
+    assert run(_qualifier()) == "team1"
 
     admin_client.post(
         f"/admin/resultats/{match_id}",
@@ -382,3 +385,55 @@ def test_knockout_result_display_shows_extra_time_detail(admin_client, participa
     assert "2–1 a.p." in html
     assert "90&#39; : 1–1" in html or "90' : 1–1" in html
     assert "Espagne qualifiée" in html
+
+
+def test_knockout_decisive_requires_qualifier(admin_client, participant):
+    """Un prono knockout décisif sans qualifier_prediction est refusé (400)."""
+    match_id = create_knockout_match(participant["id"])
+    open_knockout_predictions(match_id)
+
+    response = admin_client.post(
+        f"/api/predictions?token={participant['token']}",
+        json={
+            "match_id": match_id,
+            "exact_score_team1": 2,
+            "exact_score_team2": 0,
+        },
+    )
+    assert response.status_code == 400
+    assert "qualifié" in response.json()["detail"].lower()
+
+
+def test_knockout_decisive_incoherent_qualifier_rejected(admin_client, participant):
+    """Un prono knockout 2-0 avec qualifié=team2 (incohérent) est refusé (400)."""
+    match_id = create_knockout_match(participant["id"])
+    open_knockout_predictions(match_id)
+
+    response = admin_client.post(
+        f"/api/predictions?token={participant['token']}",
+        json={
+            "match_id": match_id,
+            "exact_score_team1": 2,
+            "exact_score_team2": 0,
+            "qualifier_prediction": "team2",
+        },
+    )
+    assert response.status_code == 400
+    assert "incohérent" in response.json()["detail"].lower()
+
+
+def test_knockout_decisive_coherent_qualifier_accepted(admin_client, participant):
+    """Un prono knockout 2-0 avec qualifié=team1 (cohérent) est accepté."""
+    match_id = create_knockout_match(participant["id"])
+    open_knockout_predictions(match_id)
+
+    response = admin_client.post(
+        f"/api/predictions?token={participant['token']}",
+        json={
+            "match_id": match_id,
+            "exact_score_team1": 2,
+            "exact_score_team2": 0,
+            "qualifier_prediction": "team1",
+        },
+    )
+    assert response.status_code == 200
