@@ -52,9 +52,13 @@
           Deadline · <span data-preview-deadline>{{ deadline_label }}</span>
         </span>
       </div>
-      <p data-preview-title style="font-family:var(--sketch);font-weight:600;font-size:24px;line-height:1.1;margin:9px 0 12px;">
-        {{ title or 'Intitulé de la question' }}
-      </p>
+      {% set _has_split = title and ' — ' in title %}
+      {% set _ttl = (title.split(' — ', 1)[0]).strip() if _has_split else '' %}
+      {% set _prm = (title.split(' — ', 1)[1]).strip() if _has_split else title %}
+      <div data-preview-title class="bonus-q-copy" style="margin:9px 0 12px;">
+        <div class="bonus-q-title" data-preview-title-main {{ 'hidden' if not _ttl else '' }}>{{ _ttl }}</div>
+        <p class="bonus-q-prompt" data-preview-title-prompt style="margin:4px 0 0;">{{ _prm or 'Intitulé de la question' }}</p>
+      </div>
       <div data-preview-locked style="{{ '' if not can_edit else 'display:none;' }}">
         <div class="banner" style="background:var(--n100);color:var(--n600);margin-bottom:12px;">
           <span>Deadline dépassée — aucune réponse enregistrée.</span>

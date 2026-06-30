@@ -1141,7 +1141,14 @@ function initAdminBonusQuestionForms() {
       var deadlineDate = deadlineValue ? new Date(deadlineValue) : null;
       var isOpen = !deadlineDate || isNaN(deadlineDate.getTime()) || deadlineDate.getTime() > Date.now();
 
-      setText('[data-preview-title]', (question && question.value.trim()) || 'Intitulé de la question');
+      var qtext = (question && question.value.trim()) || 'Intitulé de la question';
+      var sepIdx = qtext.indexOf(' — ');
+      var titleMain = sepIdx >= 0 ? qtext.slice(0, sepIdx).trim() : '';
+      var titlePrompt = sepIdx >= 0 ? qtext.slice(sepIdx + 3).trim() : qtext;
+      var titleMainEl = preview.querySelector('[data-preview-title-main]');
+      var titlePromptEl = preview.querySelector('[data-preview-title-prompt]');
+      if (titleMainEl) { titleMainEl.textContent = titleMain; titleMainEl.hidden = !titleMain; }
+      if (titlePromptEl) titlePromptEl.textContent = titlePrompt;
       setText('[data-preview-phase]', phase && phase.selectedOptions.length ? phase.selectedOptions[0].textContent : 'Pré-tournoi');
       setText('[data-preview-points]', previewPointsLabel(type));
       setText('[data-preview-deadline]', formatLocalDeadline(deadlineValue));
