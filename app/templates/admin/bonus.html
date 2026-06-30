@@ -385,8 +385,14 @@
       </div>
       <div data-bonus-number-only>
         <div class="banner soft">
-          <span>Nombre libre</span>
-          <span>Les participants saisissent un nombre. Le classement dépend de l'écart à la réponse correcte.</span>
+          <span>{{ 'Nombre le plus proche' if is_closest else 'Nombre exact' }}</span>
+          <span>
+            {% if is_closest %}
+            Les participants saisissent un nombre. Le classement dépend de l'écart à la réponse correcte.
+            {% else %}
+            Les participants saisissent un nombre. Seule la réponse exacte marque les points.
+            {% endif %}
+          </span>
         </div>
       </div>
     </section>
@@ -398,6 +404,13 @@
         <div class="field" style="max-width:220px;"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
       </div>
       <div data-bonus-number-only>
+        {% if not is_closest %}
+        <div class="lbl" style="margin-bottom:5px;">Points si réponse exacte</div>
+        <div class="field" style="max-width:220px;"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required readonly></div>
+        <p class="muted helper-text">
+          Cette question numérique est corrigée en exact : {{ q.points_value }} pts si la réponse correspond, 0 sinon.
+        </p>
+        {% else %}
         <input type="hidden" name="points_value" value="{{ q.points_value }}">
         <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.35fr);gap:10px;align-items:end;">
           <div>
@@ -449,6 +462,7 @@
           </div>
           <p class="muted helper-text" style="margin-bottom:0;">Le score du 1er rang devient les points max affichés sur la question.</p>
         </div>
+        {% endif %}
       </div>
     </section>
 

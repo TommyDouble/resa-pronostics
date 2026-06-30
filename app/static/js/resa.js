@@ -1104,8 +1104,8 @@ function initAdminBonusQuestionForms() {
     }
 
     function previewPointsLabel(type) {
-      if (type === 'number') {
-        var preset = presetSelect ? presetSelect.value : 'fun_balanced';
+      if (type === 'number' && presetSelect) {
+        var preset = presetSelect.value;
         if (preset === 'custom') {
           var rank1 = activeField('closest_rank1_points');
           var customPoints = rank1 ? parseInt(rank1.value, 10) : 6;

@@ -12,7 +12,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 
 from app.auth import require_admin, verify_password, hash_password
 from app.config import settings
-from app.database import get_db
+from app.database import (
+    ROUND32_EXACT_POINTS,
+    ROUND32_FAVORITE_CONCEDE_TEXT,
+    ROUND32_FAVORITE_EXACT_CONFIG,
+    ROUND32_TIEBREAK_COUNT_TEXT,
+    ROUND32_TIEBREAK_EXACT_CONFIG,
+    get_db,
+)
 from app.knockout import (
     confirm_match_side,
     confirm_match_teams,
@@ -293,6 +300,14 @@ def _closest_form_config(
     return rank_points[0], serialize_closest_config(
         rank_points[0], award_mode, tie_policy, rank_points, preset_key
     )
+
+
+def _exact_numeric_bonus_config(question_text: str) -> dict | None:
+    if question_text == ROUND32_TIEBREAK_COUNT_TEXT:
+        return ROUND32_TIEBREAK_EXACT_CONFIG
+    if question_text == ROUND32_FAVORITE_CONCEDE_TEXT:
+        return ROUND32_FAVORITE_EXACT_CONFIG
+    return None
 
 
 def _ordered_team_list(options: list[str], selected: set[str]) -> list[str]:
@@ -2277,11 +2292,12 @@ async def create_bonus(request: Request,
     except Exception:
         _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
+    exact_numeric_config = _exact_numeric_bonus_config(question_text)
     if answer_type == "multi_choice":
         scoring_mode = "multi_select"
     elif answer_type == "number_multi":
         scoring_mode = "number_multi"
-    elif answer_type == "number":
+    elif answer_type == "number" and exact_numeric_config is None:
         scoring_mode = "closest_podium"
     else:
         scoring_mode = "exact"
@@ -2295,6 +2311,9 @@ async def create_bonus(request: Request,
         closest_rank2_points,
         closest_rank3_points,
     )
+    if answer_type == "number" and exact_numeric_config is not None:
+        points_value = ROUND32_EXACT_POINTS
+        scoring_config = json.dumps(exact_numeric_config, ensure_ascii=False, separators=(",", ":"))
     options = _normalize_bonus_options(answer_type, options_text)
     if answer_type == "multi_choice":
         scoring_config = json.dumps({"error_step": 2}, ensure_ascii=False)
@@ -2310,7 +2329,7 @@ async def create_bonus(request: Request,
     if answer_type in ("choice", "multi_choice", "number_multi") and (not options or len(json.loads(options)) < 2):
         _flash(request, "Ajoute au moins deux options de réponse.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
-    if scoring_mode == "closest_podium" and correct_answer.strip():
+    if answer_type == "number" and correct_answer.strip():
         if parse_bonus_number(correct_answer) is None:
             _flash(request, "La réponse correcte doit être un nombre.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)
@@ -2391,11 +2410,12 @@ async def update_bonus_question(
         if answer_type not in {"choice", "number", "multi_choice", "number_multi"}:
             _flash(request, "Type de question bonus invalide.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)
+        exact_numeric_config = _exact_numeric_bonus_config(question_text)
         if answer_type == "multi_choice":
             scoring_mode = "multi_select"
         elif answer_type == "number_multi":
             scoring_mode = "number_multi"
-        elif answer_type == "number":
+        elif answer_type == "number" and exact_numeric_config is None:
             scoring_mode = "closest_podium"
         else:
             scoring_mode = "exact"
@@ -2409,6 +2429,9 @@ async def update_bonus_question(
             closest_rank2_points,
             closest_rank3_points,
         )
+        if answer_type == "number" and exact_numeric_config is not None:
+            points_value = ROUND32_EXACT_POINTS
+            scoring_config = json.dumps(exact_numeric_config, ensure_ascii=False, separators=(",", ":"))
         if answer_type == "number":
             scoring_config = _preserve_closest_value_bounds(
                 scoring_config,
@@ -2442,7 +2465,7 @@ async def update_bonus_question(
             if error:
                 _flash(request, error, "err")
                 return RedirectResponse("/admin/bonus", status_code=303)
-        if scoring_mode == "closest_podium" and correct_answer.strip():
+        if answer_type == "number" and correct_answer.strip():
             if parse_bonus_number(correct_answer) is None:
                 _flash(request, "La réponse correcte doit être un nombre.", "err")
                 return RedirectResponse("/admin/bonus", status_code=303)
@@ -2479,7 +2502,8 @@ async def set_bonus_answer(request: Request, question_id: int,
     await require_admin(request)
     async with get_db() as db:
         row = await db.execute(
-            "SELECT scoring_mode, options, scoring_config FROM bonus_questions WHERE id=?", (question_id,)
+            "SELECT answer_type, scoring_mode, options, scoring_config FROM bonus_questions WHERE id=?",
+            (question_id,),
         )
         question = await row.fetchone()
         if not question:
@@ -2500,7 +2524,7 @@ async def set_bonus_answer(request: Request, question_id: int,
             if error:
                 _flash(request, error, "err")
                 return RedirectResponse("/admin/bonus", status_code=303)
-        if question["scoring_mode"] == "closest_podium" and parse_bonus_number(correct_answer) is None:
+        if question["answer_type"] == "number" and parse_bonus_number(correct_answer) is None:
             _flash(request, "La réponse correcte doit être un nombre.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)
         await db.execute(

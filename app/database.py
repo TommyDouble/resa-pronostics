@@ -9,6 +9,31 @@ from app.settings_store import ensure_default_settings
 
 DB_PATH = settings.DATABASE_URL.replace("./", "")
 
+ROUND32_TIEBREAK_COUNT_TEXT = (
+    "Encore des tirs au but ? — Combien de nouvelles séances de tirs au but "
+    "auront lieu sur les matchs restants des seizièmes ?"
+)
+ROUND32_FAVORITE_CONCEDE_TEXT = (
+    "Le Favori Qui Tremble — Parmi France, Angleterre, Belgique, Espagne, "
+    "Portugal et Argentine, combien encaisseront le premier but de leur match ?"
+)
+ROUND32_TIEBREAK_EXACT_CONFIG = {"min_value": 0, "max_value": 13}
+ROUND32_FAVORITE_EXACT_CONFIG = {"min_value": 0, "max_value": 6}
+ROUND32_EXACT_POINTS = 5
+ROUND32_TIEBREAK_HELP = (
+    "Une séance compte uniquement si la FIFA publie un score de tirs au but. "
+    "Les séances déjà jouées (Allemagne-Paraguay, Pays-Bas-Maroc) ne comptent pas. "
+    "Barème : 5 pts si le nombre exact est trouvé, 0 sinon."
+)
+ROUND32_FAVORITE_HELP = (
+    "Un favori compte si le 1er but officiel du match est inscrit en faveur de "
+    "l'adversaire — but contre son camp inclus (on regarde le score, pas le "
+    "buteur). 0-0 jusqu'aux tirs au but = personne. But en prolongation compté "
+    "s'il est le premier. But annulé par la VAR non compté. Penalty en cours de "
+    "jeu compté, tirs au but non. Match abandonné/rejoué sans 1er but officiel : "
+    "le favori ne compte pas. Barème : 5 pts si le nombre exact est trouvé, 0 sinon."
+)
+
 
 async def _normalize_existing_participant_names(db):
     rows = await db.execute("SELECT id, name, first_name, last_name FROM participants")
@@ -585,11 +610,99 @@ async def ensure_bonus_question_drafts(db):
     )
 
 
+def _numeric_answer_matches(given, correct) -> bool:
+    try:
+        return float(str(given or "").strip().replace(",", ".")) == float(
+            str(correct or "").strip().replace(",", ".")
+        )
+    except ValueError:
+        return str(given or "").strip().casefold() == str(correct or "").strip().casefold()
+
+
+async def _rescore_exact_round32_bonus(db, question_id: int, correct_answer, points_value: int):
+    await db.execute("DELETE FROM scores WHERE bonus_question_id=?", (question_id,))
+    if correct_answer is None or str(correct_answer).strip() == "":
+        return
+    rows = await db.execute(
+        "SELECT participant_id, answer FROM bonus_answers WHERE question_id=?",
+        (question_id,),
+    )
+    for answer in await rows.fetchall():
+        points = points_value if _numeric_answer_matches(answer["answer"], correct_answer) else 0
+        await db.execute(
+            """INSERT INTO scores (participant_id, bonus_question_id, points)
+               VALUES (?,?,?)""",
+            (answer["participant_id"], question_id, points),
+        )
+
+
+async def _migrate_round32_exact_numeric_bonus(db):
+    """Convertit deux questions seizièmes de « plus proche » vers « exact ».
+
+    Ces questions restent numériques côté participant, mais seules les réponses
+    strictement correctes marquent 5 points. La migration est séparée du seed,
+    car les bases existantes ont déjà posé le garde-fou app_settings du seed.
+    """
+    key = "migr_round32_exact_numeric_bonus_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    questions = [
+        (
+            ROUND32_TIEBREAK_COUNT_TEXT,
+            json.dumps(ROUND32_TIEBREAK_EXACT_CONFIG, separators=(",", ":")),
+            ROUND32_TIEBREAK_HELP,
+        ),
+        (
+            ROUND32_FAVORITE_CONCEDE_TEXT,
+            json.dumps(ROUND32_FAVORITE_EXACT_CONFIG, separators=(",", ":")),
+            ROUND32_FAVORITE_HELP,
+        ),
+    ]
+    changed_score_rows = False
+    for question_text, scoring_config, help_text in questions:
+        await db.execute(
+            """UPDATE bonus_questions
+               SET points_value=?,
+                   scoring_mode='exact',
+                   scoring_config=?,
+                   help_text=?
+               WHERE question_text=?""",
+            (ROUND32_EXACT_POINTS, scoring_config, help_text, question_text),
+        )
+        rows = await db.execute(
+            """SELECT id, correct_answer
+               FROM bonus_questions
+               WHERE question_text=? AND correct_answer IS NOT NULL""",
+            (question_text,),
+        )
+        for question in await rows.fetchall():
+            await _rescore_exact_round32_bonus(
+                db,
+                question["id"],
+                question["correct_answer"],
+                ROUND32_EXACT_POINTS,
+            )
+            changed_score_rows = True
+
+    if changed_score_rows:
+        from app.trophies import refresh_trophy_awards
+        await refresh_trophy_awards(db)
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
 async def ensure_round_of_32_bonus_drafts(db):
     """Prépare en brouillon les questions « seizièmes » (Afrique, tirs au but,
     favori qui tremble). Idempotent via app_settings. L'admin règle les deadlines
     et les réponses correctes, puis publie."""
     key = "bonus_drafts_round_of_32_2026_v4"
+    await _migrate_round32_exact_numeric_bonus(db)
     done = await (await db.execute(
         "SELECT 1 FROM app_settings WHERE key=?", (key,)
     )).fetchone()
@@ -608,8 +721,8 @@ async def ensure_round_of_32_bonus_drafts(db):
         "team_step": 1,
         "max_points": 10,
     }, ensure_ascii=False, separators=(",", ":"))
-    tab_count_config = '{"preset_key":"custom","award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[3,2,1],"min_value":0,"max_value":13}'
-    fun_config = '{"preset_key":"fun_balanced","award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[6,4,2],"min_value":0,"max_value":6}'
+    tab_count_config = json.dumps(ROUND32_TIEBREAK_EXACT_CONFIG, separators=(",", ":"))
+    fun_config = json.dumps(ROUND32_FAVORITE_EXACT_CONFIG, separators=(",", ":"))
     placeholder_deadline = "2026-06-30T16:59:00"
 
     # Nettoyage des deux anciennes questions Afrique (v1) désormais fusionnées en
@@ -619,7 +732,7 @@ async def ensure_round_of_32_bonus_drafts(db):
         "Afrique Mode Patron (expert) — Quelles équipes africaines encore en course rejoindront le Maroc en huitièmes ?",
         "Afrique Mode Patron — Combien d'équipes africaines (Maroc inclus) seront en huitièmes, et lesquelles parmi celles encore en course ?",
         "Encore des tirs au but ? — Après Paraguay et Maroc, y aura-t-il au moins une nouvelle séance de tirs au but sur les matchs restants des seizièmes ?",
-        "Encore des tirs au but ? — Combien de nouvelles séances de tirs au but auront lieu sur les matchs restants des seizièmes ?",
+        ROUND32_TIEBREAK_COUNT_TEXT,
     ]
     for text in obsolete_v1:
         await db.execute(
@@ -655,33 +768,22 @@ async def ensure_round_of_32_bonus_drafts(db):
             ),
         },
         {
-            "question_text": "Encore des tirs au but ? — Combien de nouvelles séances de tirs au but auront lieu sur les matchs restants des seizièmes ?",
+            "question_text": ROUND32_TIEBREAK_COUNT_TEXT,
             "answer_type": "number",
             "options": None,
-            "points_value": 3,
-            "scoring_mode": "closest_podium",
+            "points_value": ROUND32_EXACT_POINTS,
+            "scoring_mode": "exact",
             "scoring_config": tab_count_config,
-            "help_text": (
-                "Une séance compte uniquement si la FIFA publie un score de tirs au "
-                "but. Les séances déjà jouées (Allemagne-Paraguay, Pays-Bas-Maroc) "
-                "ne comptent pas. Barème : nombre le plus proche, 3 / 2 / 1."
-            ),
+            "help_text": ROUND32_TIEBREAK_HELP,
         },
         {
-            "question_text": "Le Favori Qui Tremble — Parmi France, Angleterre, Belgique, Espagne, Portugal et Argentine, combien encaisseront le premier but de leur match ?",
+            "question_text": ROUND32_FAVORITE_CONCEDE_TEXT,
             "answer_type": "number",
             "options": None,
-            "points_value": 6,
-            "scoring_mode": "closest_podium",
+            "points_value": ROUND32_EXACT_POINTS,
+            "scoring_mode": "exact",
             "scoring_config": fun_config,
-            "help_text": (
-                "Un favori compte si le 1er but officiel du match est inscrit en "
-                "faveur de l'adversaire — but contre son camp inclus (on regarde le "
-                "score, pas le buteur). 0-0 jusqu'aux tirs au but = personne. But en "
-                "prolongation compté s'il est le premier. But annulé par la VAR non "
-                "compté. Penalty en cours de jeu compté, tirs au but non. Match "
-                "abandonné/rejoué sans 1er but officiel : le favori ne compte pas."
-            ),
+            "help_text": ROUND32_FAVORITE_HELP,
         },
     ]
     for draft in drafts:
@@ -715,14 +817,14 @@ async def ensure_round_of_32_bonus_drafts(db):
         "UPDATE bonus_questions SET scoring_config=? WHERE question_text=?",
         (
             tab_count_config,
-            "Encore des tirs au but ? — Combien de nouvelles séances de tirs au but auront lieu sur les matchs restants des seizièmes ?",
+            ROUND32_TIEBREAK_COUNT_TEXT,
         ),
     )
     await db.execute(
         "UPDATE bonus_questions SET scoring_config=? WHERE question_text=?",
         (
             fun_config,
-            "Le Favori Qui Tremble — Parmi France, Angleterre, Belgique, Espagne, Portugal et Argentine, combien encaisseront le premier but de leur match ?",
+            ROUND32_FAVORITE_CONCEDE_TEXT,
         ),
     )
     await db.execute(
