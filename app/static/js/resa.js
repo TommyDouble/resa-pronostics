@@ -1090,24 +1090,39 @@ function initAdminBonusQuestionForms() {
 
     function updatePreviewOptions() {
       if (!preview) return;
-      var list = preview.querySelector('[data-preview-choice-list]');
-      if (!list) return;
+      var type = currentType();
+      var inputType = type === 'multi_choice' ? 'checkbox' : 'radio';
       var optionsField = form.querySelector('textarea[name="options_text"]');
       var options = parseOptions(optionsField ? optionsField.value : '');
-      if (!options.length) options = ['Option 1', 'Option 2'];
-      list.innerHTML = '';
-      options.slice(0, 8).forEach(function(option) {
-        var label = document.createElement('label');
-        label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:default;';
-        var input = document.createElement('input');
-        input.type = 'radio';
-        input.disabled = true;
-        var span = document.createElement('span');
-        span.textContent = option;
-        label.appendChild(input);
-        label.appendChild(span);
-        list.appendChild(label);
-      });
+      var list = preview.querySelector('[data-preview-choice-list]');
+      if (list) {
+        var choiceOptions = options.length ? options : ['Option 1', 'Option 2'];
+        list.innerHTML = '';
+        choiceOptions.slice(0, 8).forEach(function(option) {
+          var label = document.createElement('label');
+          label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:default;';
+          var input = document.createElement('input');
+          input.type = inputType;
+          input.disabled = true;
+          var span = document.createElement('span');
+          span.textContent = option;
+          label.appendChild(input);
+          label.appendChild(span);
+          list.appendChild(label);
+        });
+      }
+      var badges = preview.querySelector('[data-preview-badges-list]');
+      if (badges) {
+        var badgeOptions = options.length ? options : ['Équipe 1', 'Équipe 2'];
+        badges.innerHTML = '';
+        badgeOptions.slice(0, 8).forEach(function(option) {
+          var chip = document.createElement('span');
+          chip.className = 'nm-badge';
+          chip.style.cursor = 'default';
+          chip.textContent = option;
+          badges.appendChild(chip);
+        });
+      }
     }
 
     function updatePreview() {
@@ -1121,6 +1136,7 @@ function initAdminBonusQuestionForms() {
       var locked = preview.querySelector('[data-preview-locked]');
       var choice = preview.querySelector('[data-preview-choice]');
       var number = preview.querySelector('[data-preview-number]');
+      var badges = preview.querySelector('[data-preview-badges]');
       var deadlineValue = deadline ? deadline.value : '';
       var deadlineDate = deadlineValue ? new Date(deadlineValue) : null;
       var isOpen = !deadlineDate || isNaN(deadlineDate.getTime()) || deadlineDate.getTime() > Date.now();
@@ -1135,10 +1151,14 @@ function initAdminBonusQuestionForms() {
         status.classList.remove('warn', 'lock', 'ok', 'gr');
         status.classList.add(isOpen ? 'warn' : 'lock');
       }
+      var wantsNumber = type === 'number' || type === 'number_multi';
+      var wantsBadges = type === 'number_multi';
+      var wantsChoice = type === 'choice' || type === 'multi_choice';
       if (answerArea) answerArea.style.display = isOpen ? '' : 'none';
       if (locked) locked.style.display = isOpen ? 'none' : '';
-      if (choice) choice.style.display = type === 'number' ? 'none' : '';
-      if (number) number.style.display = type === 'number' ? '' : 'none';
+      if (choice) choice.style.display = wantsChoice ? '' : 'none';
+      if (number) number.style.display = wantsNumber ? '' : 'none';
+      if (badges) badges.style.display = wantsBadges ? '' : 'none';
       updatePreviewOptions();
     }
 
