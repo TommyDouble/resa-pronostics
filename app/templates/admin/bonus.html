@@ -406,9 +406,9 @@
       <div data-bonus-number-only>
         {% if not is_closest %}
         <div class="lbl" style="margin-bottom:5px;">Points si réponse exacte</div>
-        <div class="field" style="max-width:220px;"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required readonly></div>
+        <div class="field" style="max-width:220px;"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
         <p class="muted helper-text">
-          Cette question numérique est corrigée en exact : {{ q.points_value }} pts si la réponse correspond, 0 sinon.
+          Cette question numérique est corrigée en exact : les points indiqués si la réponse correspond, 0 sinon.
         </p>
         {% else %}
         <input type="hidden" name="points_value" value="{{ q.points_value }}">
