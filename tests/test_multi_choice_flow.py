@@ -279,6 +279,49 @@ def test_home_bonus_stack_and_ajax_submit(client, admin_client, participant, mon
     assert f'data-question-id="{q["id"]}"' not in html_after
 
 
+def _publish_question(qid, deadline):
+    async def _go():
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE bonus_questions SET is_published=1, deadline=? WHERE id=?",
+                (deadline, qid),
+            )
+            await db.commit()
+    run(_go())
+
+
+def test_bonus_number_rejects_out_of_bounds(client, participant):
+    # "Le Favori Qui Tremble" is seeded with min_value=0 / max_value=6.
+    q = _fetch_question_by_text("Le Favori Qui Tremble")
+    assert q is not None and q["answer_type"] == "number"
+    _publish_question(q["id"], "2030-01-01T12:00:00")
+    base = f"/p/{participant['token']}/bonus/{q['id']}"
+
+    too_high = client.post(base, data={"answer": "7"}, follow_redirects=False)
+    assert too_high.status_code == 400
+
+    negative = client.post(base, data={"answer": "-1"}, follow_redirects=False)
+    assert negative.status_code == 400
+
+    ok = client.post(base, data={"answer": "3"}, follow_redirects=False)
+    assert ok.status_code == 303
+    stored = run(_stored_answer(participant["id"], q["id"]))
+    assert stored == "3"
+
+
+def test_bonus_rejects_answer_after_deadline(client, participant):
+    q = _fetch_question_by_text("Le Favori Qui Tremble")
+    assert q is not None
+    _publish_question(q["id"], "2000-01-01T00:00:00")  # already past
+    resp = client.post(
+        f"/p/{participant['token']}/bonus/{q['id']}",
+        data={"answer": "2"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 403
+    assert run(_stored_answer(participant["id"], q["id"])) is None
+
+
 async def _stored_answer(pid, qid):
     async with get_db() as db:
         row = await db.execute(

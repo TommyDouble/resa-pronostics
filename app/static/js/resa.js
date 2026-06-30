@@ -868,6 +868,17 @@ function initBonusForms() {
     var nmCount = nm && nm.querySelector('[data-nm-count]');
     var nmBadges = nm ? Array.prototype.slice.call(nm.querySelectorAll('[data-nm-badge]')) : [];
     var nmHint = nm && nm.querySelector('[data-nm-hint]');
+    var nmLockedNames = nmBadges.filter(function(b) {
+      return b.classList.contains('is-locked');
+    }).map(function(b) {
+      var label = b.querySelector('span');
+      return label ? label.textContent.trim() : '';
+    }).filter(Boolean);
+    function nmLockedPhrase() {
+      if (!nmLockedNames.length) return '';
+      if (nmLockedNames.length === 1) return nmLockedNames[0];
+      return nmLockedNames.slice(0, -1).join(', ') + ' et ' + nmLockedNames[nmLockedNames.length - 1];
+    }
     function nmMax() {
       if (!nmCount) return null;
       var n = parseInt(nmCount.value, 10);
@@ -893,7 +904,9 @@ function initBonusForms() {
       });
       if (nmHint) {
         if (max === null) {
-          nmHint.textContent = "Choisis un total dans les limites prévues. Maroc compte déjà pour 1.";
+          var locked = nmLockedPhrase();
+          nmHint.textContent = "Choisis un total dans les limites prévues." +
+            (locked ? ' ' + locked + ' compte déjà pour ' + nmLockedNames.length + '.' : '');
         } else {
           var missing = max - sel;
           if (missing > 0) {

@@ -2068,10 +2068,25 @@ def _bonus_title_prompt(question_text: str) -> tuple[str, str]:
     return title.strip(), prompt.strip()
 
 
+def _locked_teams_phrase(q: dict) -> str:
+    """« Maroc », « Maroc et Égypte », « Maroc, Égypte et Ghana »… à partir des
+    équipes verrouillées de la question (déjà qualifiées). Vide si aucune."""
+    config = q.get("number_multi_config") or {}
+    teams = [str(t).strip() for t in config.get("locked_teams") or [] if str(t).strip()]
+    if not teams:
+        return ""
+    if len(teams) == 1:
+        return teams[0]
+    return f"{', '.join(teams[:-1])} et {teams[-1]}"
+
+
 def _bonus_help_lead(q: dict, closest_config: dict | None = None) -> str:
     text = q.get("question_text") or ""
     if q.get("answer_type") == "number_multi":
-        return "Maroc compte déjà. Le total doit égaler les tuiles cochées."
+        locked = _locked_teams_phrase(q)
+        if locked:
+            return f"{locked} compte déjà. Le total doit égaler les tuiles cochées."
+        return "Le total doit égaler le nombre de tuiles cochées."
     if "Combien de nouvelles séances de tirs au but" in text:
         return "Nouvelles séances uniquement, celles déjà jouées ne comptent pas."
     if "Le Favori Qui Tremble" in text:
@@ -2086,7 +2101,9 @@ def _bonus_answer_placeholder(q: dict) -> str:
     text = q.get("question_text") or ""
     if q.get("answer_type") == "number_multi":
         config = q.get("number_multi_config") or {}
-        return f"Total : {config.get('min_count', 1)} à {config.get('max_count', 8)} (Maroc inclus)"
+        locked = _locked_teams_phrase(q)
+        suffix = f" ({locked} inclus)" if locked else ""
+        return f"Total : {config.get('min_count', 1)} à {config.get('max_count', 8)}{suffix}"
     if "Combien de nouvelles séances de tirs au but" in text:
         return "0, 1, 2..."
     if "Le Favori Qui Tremble" in text:
