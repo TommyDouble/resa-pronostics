@@ -1,5 +1,6 @@
 {% extends "participant_base.html" %}
 {% from "_macros.html" import avatar %}
+{% from "_bonus_macros.html" import bonus_question_card %}
 {% block title %}Accueil — RESA Pronostics{% endblock %}
 {% block page_content %}
 
@@ -49,7 +50,11 @@
       <div class="lbl">Prochaine action</div>
       <p>{{ pending_bonus }} question{{ 's' if pending_bonus > 1 else '' }} bonus attend{{ 'ent' if pending_bonus > 1 else '' }} ta réponse.</p>
     </div>
+    {% if home_bonus_questions|default([]) %}
+    <button type="button" class="btn sm" data-bonus-stack-open>Répondre</button>
+    {% else %}
     <a href="/p/{{ token }}/bonus" class="btn sm">Répondre</a>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -229,4 +234,31 @@
   <a href="/p/{{ token }}/reglement" class="home-rules-link">Barème, matchs importants et bonus&nbsp;: voir le règlement →</a>
 
 </div>
+
+{% if home_bonus_questions|default([]) %}
+<div class="bonus-stack-overlay" data-bonus-stack hidden>
+  <div class="bonus-stack-backdrop" data-bonus-stack-close></div>
+  <section class="bonus-stack-panel" role="dialog" aria-modal="true" aria-labelledby="bonus-stack-title">
+    <div class="bonus-stack-head">
+      <div>
+        <div class="lbl">Questions bonus</div>
+        <h2 id="bonus-stack-title">À toi de jouer</h2>
+      </div>
+      <span class="bonus-stack-count" data-bonus-stack-count>1/{{ home_bonus_questions|length }}</span>
+      <button type="button" class="icon-btn bonus-stack-close" data-bonus-stack-close aria-label="Fermer">×</button>
+    </div>
+    <div class="bonus-stack-deck" data-bonus-stack-deck>
+      {% for q in home_bonus_questions %}
+      {{ bonus_question_card(q, token, phase_labels, 'stack', loop.index, home_bonus_questions|length) }}
+      {% endfor %}
+    </div>
+    <div class="bonus-stack-done" data-bonus-stack-done hidden>
+      <div class="bonus-stack-done-mark">✓</div>
+      <h3>Tout est répondu</h3>
+      <p>Tu peux revenir sur tes choix depuis la page Bonus jusqu'à la deadline.</p>
+      <a href="/p/{{ token }}/bonus" class="btn full">Voir la page Bonus</a>
+    </div>
+  </section>
+</div>
+{% endif %}
 {% endblock %}

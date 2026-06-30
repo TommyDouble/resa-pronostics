@@ -1,0 +1,136 @@
+{% macro bonus_question_card(q, token, phase_labels, mode='page', index=1, total=1) -%}
+{% set is_stack = mode == 'stack' %}
+<div class="{% if is_stack %}bonus-stack-card{% if index == 1 %} is-active{% elif index == 2 %} is-next{% endif %}{% else %}card bonus-question-card{% endif %}"
+     {% if is_stack %}data-bonus-stack-card data-question-id="{{ q.id }}" style="--stack-pos: {{ index - 1 }};"{% endif %}>
+  <div class="bonus-q-meta">
+    <span class="chip acc tip" tabindex="0" data-tip="Points attribués selon le barème de la question.">{{ phase_labels.get(q.phase, q.phase) }} · {{ q.points_label or (q.points_value ~ ' pts') }}</span>
+    {% if not is_stack %}
+      {% if q.has_score %}
+        <span class="chip {{ 'ok' if q.points > 0 else 'lock' }}">{{ q.points }} pt{{ 's' if q.points != 1 else '' }}</span>
+      {% elif q.can_edit and q.has_answer %}
+        <span class="chip ok">Réponse enregistrée</span>
+      {% elif q.can_edit %}
+        <span class="chip warn">À répondre</span>
+      {% elif q.has_answer %}
+        <span class="chip gr">Verrouillée</span>
+      {% else %}
+        <span class="chip lock">Non répondue</span>
+      {% endif %}
+    {% endif %}
+    <span class="muted tip bonus-q-deadline" tabindex="0" data-tip="Après cette deadline, la réponse n'est plus modifiable.">
+      Deadline · <span data-local-utc="{{ q.deadline|utc_iso }}">{{ q.deadline|local_datetime }}</span>
+    </span>
+  </div>
+
+  <div class="bonus-q-copy">
+    {% if q.question_title %}
+    <div class="bonus-q-title">{{ q.question_title }}</div>
+    {% endif %}
+    <p class="bonus-q-prompt">{{ q.question_prompt or q.question_text }}</p>
+  </div>
+
+  {% if q.help_lead or q.help_text %}
+  <div class="bonus-rule">
+    <span>{{ q.help_lead or 'Règle de résolution disponible.' }}</span>
+    {% if q.help_text %}
+    <button type="button" class="help-tip bonus-rule-tip" data-tip="{{ q.help_text }}" aria-label="Voir la règle complète">?</button>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if q.has_answer and not is_stack %}
+  <div class="bonus-answer-banner" style="margin-bottom:12px;">
+    <div>
+      <span aria-hidden="true">✓</span>
+      <span>Ta réponse : <b>{{ q.answer_display or q.answer }}</b></span>
+    </div>
+    {% if q.answered_at %}
+    <span class="muted" data-local-utc="{{ q.answered_at|utc_iso }}">{{ q.answered_at|local_datetime }}</span>
+    {% endif %}
+  </div>
+  {% if q.can_edit and not q.has_score %}
+  <div class="muted helper-text" style="margin-top:-6px;margin-bottom:12px;">Tu peux encore modifier cette réponse jusqu'à la deadline.</div>
+  {% endif %}
+  {% elif not q.can_edit and not is_stack %}
+  <div class="banner" style="background:var(--n100);color:var(--n600);margin-bottom:12px;">
+    <span>🔒</span> Deadline dépassée — aucune réponse enregistrée.
+  </div>
+  {% endif %}
+
+  {% if q.has_score and q.correct_answer and not is_stack %}
+  <div class="muted" style="font-size:12px;margin-bottom:12px;">
+    Réponse correcte : <b style="color:var(--n900);">{{ q.correct_answer_display or q.correct_answer }}</b>
+  </div>
+  {% endif %}
+
+  {% if q.can_edit %}
+  <form method="post" action="/p/{{ token }}/bonus/{{ q.id }}" class="bonus-answer-form" novalidate{% if is_stack %} data-bonus-stack-form="1"{% endif %}>
+    {% if q.answer_type == 'number' %}
+    <div class="field" style="margin-bottom:14px;">
+      <input type="number" name="answer"
+             {% if q.answer_min is not none %}min="{{ q.answer_min }}"{% else %}min="0"{% endif %}
+             {% if q.answer_max is not none %}max="{{ q.answer_max }}"{% endif %}
+             value="{{ q.answer or '' }}" placeholder="{{ q.answer_placeholder }}" inputmode="numeric">
+    </div>
+    {% elif q.answer_type == 'number_multi' and q.options %}
+    <div data-number-multi style="margin-bottom:14px;">
+      <div class="field" style="margin-bottom:10px;">
+        <input type="number" name="count"
+               min="{{ q.number_multi_config.min_count }}" max="{{ q.number_multi_config.max_count }}"
+               value="{{ q.answer_count if q.answer_count is not none else '' }}"
+               placeholder="{{ q.answer_placeholder }}" inputmode="numeric" data-nm-count>
+      </div>
+      <div class="muted" data-nm-hint style="font-size:12px;margin-bottom:8px;">
+        Choisis le total, puis complète les tuiles.
+      </div>
+      <div data-nm-badges style="display:flex;flex-wrap:wrap;gap:8px;">
+        {% for opt in q.options | fromjson %}
+        {% set is_locked = opt in q.locked_teams %}
+        <label class="nm-badge{% if is_locked %} is-locked{% endif %}" data-nm-badge>
+          {% if is_locked %}<input type="hidden" name="teams" value="{{ opt }}">{% endif %}
+          <input type="checkbox" name="teams" value="{{ opt }}" {{ 'checked' if is_locked or opt in q.answer_set else '' }} {{ 'disabled' if is_locked else '' }} hidden>
+          <span>{{ opt }}</span>
+          {% if is_locked %}<small>déjà qualifié</small>{% endif %}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    {% elif q.answer_type == 'multi_choice' and q.options %}
+    <div class="bonus-choice-list">
+      {% for opt in q.options | fromjson %}
+      <label>
+        <input type="checkbox" name="answer" value="{{ opt }}" {{ 'checked' if opt in q.answer_set else '' }}>
+        <span>{{ opt }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    {% elif q.answer_type == 'choice' and q.options %}
+    <div class="bonus-choice-list">
+      {% for opt in q.options | fromjson %}
+      <label>
+        <input type="radio" name="answer" value="{{ opt }}" {{ 'checked' if q.answer == opt else '' }}>
+        <span>{{ opt }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="field" style="margin-bottom:14px;">
+      <input type="text" name="answer" value="{{ q.answer or '' }}" placeholder="{{ q.answer_placeholder or 'Ta réponse...' }}">
+    </div>
+    {% endif %}
+    <div class="form-error" role="alert"></div>
+    <button class="btn full" type="submit">
+      {% if is_stack %}Valider{% elif q.has_answer %}Modifier ma réponse{% else %}Valider ma réponse{% endif %}
+    </button>
+  </form>
+  {% elif q.has_answer and not is_stack %}
+  <div class="muted" style="font-size:12px;">
+    {% if q.has_score %}
+      Points attribués — la réponse reste visible.
+    {% else %}
+      Deadline dépassée — la réponse n'est plus modifiable.
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{%- endmacro %}
