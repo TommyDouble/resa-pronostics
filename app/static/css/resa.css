@@ -478,8 +478,305 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
   user-select: none; transition: background .12s, border-color .12s, color .12s, opacity .12s;
 }
 .nm-badge.is-on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.nm-badge.is-locked { background: #E6F0E6; border-color: var(--success); color: var(--success); cursor: default; }
+.nm-badge small { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0; }
 .nm-badge.is-disabled { opacity: .4; cursor: not-allowed; }
 .nm-badge:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* ---- Bonus question cards ---- */
+.bonus-question-card {
+  padding: 14px;
+}
+.bonus-q-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bonus-q-deadline {
+  margin-left: auto;
+  font-size: 11px;
+}
+.bonus-q-copy {
+  margin: 10px 0 8px;
+}
+.bonus-q-title {
+  font-family: var(--sketch);
+  font-weight: 700;
+  font-size: 25px;
+  line-height: 1;
+  color: var(--n900);
+}
+.bonus-q-prompt {
+  margin: 4px 0 0;
+  color: var(--n800);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.34;
+}
+.bonus-rule {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: rgba(255,255,255,.62);
+  color: var(--n600);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.bonus-rule > span {
+  flex: 1;
+  min-width: 0;
+}
+.bonus-rule-tip {
+  flex: none;
+  margin-left: 0;
+  background: transparent;
+  padding: 0;
+  box-sizing: border-box;
+}
+.bonus-rule-tip:focus-visible,
+.tip[data-tip]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+.bonus-answer-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  border: 1px solid rgba(211,69,13,.20);
+  border-radius: var(--r-sm);
+  background: var(--primary-l);
+  color: var(--primary-d);
+  padding: 9px 10px;
+  font-size: 12.5px;
+  line-height: 1.25;
+}
+.bonus-answer-banner > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.bonus-answer-banner b {
+  color: var(--primary-d);
+}
+.bonus-answer-banner .muted {
+  flex: none;
+  max-width: 92px;
+  text-align: right;
+  font-size: 11px;
+  line-height: 1.15;
+}
+.bonus-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.bonus-choice-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* ---- Home bonus stack ---- */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--paper);
+  color: var(--n700);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+}
+.icon-btn:hover {
+  background: var(--n100);
+  color: var(--n900);
+}
+body.bonus-stack-open {
+  overflow: hidden;
+}
+.bonus-stack-overlay[hidden] {
+  display: none;
+}
+.bonus-stack-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+.bonus-stack-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(22,24,35,.46);
+  backdrop-filter: blur(4px);
+}
+.bonus-stack-panel {
+  position: relative;
+  z-index: 1;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 36px);
+  border: 1px solid rgba(255,255,255,.62);
+  border-radius: var(--r-card);
+  background: var(--paper);
+  box-shadow: 0 24px 70px rgba(22,24,35,.28);
+  padding: 14px;
+  overflow: hidden;
+}
+.bonus-stack-head {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.bonus-stack-head h2 {
+  margin: 1px 0 0;
+  font-family: var(--display);
+  font-size: 20px;
+  line-height: 1.1;
+}
+.bonus-stack-count {
+  border-radius: var(--pill);
+  background: var(--primary-l);
+  color: var(--primary);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.bonus-stack-close {
+  font-size: 20px;
+  line-height: 1;
+}
+.bonus-stack-deck {
+  position: relative;
+  min-height: 320px;
+}
+.bonus-stack-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  min-height: 320px;
+  max-height: min(70vh, 590px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--paper2);
+  box-shadow: var(--sh2);
+  padding: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+.bonus-stack-card.is-active {
+  position: relative;
+  inset: auto;
+  z-index: 3;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+.bonus-stack-card.is-next {
+  z-index: 2;
+  opacity: .72;
+  transform: translateY(12px) scale(.965);
+}
+.bonus-stack-card.is-behind {
+  z-index: 1;
+  opacity: .34;
+  transform: translateY(22px) scale(.93);
+}
+.bonus-stack-card.is-dismissed {
+  opacity: 0;
+  transform: translateX(-110%) rotate(-4deg);
+}
+.bonus-stack-card .bonus-answer-form {
+  margin-top: 2px;
+}
+.bonus-stack-done {
+  padding: 34px 10px 10px;
+  text-align: center;
+}
+.bonus-stack-done-mark {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 12px;
+  border-radius: 99px;
+  display: grid;
+  place-items: center;
+  background: #E6F0E6;
+  color: var(--success);
+  font-size: 26px;
+  font-weight: 900;
+}
+.bonus-stack-done h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 22px;
+}
+.bonus-stack-done p {
+  margin: 8px auto 16px;
+  max-width: 320px;
+  color: var(--n600);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 420px) {
+  .bonus-q-deadline {
+    width: 100%;
+    margin-left: 0;
+    text-align: right;
+  }
+  .bonus-q-title {
+    font-size: 23px;
+  }
+  .bonus-q-prompt {
+    font-size: 14px;
+  }
+  .bonus-answer-banner {
+    align-items: flex-start;
+  }
+  .bonus-answer-banner .muted {
+    max-width: 74px;
+  }
+  .bonus-stack-overlay {
+    padding: 10px;
+  }
+  .bonus-stack-panel {
+    max-height: calc(100vh - 20px);
+    padding: 12px;
+  }
+  .bonus-stack-deck {
+    min-height: 360px;
+  }
+  .bonus-stack-card {
+    padding: 14px;
+    min-height: 360px;
+    max-height: min(72vh, 590px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bonus-stack-card {
+    transition: none;
+  }
+}
 
 /* ---- Status dots ---- */
 .dot {

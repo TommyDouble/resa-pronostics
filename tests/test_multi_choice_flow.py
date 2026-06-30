@@ -1,4 +1,7 @@
 import json
+from html import unescape
+
+import app.routers.pages as page_routes
 
 from app.database import get_db
 from conftest import run
@@ -24,7 +27,12 @@ def test_round_of_32_drafts_seeded(client):
     assert afrique["scoring_mode"] == "number_multi"
     assert afrique["is_published"] == 0
     options = json.loads(afrique["options"])
-    assert "Sénégal" in options and len(options) == 7
+    assert options[0] == "Maroc"
+    assert "Sénégal" in options and len(options) == 8
+    config = json.loads(afrique["scoring_config"])
+    assert config["locked_teams"] == ["Maroc"]
+    assert config["max_points"] == 10
+    assert afrique["points_value"] == 10
     # The two obsolete v1 Afrique questions must be gone.
     assert _fetch_question_by_text("Afrique Mode Patron (expert)") is None
 
@@ -32,9 +40,14 @@ def test_round_of_32_drafts_seeded(client):
     assert favori is not None
     assert favori["help_text"] and "but contre son camp" in favori["help_text"]
 
-    tab = _fetch_question_by_text("Encore des tirs au but")
-    assert tab is not None
-    assert json.loads(tab["scoring_config"])["rank_points"] == [3, 2, 1]
+    assert _fetch_question_by_text("au moins une nouvelle séance") is None
+
+    tab_count = _fetch_question_by_text("Combien de nouvelles séances")
+    assert tab_count is not None
+    tab_config = json.loads(tab_count["scoring_config"])
+    assert tab_config["rank_points"] == [3, 2, 1]
+    assert tab_config["min_value"] == 0
+    assert tab_config["max_value"] == 13
 
 
 def test_multi_choice_end_to_end(client, admin_client, participant):
@@ -108,26 +121,26 @@ def test_number_multi_end_to_end(client, admin_client, participant):
     assert q is not None and q["scoring_mode"] == "number_multi"
     qid = q["id"]
 
-    # Participant: total = 3 (so must pick exactly 2 teams).
+    # Participant: total = 3 (so must pick exactly 3 teams for a generic number_multi).
     resp = client.post(
         f"/p/{participant['token']}/bonus/{qid}",
-        data={"count": "3", "teams": ["Alpha", "Beta"]},
+        data={"count": "3", "teams": ["Alpha", "Beta", "Delta"]},
         follow_redirects=False,
     )
     assert resp.status_code == 303
     stored = json.loads(run(_stored_answer(participant["id"], qid)))
-    assert stored["count"] == 3 and set(stored["teams"]) == {"Alpha", "Beta"}
+    assert stored["count"] == 3 and set(stored["teams"]) == {"Alpha", "Beta", "Delta"}
 
-    # Wrong team count is rejected (must equal total - 1 = 2).
+    # Wrong team count is rejected (must equal total).
     bad = client.post(
         f"/p/{participant['token']}/bonus/{qid}",
-        data={"count": "3", "teams": ["Alpha"]},
+        data={"count": "3", "teams": ["Alpha", "Beta"]},
         follow_redirects=False,
     )
     assert bad.status_code == 400
 
-    # Admin correct answer: total 3, teams Alpha + Gamma.
-    # Participant: count exact (3) → +3 ; Alpha right (+1), Beta wrong (-1) → +0 ; total 3.
+    # Admin correct answer: total 3, teams Alpha + Gamma + Delta.
+    # Participant: count exact (3) → +3 ; Alpha+Delta right (+2), Beta wrong (-1) → +1 ; total 4.
     resp = admin_client.post(
         f"/admin/bonus/{qid}/update",
         data={
@@ -138,13 +151,132 @@ def test_number_multi_end_to_end(client, admin_client, participant):
             "deadline": "2030-01-01T12:00",
             "options_text": "Alpha\nBeta\nGamma\nDelta",
             "correct_count": "3",
-            "correct_answer": ["Alpha", "Gamma"],
+            "correct_answer": ["Alpha", "Gamma", "Delta"],
             "is_published": "1",
         },
         follow_redirects=False,
     )
     assert resp.status_code == 303
-    assert run(_score(participant["id"], qid)) == 3
+    assert run(_score(participant["id"], qid)) == 4
+
+
+def test_africa_number_multi_locks_maroc_and_validates_total(client, admin_client, participant):
+    q = _fetch_question_by_text("Afrique Mode Patron")
+    options = json.loads(q["options"])
+    qid = q["id"]
+    assert "Maroc" in options
+
+    resp = admin_client.post(
+        f"/admin/bonus/{qid}/update",
+        data={
+            "question_text": q["question_text"],
+            "phase": "round_of_32",
+            "answer_type": "number_multi",
+            "points_value": "10",
+            "deadline": "2030-01-01T12:00",
+            "options_text": "\n".join(options),
+            "is_published": "1",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    # Client can omit Maroc; the server stores it anyway because it is locked.
+    resp = client.post(
+        f"/p/{participant['token']}/bonus/{qid}",
+        data={"count": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    stored = json.loads(run(_stored_answer(participant["id"], qid)))
+    assert stored == {"count": 1, "teams": ["Maroc"]}
+
+    bad = client.post(
+        f"/p/{participant['token']}/bonus/{qid}",
+        data={"count": "4", "teams": ["Sénégal", "Égypte"]},
+        follow_redirects=False,
+    )
+    assert bad.status_code == 400
+
+    ok = client.post(
+        f"/p/{participant['token']}/bonus/{qid}",
+        data={"count": "4", "teams": ["Sénégal", "Égypte", "Ghana"]},
+        follow_redirects=False,
+    )
+    assert ok.status_code == 303
+    stored = json.loads(run(_stored_answer(participant["id"], qid)))
+    assert stored["count"] == 4
+    assert set(stored["teams"]) == {"Maroc", "Sénégal", "Égypte", "Ghana"}
+
+
+def test_number_multi_admin_rejects_invalid_correct_answer(admin_client):
+    q = _fetch_question_by_text("Afrique Mode Patron")
+    options = json.loads(q["options"])
+    base = {
+        "question_text": q["question_text"],
+        "phase": "round_of_32",
+        "answer_type": "number_multi",
+        "points_value": "10",
+        "deadline": "2030-01-01T12:00",
+        "options_text": "\n".join(options),
+        "is_published": "1",
+    }
+
+    invalid_cases = [
+        {"correct_answer": ["Sénégal"]},
+        {"correct_count": "abc", "correct_answer": ["Sénégal"]},
+        {"correct_count": "4", "correct_answer": ["Sénégal"]},
+    ]
+    for extra in invalid_cases:
+        data = {**base, **extra}
+        resp = admin_client.post(
+            f"/admin/bonus/{q['id']}/update",
+            data=data,
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert _fetch_question_by_text("Afrique Mode Patron")["correct_answer"] is None
+
+
+def test_home_bonus_stack_and_ajax_submit(client, admin_client, participant, monkeypatch):
+    async def closed_pre_tournament(db, participant_id):
+        return {
+            "open": False,
+            "complete": True,
+            "filled_count": 0,
+            "question_count": 5,
+            "deadline": None,
+        }
+
+    monkeypatch.setattr(page_routes, "_pt_status", closed_pre_tournament)
+    q = _fetch_question_by_text("Afrique Mode Patron")
+    async def _publish_round32():
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE bonus_questions SET is_published=1, deadline=? WHERE phase=?",
+                ("2030-01-01T12:00:00", "round_of_32"),
+            )
+            await db.commit()
+
+    run(_publish_round32())
+    html = unescape(client.get(f"/p/{participant['token']}").text)
+    assert "data-bonus-stack" in html
+    assert "data-bonus-stack-open" in html
+    assert "Afrique Mode Patron" in html
+    assert "Encore des tirs au but ?" in html
+    assert "au moins une nouvelle séance" not in html
+
+    resp = client.post(
+        f"/p/{participant['token']}/bonus/{q['id']}",
+        data={"count": "1"},
+        headers={"X-RESA-Bonus-Stack": "1"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "question_id": q["id"]}
+
+    html_after = unescape(client.get(f"/p/{participant['token']}").text)
+    assert "questions bonus attend" in html_after
+    assert f'data-question-id="{q["id"]}"' not in html_after
 
 
 async def _stored_answer(pid, qid):

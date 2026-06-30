@@ -586,28 +586,40 @@ async def ensure_bonus_question_drafts(db):
 
 
 async def ensure_round_of_32_bonus_drafts(db):
-    """Prépare en brouillon les 3 questions « seizièmes » (Afrique, tirs au but,
+    """Prépare en brouillon les questions « seizièmes » (Afrique, tirs au but,
     favori qui tremble). Idempotent via app_settings. L'admin règle les deadlines
     et les réponses correctes, puis publie."""
-    key = "bonus_drafts_round_of_32_2026_v2"
+    key = "bonus_drafts_round_of_32_2026_v4"
     done = await (await db.execute(
         "SELECT 1 FROM app_settings WHERE key=?", (key,)
     )).fetchone()
     if done:
         return
 
-    AFRICA_IN_RACE = [
-        "Côte d'Ivoire", "RD Congo", "Sénégal", "Algérie",
+    AFRICA_OPTIONS = [
+        "Maroc", "Côte d'Ivoire", "RD Congo", "Sénégal", "Algérie",
         "Égypte", "Cap-Vert", "Ghana",
     ]
-    fun_config = '{"preset_key":"fun_balanced","award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[6,4,2]}'
-    placeholder_deadline = "2026-07-03T16:00:00"
+    africa_config = json.dumps({
+        "locked_teams": ["Maroc"],
+        "min_count": 1,
+        "max_count": 8,
+        "part1_points": 3,
+        "team_step": 1,
+        "max_points": 10,
+    }, ensure_ascii=False, separators=(",", ":"))
+    tab_count_config = '{"preset_key":"custom","award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[3,2,1],"min_value":0,"max_value":13}'
+    fun_config = '{"preset_key":"fun_balanced","award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[6,4,2],"min_value":0,"max_value":6}'
+    placeholder_deadline = "2026-06-30T16:59:00"
 
     # Nettoyage des deux anciennes questions Afrique (v1) désormais fusionnées en
     # une seule question number_multi — uniquement si non répondues.
     obsolete_v1 = [
         "Afrique Mode Patron — Maroc déjà qualifié : combien d'équipes africaines (Maroc inclus) seront en huitièmes au total ?",
         "Afrique Mode Patron (expert) — Quelles équipes africaines encore en course rejoindront le Maroc en huitièmes ?",
+        "Afrique Mode Patron — Combien d'équipes africaines (Maroc inclus) seront en huitièmes, et lesquelles parmi celles encore en course ?",
+        "Encore des tirs au but ? — Après Paraguay et Maroc, y aura-t-il au moins une nouvelle séance de tirs au but sur les matchs restants des seizièmes ?",
+        "Encore des tirs au but ? — Combien de nouvelles séances de tirs au but auront lieu sur les matchs restants des seizièmes ?",
     ]
     for text in obsolete_v1:
         await db.execute(
@@ -616,23 +628,30 @@ async def ensure_round_of_32_bonus_drafts(db):
                  AND id NOT IN (SELECT question_id FROM bonus_answers)""",
             (text,),
         )
+        await db.execute(
+            """UPDATE bonus_questions
+               SET is_published=0
+               WHERE question_text=?
+                 AND id IN (SELECT question_id FROM bonus_answers)""",
+            (text,),
+        )
 
     drafts = [
         {
             "question_text": "Afrique Mode Patron — Combien d'équipes africaines (Maroc inclus) seront en huitièmes, et lesquelles parmi celles encore en course ?",
             "answer_type": "number_multi",
-            "options": json.dumps(AFRICA_IN_RACE, ensure_ascii=False),
-            "points_value": 3,
+            "options": json.dumps(AFRICA_OPTIONS, ensure_ascii=False),
+            "points_value": 10,
             "scoring_mode": "number_multi",
-            "scoring_config": '{"part1_points":3,"team_step":1}',
+            "scoring_config": africa_config,
             "help_text": (
-                "Maroc déjà qualifié, toujours compté dans le total. Entre le total "
-                "d'équipes africaines en huitièmes (Maroc inclus, de 1 à 8), puis "
-                "coche parmi les équipes encore en course celles qui se qualifient — "
-                "tu dois en cocher exactement (total − 1). Barème : 3 pts si le total "
-                "est exact, +1 par équipe juste, −1 par erreur (jamais en dessous de "
-                "0 sur cette partie). Résultat officiel FIFA, prolongation incluse, "
-                "tirs au but exclus."
+                "Maroc est déjà qualifié : sa tuile est validée et compte dans le "
+                "total. Entre le total d'équipes africaines en huitièmes (de 1 à 8), "
+                "puis coche les autres équipes qui se qualifient : le nombre de tuiles "
+                "cochées, Maroc inclus, doit correspondre au total. Barème : 3 pts si "
+                "le total est exact, +1 par autre équipe juste, −1 par erreur (jamais "
+                "en dessous de 0 sur cette partie), 10 pts max. Résultat officiel FIFA, "
+                "prolongation incluse, tirs au but exclus."
             ),
         },
         {
@@ -641,7 +660,7 @@ async def ensure_round_of_32_bonus_drafts(db):
             "options": None,
             "points_value": 3,
             "scoring_mode": "closest_podium",
-            "scoring_config": '{"preset_key":"custom","award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[3,2,1]}',
+            "scoring_config": tab_count_config,
             "help_text": (
                 "Une séance compte uniquement si la FIFA publie un score de tirs au "
                 "but. Les séances déjà jouées (Allemagne-Paraguay, Pays-Bas-Maroc) "
@@ -692,6 +711,20 @@ async def ensure_round_of_32_bonus_drafts(db):
                 placeholder_deadline,
             ),
         )
+    await db.execute(
+        "UPDATE bonus_questions SET scoring_config=? WHERE question_text=?",
+        (
+            tab_count_config,
+            "Encore des tirs au but ? — Combien de nouvelles séances de tirs au but auront lieu sur les matchs restants des seizièmes ?",
+        ),
+    )
+    await db.execute(
+        "UPDATE bonus_questions SET scoring_config=? WHERE question_text=?",
+        (
+            fun_config,
+            "Le Favori Qui Tremble — Parmi France, Angleterre, Belgique, Espagne, Portugal et Argentine, combien encaisseront le premier but de leur match ?",
+        ),
+    )
     await db.execute(
         "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
         (key,),

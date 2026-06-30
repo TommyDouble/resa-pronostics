@@ -273,7 +273,7 @@
 {% for q in questions %}
 {% set is_closest = q.scoring_mode == 'closest_podium' %}
 {% set type_label = 'nombre le plus proche' if is_closest else {'choice': 'choix unique', 'multi_choice': 'choix multiple', 'number_multi': 'nombre + équipes', 'number': 'numérique', 'text': 'texte libre'}.get(q.answer_type, q.answer_type) %}
-{% set bar_label = (q.closest_rank_points|join(' / ')) ~ ' pts' if is_closest else q.points_value ~ ' pts' %}
+{% set bar_label = q.points_label if q.points_label is defined else ((q.closest_rank_points|join(' / ')) ~ ' pts' if is_closest else q.points_value ~ ' pts') %}
 <div class="card">
   <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
     <div style="flex:1;min-width:240px;">
@@ -287,7 +287,7 @@
       {{ 'Publié' if q.is_published else 'Brouillon' }}
     </span>
     <span class="chip {{ 'ok' if q.correct_answer else 'warn' }}">
-      {{ q.correct_count }}/{{ q.answer_count }} avec points
+      {{ q.scored_answer_count }}/{{ q.answer_count }} avec points
     </span>
     {% if q.correct_answer %}
     <span class="chip ok">Réponse: {{ q.correct_answer_display or q.correct_answer }}</span>
@@ -420,18 +420,20 @@
           {% if q.answer_type == 'number_multi' and q.options %}
           <div style="margin-bottom:8px;max-width:160px;">
             <div class="muted" style="font-size:11px;margin-bottom:4px;">Total (Maroc inclus)</div>
-            <div class="field"><input type="number" name="correct_count" min="1" max="8" value="{{ q.correct_count if q.correct_count is not none else '' }}" placeholder="ex: 4"></div>
+            <div class="field"><input type="number" name="correct_count" min="{{ q.number_multi_config.min_count }}" max="{{ q.number_multi_config.max_count }}" value="{{ q.correct_count if q.correct_count is not none else '' }}" placeholder="ex: 4"></div>
           </div>
           <div class="muted" style="font-size:11px;margin-bottom:4px;">Équipes qualifiées (parmi celles en course)</div>
           <div style="display:flex;flex-direction:column;gap:6px;">
             {% for opt in q.options | fromjson %}
+            {% set is_locked = opt in q.locked_teams %}
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
-              <input type="checkbox" name="correct_answer" value="{{ opt }}" {{ 'checked' if opt in q.correct_set else '' }}>
+              <input type="checkbox" name="correct_answer" value="{{ opt }}" {{ 'checked' if is_locked or opt in q.correct_set else '' }} {{ 'disabled' if is_locked else '' }}>
               <span>{{ opt }}</span>
+              {% if is_locked %}<span class="chip ok" style="font-size:10px;">déjà qualifié</span>{% endif %}
             </label>
             {% endfor %}
           </div>
-          <p class="muted helper-text" style="margin-bottom:0;">3 pts si le total est exact, +1 par équipe juste, −1 par erreur (plancher 0).</p>
+          <p class="muted helper-text" style="margin-bottom:0;">{{ q.number_multi_config.part1_points }} pts si le total est exact, +{{ q.number_multi_config.team_step }} par autre équipe juste, -{{ q.number_multi_config.team_step }} par erreur (plancher 0), {{ q.number_multi_config.max_points }} pts max.</p>
           {% elif q.answer_type == 'multi_choice' and q.options %}
           <div style="display:flex;flex-direction:column;gap:6px;">
             {% for opt in q.options | fromjson %}
@@ -470,7 +472,7 @@
       </div>
     </section>
 
-    {{ participant_preview(q.question_text, phase_labels.get(q.phase, q.phase), q.points_value ~ ' pts', q.answer_type, q.options_text, q.deadline|local_datetime, q.preview_can_edit) }}
+    {{ participant_preview(q.question_text, phase_labels.get(q.phase, q.phase), q.points_label or (q.points_value ~ ' pts'), q.answer_type, q.options_text, q.deadline|local_datetime, q.preview_can_edit) }}
   </form>
 
   <form method="post" action="/admin/bonus/{{ q.id }}/delete"

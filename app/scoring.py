@@ -585,11 +585,26 @@ def normalize_closest_config(points_value: int, raw_config=None) -> dict:
         else:
             preset_key = "custom"
 
+    def _optional_int(value):
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    min_value = _optional_int(config.get("min_value"))
+    max_value = _optional_int(config.get("max_value"))
+    if min_value is not None and max_value is not None and max_value < min_value:
+        max_value = min_value
+
     return {
         "preset_key": preset_key,
         "award_mode": award_mode,
         "tie_policy": tie_policy,
         "rank_points": rank_points,
+        "min_value": min_value,
+        "max_value": max_value,
     }
 
 
@@ -609,6 +624,10 @@ def serialize_closest_config(
             "rank_points": rank_points,
         },
     )
+    if config.get("min_value") is None:
+        config.pop("min_value", None)
+    if config.get("max_value") is None:
+        config.pop("max_value", None)
     return json.dumps(config, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -704,17 +723,86 @@ def parse_number_multi(value) -> dict:
     return {"count": count, "teams": teams}
 
 
-def format_number_multi(value) -> str:
+def format_number_multi(value, options=None) -> str:
     """Human-readable rendering of a combined number+teams answer."""
     parsed = parse_number_multi(value)
     count = parsed["count"]
-    teams = sorted(parsed["teams"])
+    option_order = _config_list(options)
+    teams = [team for team in option_order if team in parsed["teams"]]
+    teams.extend(sorted(parsed["teams"] - set(teams)))
     parts = []
     if count is not None:
         parts.append(f"{count} au total")
     if teams:
         parts.append(", ".join(teams))
     return " — ".join(parts) if parts else str(value or "")
+
+
+def _config_list(value) -> list[str]:
+    """Return a stable list of non-empty strings from a JSON/list config value."""
+    if not value:
+        return []
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError):
+            parsed = [value]
+    else:
+        parsed = value
+    if not isinstance(parsed, (list, tuple, set)):
+        parsed = [parsed]
+    seen = set()
+    items = []
+    for item in parsed:
+        label = str(item).strip()
+        if label and label not in seen:
+            seen.add(label)
+            items.append(label)
+    return items
+
+
+def normalize_number_multi_config(points_value: int = 0, raw_config=None, options=None) -> dict:
+    """Normalized config for combined number + multi-choice questions."""
+    config = {}
+    if raw_config:
+        try:
+            parsed = json.loads(raw_config) if isinstance(raw_config, str) else raw_config
+            if isinstance(parsed, dict):
+                config = parsed
+        except (TypeError, ValueError):
+            config = {}
+
+    option_items = _config_list(options)
+    locked_teams = _config_list(config.get("locked_teams"))
+    default_max = len(option_items) if option_items else max(int(points_value or 0), 1)
+
+    def _positive_int(value, default):
+        try:
+            return max(int(value), 0)
+        except (TypeError, ValueError):
+            return default
+
+    min_count = _positive_int(config.get("min_count"), max(len(locked_teams), 0))
+    max_count = _positive_int(config.get("max_count"), default_max)
+    if max_count < min_count:
+        max_count = min_count
+
+    part1_points = _positive_int(config.get("part1_points"), 3)
+    team_step = max(_positive_int(config.get("team_step"), 1), 1)
+    selectable_count = max(max_count - len(locked_teams), 0)
+    max_points = _positive_int(
+        config.get("max_points"),
+        part1_points + team_step * selectable_count,
+    )
+
+    return {
+        "locked_teams": locked_teams,
+        "min_count": min_count,
+        "max_count": max_count,
+        "part1_points": part1_points,
+        "team_step": team_step,
+        "max_points": max_points,
+    }
 
 
 def number_multi_bonus_points(points_value: int, correct_answer, answers, scoring_config=None) -> dict[int, int]:
@@ -725,18 +813,11 @@ def number_multi_bonus_points(points_value: int, correct_answer, answers, scorin
     ``-team_step`` per wrongly selected team, floored at 0. Total = part1 + part2.
     """
     correct = parse_number_multi(correct_answer)
-    part1_points = 3
-    team_step = 1
-    if scoring_config:
-        try:
-            cfg = json.loads(scoring_config) if isinstance(scoring_config, str) else scoring_config
-            if isinstance(cfg, dict):
-                if cfg.get("part1_points") is not None:
-                    part1_points = max(int(cfg["part1_points"]), 0)
-                if cfg.get("team_step") is not None:
-                    team_step = max(int(cfg["team_step"]), 1)
-        except (TypeError, ValueError):
-            part1_points, team_step = 3, 1
+    config = normalize_number_multi_config(points_value, scoring_config)
+    part1_points = config["part1_points"]
+    team_step = config["team_step"]
+    locked = set(config["locked_teams"])
+    correct_teams = correct["teams"] - locked
     scores = {}
     for ans in answers:
         pid = _row_get(ans, "participant_id")
@@ -746,8 +827,9 @@ def number_multi_bonus_points(points_value: int, correct_answer, answers, scorin
             and correct["count"] is not None
             and given["count"] == correct["count"]
         ) else 0
-        good = len(given["teams"] & correct["teams"])
-        wrong = len(given["teams"] - correct["teams"])
+        given_teams = given["teams"] - locked
+        good = len(given_teams & correct_teams)
+        wrong = len(given_teams - correct_teams)
         p2 = max(team_step * good - team_step * wrong, 0)
         scores[pid] = p1 + p2
     return scores

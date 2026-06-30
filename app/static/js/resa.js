@@ -730,6 +730,129 @@ function initScorerCombos() {
   });
 }
 
+/* ---- Home bonus stack ---- */
+function initBonusStack() {
+  var stack = document.querySelector('[data-bonus-stack]');
+  if (!stack) return;
+  var openers = document.querySelectorAll('[data-bonus-stack-open]');
+  var closers = stack.querySelectorAll('[data-bonus-stack-close]');
+  var deck = stack.querySelector('[data-bonus-stack-deck]');
+  var done = stack.querySelector('[data-bonus-stack-done]');
+  var counter = stack.querySelector('[data-bonus-stack-count]');
+  var cards = Array.prototype.slice.call(stack.querySelectorAll('[data-bonus-stack-card]'));
+  var activeIndex = 0;
+  var reducedMotion = window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function setHomePending(remaining) {
+    var cta = document.querySelector('.home-cta p');
+    openers.forEach(function(btn) {
+      btn.textContent = remaining <= 0 ? 'Voir Bonus' : 'Répondre';
+    });
+    if (!cta) return;
+    if (remaining <= 0) {
+      cta.textContent = 'Tu es à jour sur les bonus.';
+      return;
+    }
+    cta.textContent = remaining + ' question' + (remaining > 1 ? 's' : '') +
+      ' bonus attend' + (remaining > 1 ? 'ent' : '') + ' ta réponse.';
+  }
+
+  function focusActive() {
+    var active = cards[activeIndex];
+    if (!active) return;
+    var target = active.querySelector('input:not([type="hidden"]):not(:disabled), button, a');
+    if (target && target.focus) target.focus({ preventScroll: true });
+  }
+
+  function updateDeck() {
+    var remaining = Math.max(cards.length - activeIndex, 0);
+    setHomePending(remaining);
+    if (counter) {
+      counter.textContent = remaining > 0 ? (activeIndex + 1) + '/' + cards.length : 'terminé';
+    }
+    cards.forEach(function(card, index) {
+      var pos = index - activeIndex;
+      card.style.setProperty('--stack-pos', Math.max(pos, 0));
+      card.classList.toggle('is-active', pos === 0);
+      card.classList.toggle('is-next', pos === 1);
+      card.classList.toggle('is-behind', pos > 1);
+      card.setAttribute('aria-hidden', pos < 0 ? 'true' : 'false');
+      if (pos === 0) {
+        card.removeAttribute('inert');
+      } else {
+        card.setAttribute('inert', '');
+      }
+    });
+    if (deck) deck.hidden = remaining <= 0;
+    if (done) done.hidden = remaining > 0;
+    if (remaining > 0) window.setTimeout(focusActive, 40);
+  }
+
+  function openStack() {
+    stack.hidden = false;
+    document.body.classList.add('bonus-stack-open');
+    updateDeck();
+  }
+
+  function closeStack() {
+    stack.hidden = true;
+    document.body.classList.remove('bonus-stack-open');
+  }
+
+  openers.forEach(function(btn) {
+    btn.addEventListener('click', openStack);
+  });
+  closers.forEach(function(btn) {
+    btn.addEventListener('click', closeStack);
+  });
+  document.addEventListener('keydown', function(e) {
+    if (stack.hidden || e.key !== 'Escape') return;
+    closeStack();
+  });
+
+  window.RESABonusStack = {
+    submit: function(form, setError) {
+      if (form.dataset.submitting === '1') return;
+      form.dataset.submitting = '1';
+      var button = form.querySelector('button[type="submit"]');
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Enregistrement...';
+      }
+      fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        headers: { 'X-RESA-Bonus-Stack': '1' }
+      }).then(function(response) {
+        if (!response.ok) {
+          return response.text().then(function() {
+            throw new Error('Réponse refusée. Vérifie ta saisie.');
+          });
+        }
+        return response.json();
+      }).then(function() {
+        var card = form.closest('[data-bonus-stack-card]');
+        if (card) card.classList.add('is-dismissed');
+        window.setTimeout(function() {
+          activeIndex += 1;
+          updateDeck();
+        }, reducedMotion ? 0 : 180);
+      }).catch(function(err) {
+        setError(err && err.message ? err.message : 'Impossible d’enregistrer pour le moment.');
+        if (button) {
+          button.disabled = false;
+          button.textContent = 'Valider';
+        }
+      }).finally(function() {
+        form.dataset.submitting = '0';
+      });
+    }
+  };
+
+  updateDeck();
+}
+
 /* ---- Bonus answer validation ---- */
 function initBonusForms() {
   document.querySelectorAll('.bonus-answer-form').forEach(function(form) {
@@ -748,32 +871,45 @@ function initBonusForms() {
     function nmMax() {
       if (!nmCount) return null;
       var n = parseInt(nmCount.value, 10);
-      if (isNaN(n) || n < 1) return null;
-      return Math.max(n - 1, 0);
+      var min = parseInt(nmCount.getAttribute('min') || '0', 10);
+      var max = parseInt(nmCount.getAttribute('max') || '999', 10);
+      if (isNaN(n) || n < min || n > max) return null;
+      return Math.max(n, 0);
     }
     function nmSelected() {
-      return nmBadges.filter(function(b) { return b.querySelector('input').checked; }).length;
+      return nmBadges.filter(function(b) {
+        var cb = b.querySelector('input[type="checkbox"]');
+        return cb && cb.checked;
+      }).length;
     }
     function nmRefresh() {
       var max = nmMax();
       var sel = nmSelected();
       nmBadges.forEach(function(b) {
-        var cb = b.querySelector('input');
+        var cb = b.querySelector('input[type="checkbox"]');
+        if (!cb) return;
         b.classList.toggle('is-on', cb.checked);
-        b.classList.toggle('is-disabled', max === null || (!cb.checked && sel >= max));
+        b.classList.toggle('is-disabled', !cb.disabled && (max === null || (!cb.checked && sel >= max)));
       });
       if (nmHint) {
         if (max === null) {
-          nmHint.textContent = "Indique d'abord le total, puis coche les équipes qui se qualifient.";
+          nmHint.textContent = "Choisis un total dans les limites prévues. Maroc compte déjà pour 1.";
         } else {
-          nmHint.textContent = sel + ' / ' + max + ' équipe' + (max > 1 ? 's' : '') +
-            ' sélectionnée' + (sel > 1 ? 's' : '');
+          var missing = max - sel;
+          if (missing > 0) {
+            nmHint.textContent = sel + ' / ' + max + ' sélectionnée' + (sel > 1 ? 's' : '') +
+              ' · encore ' + missing + ' à cocher.';
+          } else {
+            nmHint.textContent = sel + ' / ' + max + ' sélectionnée' + (sel > 1 ? 's' : '') +
+              ' · sélection complète.';
+          }
         }
       }
     }
     if (nm) {
       nmBadges.forEach(function(b) {
-        var cb = b.querySelector('input');
+        var cb = b.querySelector('input[type="checkbox"]');
+        if (!cb) return;
         cb.addEventListener('change', function() {
           var max = nmMax();
           if (cb.checked && (max === null || nmSelected() > max)) {
@@ -787,8 +923,13 @@ function initBonusForms() {
         nmCount.addEventListener('input', function() {
           var max = nmMax();
           if (max !== null) {
-            var checked = nmBadges.filter(function(b) { return b.querySelector('input').checked; });
-            checked.slice(max).forEach(function(b) { b.querySelector('input').checked = false; });
+            var checked = nmBadges.filter(function(b) {
+              var cb = b.querySelector('input[type="checkbox"]');
+              return cb && cb.checked && !cb.disabled;
+            });
+            checked.slice(Math.max(max - (nmSelected() - checked.length), 0)).forEach(function(b) {
+              b.querySelector('input[type="checkbox"]').checked = false;
+            });
           }
           setError('');
           nmRefresh();
@@ -798,11 +939,19 @@ function initBonusForms() {
     }
 
     form.addEventListener('submit', function(e) {
+      function submitStackIfNeeded() {
+        if (!form.hasAttribute('data-bonus-stack-form') || !window.RESABonusStack) {
+          return false;
+        }
+        e.preventDefault();
+        window.RESABonusStack.submit(form, setError);
+        return true;
+      }
       if (nm) {
         var max = nmMax();
         if (max === null) {
           e.preventDefault();
-          setError('Indique le total (1 à 8) avant de valider.');
+          setError('Indique un total dans les limites prévues avant de valider.');
           return;
         }
         if (nmSelected() !== max) {
@@ -811,6 +960,7 @@ function initBonusForms() {
           return;
         }
         setError('');
+        submitStackIfNeeded();
         return;
       }
       var radios = form.querySelectorAll('input[type="radio"][name="answer"]');
@@ -847,7 +997,23 @@ function initBonusForms() {
         setError('Indique ta réponse avant de valider.');
         return;
       }
+      if (number && number.value.trim()) {
+        var numberValue = parseInt(number.value, 10);
+        var numberMin = number.getAttribute('min');
+        var numberMax = number.getAttribute('max');
+        if (numberMin !== '' && !isNaN(numberValue) && numberValue < parseInt(numberMin, 10)) {
+          e.preventDefault();
+          setError('Indique un nombre à partir de ' + numberMin + '.');
+          return;
+        }
+        if (numberMax !== '' && !isNaN(numberValue) && numberValue > parseInt(numberMax, 10)) {
+          e.preventDefault();
+          setError('Indique un nombre jusqu’à ' + numberMax + '.');
+          return;
+        }
+      }
       setError('');
+      submitStackIfNeeded();
     });
     form.querySelectorAll('input[name="answer"]').forEach(function(input) {
       input.addEventListener('input', function() { setError(''); });
@@ -2167,6 +2333,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initStepper('goals-stepper', 50, 300);
   initWinnerFinalistGuard();
   initScorerCombos();
+  initBonusStack();
   initBonusForms();
   initAdminBonusQuestionForms();
   initPush();

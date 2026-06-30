@@ -2,6 +2,7 @@ import json
 
 from app.scoring import (
     format_number_multi,
+    normalize_number_multi_config,
     number_multi_bonus_points,
     parse_number_multi,
 )
@@ -15,44 +16,77 @@ def _answers(mapping):
     ]
 
 
+CONFIG = json.dumps({
+    "locked_teams": ["Maroc"],
+    "min_count": 1,
+    "max_count": 8,
+    "part1_points": 3,
+    "team_step": 1,
+    "max_points": 10,
+}, ensure_ascii=False)
+
 # total = 4 (Maroc + 3 in-race teams qualified)
-CORRECT = json.dumps({"count": 4, "teams": ["Sénégal", "Égypte", "Côte d'Ivoire"]}, ensure_ascii=False)
+CORRECT = json.dumps(
+    {"count": 4, "teams": ["Maroc", "Sénégal", "Égypte", "Côte d'Ivoire"]},
+    ensure_ascii=False,
+)
 
 
 def test_perfect_count_and_teams():
-    a = _answers({1: (4, ["Sénégal", "Égypte", "Côte d'Ivoire"])})
-    assert number_multi_bonus_points(3, CORRECT, a) == {1: 6}  # 3 + 3
+    a = _answers({1: (4, ["Maroc", "Sénégal", "Égypte", "Côte d'Ivoire"])})
+    assert number_multi_bonus_points(10, CORRECT, a, CONFIG) == {1: 6}  # 3 + 3
 
 
 def test_count_right_one_wrong_team():
     # 2 good, 1 wrong → part1 3 + max(2-1,0)=1 → 4
-    a = _answers({1: (4, ["Sénégal", "Égypte", "Ghana"])})
-    assert number_multi_bonus_points(3, CORRECT, a) == {1: 4}
+    a = _answers({1: (4, ["Maroc", "Sénégal", "Égypte", "Ghana"])})
+    assert number_multi_bonus_points(10, CORRECT, a, CONFIG) == {1: 4}
 
 
 def test_count_wrong_teams_right():
     # count wrong → part1 0 ; 3 good → +3
-    a = _answers({1: (5, ["Sénégal", "Égypte", "Côte d'Ivoire"])})
-    assert number_multi_bonus_points(3, CORRECT, a) == {1: 3}
+    a = _answers({1: (5, ["Maroc", "Sénégal", "Égypte", "Côte d'Ivoire"])})
+    assert number_multi_bonus_points(10, CORRECT, a, CONFIG) == {1: 3}
 
 
 def test_team_part_floored_at_zero():
     # count wrong, all 3 selections wrong → 0 + max(0-3,0)=0
-    a = _answers({1: (7, ["Ghana", "Algérie", "RD Congo"])})
-    assert number_multi_bonus_points(3, CORRECT, a) == {1: 0}
+    a = _answers({1: (4, ["Maroc", "Ghana", "Algérie", "RD Congo"])})
+    assert number_multi_bonus_points(10, CORRECT, a, CONFIG) == {1: 3}
 
 
 def test_count_only_no_teams():
     # total = 1 (only Maroc), no teams to pick, count exact → 3
-    correct = json.dumps({"count": 1, "teams": []}, ensure_ascii=False)
-    a = _answers({1: (1, [])})
-    assert number_multi_bonus_points(3, correct, a) == {1: 3}
+    correct = json.dumps({"count": 1, "teams": ["Maroc"]}, ensure_ascii=False)
+    a = _answers({1: (1, ["Maroc"])})
+    assert number_multi_bonus_points(10, correct, a, CONFIG) == {1: 3}
+
+
+def test_locked_team_gives_no_free_team_point():
+    correct = json.dumps({"count": 4, "teams": ["Maroc", "Sénégal", "Égypte", "Ghana"]}, ensure_ascii=False)
+    a = _answers({1: (2, ["Maroc"])})
+    assert number_multi_bonus_points(10, correct, a, CONFIG) == {1: 0}
+
+
+def test_max_points_config_for_africa():
+    teams = ["Maroc", "Côte d'Ivoire", "RD Congo", "Sénégal", "Algérie", "Égypte", "Cap-Vert", "Ghana"]
+    cfg = normalize_number_multi_config(
+        10,
+        CONFIG,
+        teams,
+    )
+    assert cfg["max_points"] == 10
+    correct = json.dumps({"count": 8, "teams": teams}, ensure_ascii=False)
+    assert number_multi_bonus_points(10, correct, _answers({1: (8, teams)}), CONFIG) == {1: 10}
 
 
 def test_parse_and_format():
     parsed = parse_number_multi(CORRECT)
     assert parsed["count"] == 4
-    assert parsed["teams"] == {"Sénégal", "Égypte", "Côte d'Ivoire"}
+    assert parsed["teams"] == {"Maroc", "Sénégal", "Égypte", "Côte d'Ivoire"}
     assert parse_number_multi(None) == {"count": None, "teams": set()}
-    out = format_number_multi(CORRECT)
-    assert "4 au total" in out and "Sénégal" in out
+    out = format_number_multi(
+        CORRECT,
+        ["Maroc", "Côte d'Ivoire", "RD Congo", "Sénégal", "Algérie", "Égypte"],
+    )
+    assert out == "4 au total — Maroc, Côte d'Ivoire, Sénégal, Égypte"

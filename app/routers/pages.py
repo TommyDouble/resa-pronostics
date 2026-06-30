@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, HTTPException, Request, Form, UploadFile
 from PIL import Image, ImageOps
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.auth import (
     PARTICIPANT_COOKIE,
@@ -55,6 +55,8 @@ from app.scoring import (
     get_remontada,
     is_match_prediction_correct,
     is_match_score_exact,
+    normalize_closest_config,
+    normalize_number_multi_config,
     parse_bonus_number,
     parse_number_multi,
     parse_team_set,
@@ -460,6 +462,7 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
         "user_rank_label": _ordinal_fr(user_rank),
         "pending_bonus": pending_bonus,
         "active_nav": active_nav,
+        "phase_labels": {"pre_tournament": "Pré-tournoi", **PHASE_LABELS},
         "page_wide": True,
         "token": token,
         "client_now_ts": int(now_utc().timestamp()),
@@ -884,6 +887,17 @@ async def participant_home(request: Request, token: str):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "home")
         await _register_daily_connection(db, p["id"])
+        if ctx["pending_bonus"] > 0:
+            home_bonus_questions, pending_bonus_count = await _load_bonus_questions(
+                db,
+                p["id"],
+                _now_utc(),
+                only_pending=True,
+            )
+            ctx["home_bonus_questions"] = home_bonus_questions
+            ctx["pending_bonus"] = pending_bonus_count
+        else:
+            ctx["home_bonus_questions"] = []
         # Reveal du jour : proposé seulement quand le lot/nuit est complet (cf.
         # _reveal_window_data, qui renvoie None tant qu'on attend l'encodage).
         reveal = await _reveal_window_data(db, p["id"])
@@ -2047,56 +2061,129 @@ async def _build_profile(participant_id: int, db, viewer_id: int = None) -> dict
     }
 
 
+def _bonus_title_prompt(question_text: str) -> tuple[str, str]:
+    if " — " not in question_text:
+        return "", question_text
+    title, prompt = question_text.split(" — ", 1)
+    return title.strip(), prompt.strip()
+
+
+def _bonus_help_lead(q: dict, closest_config: dict | None = None) -> str:
+    text = q.get("question_text") or ""
+    if q.get("answer_type") == "number_multi":
+        return "Maroc compte déjà. Le total doit égaler les tuiles cochées."
+    if "Combien de nouvelles séances de tirs au but" in text:
+        return "Nouvelles séances uniquement, celles déjà jouées ne comptent pas."
+    if "Le Favori Qui Tremble" in text:
+        return "Réponds de 0 à 6. On regarde le premier but officiel du match."
+    if q.get("scoring_mode") == "closest_podium" and closest_config:
+        points = " / ".join(str(p) for p in closest_config["rank_points"] if p > 0)
+        return f"Le plus proche marque {points} pts."
+    return ""
+
+
+def _bonus_answer_placeholder(q: dict) -> str:
+    text = q.get("question_text") or ""
+    if q.get("answer_type") == "number_multi":
+        config = q.get("number_multi_config") or {}
+        return f"Total : {config.get('min_count', 1)} à {config.get('max_count', 8)} (Maroc inclus)"
+    if "Combien de nouvelles séances de tirs au but" in text:
+        return "0, 1, 2..."
+    if "Le Favori Qui Tremble" in text:
+        return "0 à 6"
+    return "Ta réponse..."
+
+
+async def _load_bonus_questions(db, participant_id: int, now: str, *, only_pending: bool = False):
+    rows = await db.execute(
+        """SELECT bq.*,
+                  ba.answer,
+                  ba.submitted_at as answered_at,
+                  s.points,
+                  s.calculated_at as scored_at
+           FROM bonus_questions bq
+           LEFT JOIN bonus_answers ba
+             ON ba.question_id = bq.id AND ba.participant_id = ?
+           LEFT JOIN scores s
+             ON s.bonus_question_id = bq.id AND s.participant_id = ?
+           WHERE bq.is_published=1
+           ORDER BY
+             CASE WHEN bq.deadline > ? THEN 0 ELSE 1 END,
+             bq.deadline ASC,
+             bq.id ASC""",
+        (participant_id, participant_id, now),
+    )
+    bonus_questions = []
+    pending_count = 0
+    for row in await rows.fetchall():
+        q = dict(row)
+        q["is_open"] = q["deadline"] > now
+        q["has_answer"] = q["answer"] is not None
+        q["has_score"] = q["points"] is not None
+        q["can_edit"] = q["is_open"] and not q["has_score"]
+        q["question_title"], q["question_prompt"] = _bonus_title_prompt(q["question_text"])
+        q["answer_min"] = None
+        q["answer_max"] = None
+        q["number_multi_config"] = None
+        closest_config = None
+        try:
+            opts = json.loads(q["options"]) if q.get("options") else []
+        except Exception:
+            opts = []
+        if q["answer_type"] == "multi_choice":
+            q["answer_set"] = parse_team_set(q["answer"])
+            q["answer_display"] = format_team_list(q["answer"])
+            q["correct_answer_display"] = format_team_list(q["correct_answer"])
+            q["locked_teams"] = set()
+            q["points_label"] = f"{q['points_value']} pts"
+        elif q["answer_type"] == "number_multi":
+            parsed = parse_number_multi(q["answer"])
+            number_config = normalize_number_multi_config(
+                q["points_value"],
+                q.get("scoring_config"),
+                opts,
+            )
+            q["answer_set"] = parsed["teams"]
+            q["answer_count"] = parsed["count"]
+            q["answer_display"] = format_number_multi(q["answer"], opts)
+            q["correct_answer_display"] = format_number_multi(q["correct_answer"], opts)
+            q["number_multi_config"] = number_config
+            q["locked_teams"] = set(number_config["locked_teams"])
+            q["points_label"] = f"{number_config['max_points']} pts max"
+        else:
+            q["answer_set"] = set()
+            q["answer_count"] = None
+            q["answer_display"] = q["answer"]
+            q["correct_answer_display"] = q["correct_answer"]
+            q["locked_teams"] = set()
+            if q["scoring_mode"] == "closest_podium":
+                closest_config = normalize_closest_config(
+                    q["points_value"],
+                    q.get("scoring_config"),
+                )
+                visible_points = [p for p in closest_config["rank_points"] if p > 0]
+                q["points_label"] = f"{' / '.join(str(p) for p in visible_points)} pts"
+                q["answer_min"] = closest_config.get("min_value")
+                q["answer_max"] = closest_config.get("max_value")
+            else:
+                q["points_label"] = f"{q['points_value']} pts"
+        q["help_lead"] = _bonus_help_lead(q, closest_config)
+        q["answer_placeholder"] = _bonus_answer_placeholder(q)
+        if q["is_open"] and not q["has_answer"]:
+            pending_count += 1
+        if only_pending and (not q["is_open"] or q["has_answer"]):
+            continue
+        bonus_questions.append(q)
+    return bonus_questions, pending_count
+
+
 @router.get("/p/{token}/bonus", response_class=HTMLResponse)
 async def bonus_page(request: Request, token: str):
     async with get_db() as db:
         ctx = await _get_participant_context(token, db, "bonus")
         p = ctx["participant"]
         now = _now_utc()
-        rows = await db.execute(
-            """SELECT bq.*,
-                      ba.answer,
-                      ba.submitted_at as answered_at,
-                      s.points,
-                      s.calculated_at as scored_at
-               FROM bonus_questions bq
-               LEFT JOIN bonus_answers ba
-                 ON ba.question_id = bq.id AND ba.participant_id = ?
-               LEFT JOIN scores s
-                 ON s.bonus_question_id = bq.id AND s.participant_id = ?
-               WHERE bq.is_published=1
-               ORDER BY
-                 CASE WHEN bq.deadline > ? THEN 0 ELSE 1 END,
-                 bq.deadline ASC,
-                 bq.id ASC""",
-            (p["id"], p["id"], now)
-        )
-        bonus_questions = []
-        pending_count = 0
-        for row in await rows.fetchall():
-            q = dict(row)
-            q["is_open"] = q["deadline"] > now
-            q["has_answer"] = q["answer"] is not None
-            q["has_score"] = q["points"] is not None
-            q["can_edit"] = q["is_open"] and not q["has_score"]
-            if q["answer_type"] == "multi_choice":
-                q["answer_set"] = parse_team_set(q["answer"])
-                q["answer_display"] = format_team_list(q["answer"])
-                q["correct_answer_display"] = format_team_list(q["correct_answer"])
-            elif q["answer_type"] == "number_multi":
-                parsed = parse_number_multi(q["answer"])
-                q["answer_set"] = parsed["teams"]
-                q["answer_count"] = parsed["count"]
-                q["answer_display"] = format_number_multi(q["answer"])
-                q["correct_answer_display"] = format_number_multi(q["correct_answer"])
-            else:
-                q["answer_set"] = set()
-                q["answer_count"] = None
-                q["answer_display"] = q["answer"]
-                q["correct_answer_display"] = q["correct_answer"]
-            if q["is_open"] and not q["has_answer"]:
-                pending_count += 1
-            bonus_questions.append(q)
+        bonus_questions, pending_count = await _load_bonus_questions(db, p["id"], now)
         pt_score_row = await db.execute(
             "SELECT COALESCE(SUM(points), 0) as total FROM pre_tournament_scores WHERE participant_id=?",
             (p["id"],),
@@ -2140,17 +2227,31 @@ async def submit_bonus(request: Request, token: str, question_id: int):
             answer = json.dumps(selected, ensure_ascii=False)
         elif q["answer_type"] == "number_multi":
             options = json.loads(q["options"]) if q["options"] else []
+            config = normalize_number_multi_config(
+                q["points_value"],
+                q["scoring_config"],
+                options,
+            )
+            valid_options = set(options)
+            locked = set(config["locked_teams"])
             raw_count = (form.get("count") or "").strip()
             try:
                 count = int(raw_count)
             except ValueError:
                 raise HTTPException(400, "Total invalide")
-            if count < 1 or count > 8:
-                raise HTTPException(400, "Total hors limites (1 à 8)")
-            teams = [v for v in form.getlist("teams") if v in options]
-            if len(set(teams)) != count - 1:
-                raise HTTPException(400, f"Sélectionne exactement {count - 1} équipe(s)")
-            answer = json.dumps({"count": count, "teams": teams}, ensure_ascii=False)
+            if count < config["min_count"] or count > config["max_count"]:
+                raise HTTPException(
+                    400,
+                    f"Total hors limites ({config['min_count']} à {config['max_count']})",
+                )
+            selected = {v for v in form.getlist("teams") if v in valid_options}
+            selected |= locked
+            if len(selected) != count:
+                raise HTTPException(400, f"Sélectionne exactement {count} équipe(s)")
+            ordered = [opt for opt in options if opt in selected]
+            for team in sorted(selected - set(ordered)):
+                ordered.append(team)
+            answer = json.dumps({"count": count, "teams": ordered}, ensure_ascii=False)
         else:
             answer = (form.get("answer") or "").strip()
             if not answer:
@@ -2159,8 +2260,20 @@ async def submit_bonus(request: Request, token: str, question_id: int):
                 options = json.loads(q["options"])
                 if answer not in options:
                     raise HTTPException(400, "Réponse invalide")
-            if q["answer_type"] == "number" and parse_bonus_number(answer) is None:
-                raise HTTPException(400, "Réponse numérique invalide")
+            if q["answer_type"] == "number":
+                parsed_number = parse_bonus_number(answer)
+                if parsed_number is None:
+                    raise HTTPException(400, "Réponse numérique invalide")
+                closest_config = normalize_closest_config(
+                    q["points_value"],
+                    q["scoring_config"],
+                )
+                min_value = closest_config.get("min_value")
+                max_value = closest_config.get("max_value")
+                if min_value is not None and parsed_number < min_value:
+                    raise HTTPException(400, f"Réponse trop basse (minimum {min_value})")
+                if max_value is not None and parsed_number > max_value:
+                    raise HTTPException(400, f"Réponse trop haute (maximum {max_value})")
         await db.execute(
             """INSERT INTO bonus_answers (participant_id, question_id, answer)
                VALUES (?,?,?)
@@ -2168,4 +2281,6 @@ async def submit_bonus(request: Request, token: str, question_id: int):
             (p["id"], question_id, answer)
         )
         await db.commit()
+    if request.headers.get("x-resa-bonus-stack") == "1":
+        return JSONResponse({"ok": True, "question_id": question_id})
     return RedirectResponse(url=f"/p/{token}/bonus", status_code=303)
