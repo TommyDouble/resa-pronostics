@@ -212,6 +212,19 @@ def _get_flashes(request: Request):
     return request.session.pop("flashes", [])
 
 
+def _compose_question_text(title: str, prompt: str) -> str:
+    """Recompose l'intitulé stocké à partir des deux champs admin.
+
+    Le rendu participant (et l'aperçu admin) découpe sur le premier « — »
+    pour afficher un titre court manuscrit + la question en police normale.
+    On rejoint donc avec ce même séparateur. Titre optionnel."""
+    title = (title or "").strip()
+    prompt = (prompt or "").strip()
+    if title and prompt:
+        return f"{title} — {prompt}"
+    return prompt or title
+
+
 def _normalize_bonus_options(answer_type: str, options_text: str):
     if answer_type not in ("choice", "multi_choice", "number_multi"):
         return None
@@ -1756,7 +1769,8 @@ async def bonus_admin(request: Request):
 
 @router.post("/bonus/create")
 async def create_bonus(request: Request,
-                       question_text: str = Form(...), phase: str = Form(...),
+                       question_text: str = Form(...), question_title: str = Form(default=""),
+                       phase: str = Form(...),
                        answer_type: str = Form(...), points_value: int = Form(...),
                        deadline: str = Form(...), timezone_name: str = Form(default=""),
                        options_text: str = Form(default=""),
@@ -1770,6 +1784,7 @@ async def create_bonus(request: Request,
                        closest_rank2_points: int = Form(default=4),
                        closest_rank3_points: int = Form(default=2)):
     await require_admin(request)
+    question_text = _compose_question_text(question_title, question_text)
     if answer_type not in {"choice", "number", "multi_choice", "number_multi"}:
         _flash(request, "Type de question bonus invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
@@ -1852,6 +1867,7 @@ async def update_bonus_question(
     request: Request,
     question_id: int,
     question_text: str = Form(...),
+    question_title: str = Form(default=""),
     phase: str = Form(...),
     answer_type: str = Form(default=""),
     points_value: int = Form(...),
@@ -1869,6 +1885,7 @@ async def update_bonus_question(
     closest_rank3_points: int = Form(default=2),
 ):
     await require_admin(request)
+    question_text = _compose_question_text(question_title, question_text)
     if phase not in BONUS_PHASES:
         _flash(request, "Phase de question bonus invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)

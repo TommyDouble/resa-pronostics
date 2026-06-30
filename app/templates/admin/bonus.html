@@ -156,7 +156,9 @@
       <div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(180px,.6fr);gap:10px;margin-bottom:10px;">
         <div>
           <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
-          <div class="field"><input type="text" name="question_text" placeholder="Ex: Combien de buts lors des 1/8 ?" required style="flex:1;"></div>
+          <div class="field" style="margin-bottom:6px;"><input type="text" name="question_title" placeholder="Titre court — ex: Afrique Mode Patron (optionnel)" style="flex:1;"></div>
+          <div class="field"><input type="text" name="question_text" placeholder="Question — ex: Combien d'équipes seront en 8es ?" required style="flex:1;"></div>
+          <div class="muted" style="font-size:11px;margin-top:4px;">Le titre court s'affiche en manuscrit ; la question en dessous, en police normale.</div>
         </div>
         <div>
           <div class="lbl" style="margin-bottom:5px;">Type</div>
@@ -317,9 +319,14 @@
   <form method="post" action="/admin/bonus/{{ q.id }}/update" data-admin-bonus-form data-bonus-initial-type="{{ q.answer_type }}" style="display:flex;flex-direction:column;gap:12px;">
     <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;">
       {{ step_head('1', 'Question', 'Modifie le libellé, la phase et la deadline.') }}
+      {% set _split = q.question_text.split(' — ', 1) %}
+      {% set _qtitle = _split[0] if _split|length > 1 else '' %}
+      {% set _qprompt = _split[1] if _split|length > 1 else q.question_text %}
       <div>
         <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
-        <div class="field"><input type="text" name="question_text" value="{{ q.question_text }}" required></div>
+        <div class="field" style="margin-bottom:6px;"><input type="text" name="question_title" value="{{ _qtitle }}" placeholder="Titre court — ex: Afrique Mode Patron (optionnel)"></div>
+        <div class="field"><input type="text" name="question_text" value="{{ _qprompt }}" required></div>
+        <div class="muted" style="font-size:11px;margin-top:4px;">Le titre court s'affiche en manuscrit ; la question en dessous, en police normale.</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px;">
         <div>

@@ -1141,10 +1141,9 @@ function initAdminBonusQuestionForms() {
       var deadlineDate = deadlineValue ? new Date(deadlineValue) : null;
       var isOpen = !deadlineDate || isNaN(deadlineDate.getTime()) || deadlineDate.getTime() > Date.now();
 
-      var qtext = (question && question.value.trim()) || 'Intitulé de la question';
-      var sepIdx = qtext.indexOf(' — ');
-      var titleMain = sepIdx >= 0 ? qtext.slice(0, sepIdx).trim() : '';
-      var titlePrompt = sepIdx >= 0 ? qtext.slice(sepIdx + 3).trim() : qtext;
+      var titleField = form.querySelector('input[name="question_title"]');
+      var titleMain = titleField ? titleField.value.trim() : '';
+      var titlePrompt = (question && question.value.trim()) || (titleMain ? '' : 'Intitulé de la question');
       var titleMainEl = preview.querySelector('[data-preview-title-main]');
       var titlePromptEl = preview.querySelector('[data-preview-title-prompt]');
       if (titleMainEl) { titleMainEl.textContent = titleMain; titleMainEl.hidden = !titleMain; }
