@@ -265,6 +265,8 @@ def test_home_bonus_stack_and_ajax_submit(client, admin_client, participant, mon
     assert "Afrique Mode Patron" in html
     assert "Encore des tirs au but ?" in html
     assert "au moins une nouvelle séance" not in html
+    # Bonus = action prioritaire ici → un seul CTA bonus, pas de doublon secondaire.
+    assert "home-cta-bonus" not in html
 
     resp = client.post(
         f"/p/{participant['token']}/bonus/{q['id']}",
@@ -317,6 +319,37 @@ def test_bonus_title_and_prompt_are_joined(client, admin_client):
     q2 = _fetch_question_by_text("Question sans titre court")
     assert q2 is not None
     assert q2["question_text"] == "Question sans titre court"
+
+
+def test_home_shows_secondary_bonus_cta_when_pretournament_is_priority(
+    client, participant, monkeypatch
+):
+    # Pré-tournoi ouvert & incomplet => action prioritaire = pré-tournoi.
+    async def open_pre_tournament(db, participant_id):
+        return {
+            "open": True,
+            "complete": False,
+            "filled_count": 0,
+            "question_count": 5,
+            "deadline": "2030-01-01T12:00:00",
+        }
+
+    monkeypatch.setattr(page_routes, "_pt_status", open_pre_tournament)
+
+    async def _publish_round32():
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE bonus_questions SET is_published=1, deadline=? WHERE phase=?",
+                ("2030-01-01T12:00:00", "round_of_32"),
+            )
+            await db.commit()
+
+    run(_publish_round32())
+    html = unescape(client.get(f"/p/{participant['token']}").text)
+    # L'action prioritaire (pré-tournoi) ET le CTA bonus secondaire coexistent.
+    assert "/pre-tournoi" in html
+    assert "home-cta-bonus" in html
+    assert "questions bonus attend" in html or "question bonus attend" in html
 
 
 def _publish_question(qid, deadline):
