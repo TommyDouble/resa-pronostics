@@ -252,7 +252,7 @@ body.tooltip-floating .tip[data-tip]::after {
   pointer-events: none;
   transform: translateY(3px);
   transition: opacity 120ms, transform 120ms;
-  z-index: 200;
+  z-index: 1200;
 }
 .floating-tooltip.show {
   opacity: 1;
@@ -707,6 +707,21 @@ body.bonus-stack-open {
 }
 .bonus-stack-card .bonus-answer-form {
   margin-top: 2px;
+}
+.bonus-stack-card:focus {
+  outline: none;
+}
+.bonus-stack-card:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.bonus-stack-card .field,
+.bonus-stack-card input[type="text"],
+.bonus-stack-card input[type="number"],
+.bonus-stack-card select,
+.bonus-stack-card textarea,
+.bonus-stack-card .textarea {
+  font-size: 16px;
 }
 .bonus-stack-done {
   padding: 34px 10px 10px;
@@ -1658,6 +1673,189 @@ img.av { object-fit: cover; display: block; }
   font-weight: 700;
 }
 .form-error.show { display: block; }
+
+/* ---- Admin: bonus and deadline operations ---- */
+.admin-bonus-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.admin-bonus-search {
+  min-width: min(100%, 280px);
+  flex: 1;
+}
+.admin-bonus-search input { width: 100%; }
+.admin-bonus-filterbar,
+.admin-bonus-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.admin-bonus-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+}
+.admin-bonus-item.card {
+  padding: 0;
+  overflow: hidden;
+}
+.admin-bonus-item > summary::-webkit-details-marker { display: none; }
+.admin-bonus-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.admin-bonus-summary:hover { background: var(--n50); }
+.admin-bonus-main {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.admin-bonus-main b {
+  font-size: 14px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.admin-bonus-main .muted {
+  font-size: 11px;
+  line-height: 1.35;
+}
+.admin-bonus-metrics {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: 52%;
+}
+.admin-bonus-chevron {
+  flex: none;
+  color: var(--n400);
+  font-size: 18px;
+  line-height: 1;
+  transition: transform .15s ease;
+}
+.admin-bonus-item[open] .admin-bonus-chevron { transform: rotate(180deg); }
+.admin-bonus-detail {
+  border-top: 1px solid var(--line);
+  padding: 14px;
+}
+.admin-deadlines .dash-card-head { align-items: flex-start; }
+.admin-deadline-section {
+  border-top: 1px solid var(--line);
+}
+.admin-deadline-section-title {
+  padding: 10px 12px 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--n600);
+  text-transform: uppercase;
+}
+.admin-deadline-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.admin-deadline-row:first-of-type { border-top: none; }
+label.admin-deadline-row {
+  cursor: pointer;
+}
+label.admin-deadline-row:hover {
+  background: var(--n50);
+}
+.admin-deadline-row.is-late {
+  background: #FFF7F7;
+}
+.admin-deadline-row.is-complete {
+  opacity: .74;
+}
+.admin-deadline-check {
+  min-width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.admin-deadline-check input {
+  width: 18px;
+  height: 18px;
+}
+.admin-deadline-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.admin-deadline-main b {
+  font-size: 13px;
+}
+.admin-deadline-main .muted,
+.admin-deadline-mini {
+  font-size: 11px;
+  line-height: 1.35;
+}
+.admin-deadline-mini {
+  color: var(--n400);
+  font-weight: 700;
+}
+.admin-deadline-stats {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.admin-deadline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.admin-deadline-preview {
+  border-left: 3px solid var(--primary);
+}
+
+@media (max-width: 760px) {
+  .admin-bonus-summary,
+  .admin-deadline-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .admin-bonus-summary {
+    flex-wrap: wrap;
+  }
+  .admin-bonus-metrics {
+    max-width: none;
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .admin-bonus-chevron {
+    margin-left: auto;
+  }
+  .admin-deadline-stats {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+  .admin-deadline-actions {
+    justify-content: stretch;
+  }
+  .admin-deadline-actions .btn {
+    width: 100%;
+  }
+}
 
 /* ---- Profile ---- */
 .phead { display: flex; gap: 13px; align-items: center; }

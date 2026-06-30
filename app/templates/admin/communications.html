@@ -4,6 +4,143 @@
 
 <h1>Communications</h1>
 
+<div class="card p0 admin-deadlines">
+  <div class="dash-card-head">
+    <div>
+      <div class="lbl">Deadlines d'encodage</div>
+      <div class="muted" style="font-size:11px;margin-top:2px;">
+        {{ deadline_participant_total }} participant(s) confirmé(s) · push {{ 'configuré' if push_is_enabled else 'non configuré' }}
+      </div>
+    </div>
+    {% if not push_is_enabled %}<span class="chip warn">VAPID manquant</span>{% endif %}
+  </div>
+
+  {% if not push_is_enabled %}
+  <div class="banner soft" style="margin:0 12px 12px;">
+    Les deadlines restent consultables, mais l'envoi groupé push nécessite les clés VAPID.
+  </div>
+  {% endif %}
+
+  <form method="post" action="/admin/communications/deadline-reminders/preview" data-deadline-reminder-form>
+    {% if deadline_late_groups %}
+    <div class="admin-deadline-section">
+      <div class="admin-deadline-section-title">Retards dépassés</div>
+      {% for group in deadline_late_groups %}
+      <div class="admin-deadline-row is-late">
+        <div class="admin-deadline-check"><span class="chip lock">dépassée</span></div>
+        <div class="admin-deadline-main">
+          <b><span data-local-utc="{{ group.deadline|utc_iso }}">{{ group.deadline|local_datetime }}</span></b>
+          <div class="muted">{{ group.event_summary }}</div>
+          <details>
+            <summary class="dash-details-toggle">{{ group.event_count }} évènement{{ 's' if group.event_count > 1 else '' }}</summary>
+            <div class="dash-names">
+              {% for event in group.events %}{{ event.label }}{% if not loop.last %} · {% endif %}{% endfor %}
+            </div>
+          </details>
+        </div>
+        <div class="admin-deadline-stats">
+          <span class="chip gr">{{ group.answered_count }}/{{ group.participant_total }} complet</span>
+          <span class="chip lock">{{ group.missing_count }} manquant{{ 's' if group.missing_count > 1 else '' }}</span>
+          <span class="chip gr">{{ group.push_reachable_count }} joignable{{ 's' if group.push_reachable_count > 1 else '' }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="admin-deadline-section">
+      <div class="admin-deadline-section-title">10 prochaines deadlines</div>
+      {% for group in deadline_future_groups %}
+      <label class="admin-deadline-row {{ 'is-complete' if group.missing_count == 0 else '' }}">
+        <span class="admin-deadline-check">
+          <input type="checkbox" name="deadline_keys" value="{{ group.key }}" data-deadline-check {% if not group.selectable %}disabled{% endif %}>
+        </span>
+        <span class="admin-deadline-main">
+          <b><span data-local-utc="{{ group.deadline|utc_iso }}">{{ group.deadline|local_datetime }}</span></b>
+          <span class="muted">{{ group.event_summary }}</span>
+          <span class="admin-deadline-mini">{{ group.event_count }} évènement{{ 's' if group.event_count > 1 else '' }}</span>
+        </span>
+        <span class="admin-deadline-stats">
+          <span class="chip {{ 'ok' if group.missing_count == 0 else 'gr' }}">{{ group.answered_count }}/{{ group.participant_total }} complet</span>
+          <span class="chip {{ 'ok' if group.missing_count == 0 else 'warn' }}">{{ group.missing_count }} manquant{{ 's' if group.missing_count > 1 else '' }}</span>
+          <span class="chip gr">{{ group.push_reachable_count }} joignable{{ 's' if group.push_reachable_count > 1 else '' }}</span>
+        </span>
+      </label>
+      {% else %}
+      <div class="muted" style="padding:12px;font-size:12px;">Aucune deadline future.</div>
+      {% endfor %}
+    </div>
+
+    <div class="admin-deadline-actions">
+      <span class="muted" style="font-size:11px;" data-deadline-selected-count>0 deadline sélectionnée</span>
+      <button type="submit" class="btn sm" data-deadline-preview-button disabled>Prévisualiser le rappel groupé</button>
+    </div>
+  </form>
+</div>
+
+{% if deadline_preview %}
+<div class="card admin-deadline-preview" id="deadline-preview">
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+    <div style="flex:1;min-width:220px;">
+      <div class="lbl">Confirmation rappel groupé</div>
+      <b style="font-size:13px;">{{ deadline_preview.participant_count }} participant(s) impacté(s)</b>
+      <div class="muted" style="font-size:11px;margin-top:2px;">
+        {{ deadline_preview.missing_item_count }} info(s) à encoder ·
+        {{ deadline_preview.reachable_count }} joignable(s) push ·
+        {{ deadline_preview.unreachable_count }} sans push actif
+      </div>
+    </div>
+    {% if deadline_preview.already_reminded_count %}
+    <span class="chip warn">{{ deadline_preview.already_reminded_count }} déjà relancé(s) aujourd'hui</span>
+    {% endif %}
+  </div>
+
+  <div style="border:1.5px solid var(--n300);border-radius:var(--r-sm);overflow:hidden;margin-bottom:12px;">
+    <table class="tbl" data-admin-table data-admin-search-placeholder="⌕ Filtrer destinataires...">
+      <thead>
+        <tr>
+          <th data-sort="text">Participant</th>
+          <th data-sort="number">Infos</th>
+          <th data-sort="text">Push</th>
+          <th data-sort="text">Détail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in deadline_preview.participants %}
+        <tr>
+          <td>
+            <b>{{ p.name }}</b>
+            {% if p.has_today_reminder %}<div class="muted" style="font-size:10px;">déjà relancé aujourd'hui</div>{% endif %}
+          </td>
+          <td class="s" data-sort-value="{{ p.missing_count }}">{{ p.missing_count }}</td>
+          <td>
+            {% if p.subscription_count > 0 %}
+            <span class="chip ok">{{ p.subscription_count }} appareil{{ 's' if p.subscription_count > 1 else '' }}</span>
+            {% else %}
+            <span class="chip lock">non joignable</span>
+            {% endif %}
+          </td>
+          <td>{{ p.missing_preview }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <form method="post" action="/admin/communications/deadline-reminders/send">
+    {% for key in deadline_preview.selected_deadline_keys %}
+    <input type="hidden" name="deadline_keys" value="{{ key }}">
+    {% endfor %}
+    <div class="row2">
+      <a href="/admin/communications" class="btn ghost sm">Annuler</a>
+      <button type="submit" class="btn sm" {% if not push_is_enabled or deadline_preview.reachable_count == 0 %}disabled{% endif %}>
+        Envoyer {{ deadline_preview.reachable_count }} rappel{{ 's' if deadline_preview.reachable_count > 1 else '' }} push
+      </button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
 <div class="card">
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
     <div style="flex:1;">

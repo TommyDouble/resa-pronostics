@@ -65,6 +65,22 @@ def _add_bonus_answer(question_id, name, answer):
     return run(_add())
 
 
+def _insert_bonus_question(text, *, deadline, is_published=1, correct_answer=None):
+    async def _insert():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO bonus_questions
+                   (question_text, phase, answer_type, options, points_value,
+                    correct_answer, scoring_mode, is_published, deadline)
+                   VALUES (?, 'group', 'choice', '["Oui","Non"]', 6, ?, 'exact', ?, ?)""",
+                (text, correct_answer, is_published, deadline),
+            )
+            await db.commit()
+            return cursor.lastrowid
+
+    return run(_insert())
+
+
 def test_seeded_j3_bonus_drafts_visible_admin_hidden_participant(admin_client, participant):
     _ensure_j3_drafts()
     admin_html = unescape(admin_client.get("/admin/bonus").text)
@@ -132,6 +148,52 @@ def test_admin_can_prepare_draft_then_publish(admin_client):
         assert question["is_published"] == 1
     finally:
         _delete_bonus(question["id"])
+
+
+def test_admin_bonus_uses_compact_status_accordions(admin_client):
+    draft = f"Bonus brouillon UI {uuid.uuid4()}"
+    open_q = f"Bonus ouvert UI {uuid.uuid4()}"
+    to_score = f"Bonus à corriger UI {uuid.uuid4()}"
+    scored = f"Bonus scoré UI {uuid.uuid4()}"
+    ids = [
+        _insert_bonus_question(draft, deadline="2035-01-01T12:00:00", is_published=0),
+        _insert_bonus_question(open_q, deadline="2035-01-02T12:00:00"),
+        _insert_bonus_question(to_score, deadline="2020-01-01T12:00:00"),
+        _insert_bonus_question(scored, deadline="2020-01-02T12:00:00", correct_answer="Oui"),
+    ]
+
+    try:
+        html = unescape(admin_client.get("/admin/bonus").text)
+
+        assert "data-admin-bonus-controls" in html
+        assert "data-admin-bonus-filter=\"draft\"" in html
+        assert "data-admin-bonus-filter=\"open\"" in html
+        assert "data-admin-bonus-filter=\"to_score\"" in html
+        assert "data-admin-bonus-filter=\"scored\"" in html
+        assert "admin-bonus-summary" in html
+        assert "data-status=\"draft\"" in html
+        assert "data-status=\"open\"" in html
+        assert "data-status=\"to_score\"" in html
+        assert "data-status=\"scored\"" in html
+        assert "Brouillon" in html
+        assert "Ouverte" in html
+        assert "À corriger" in html
+        assert "Scorée" in html
+        assert "répondu" in html
+        assert "Aperçu participant" in html
+
+        draft_start = html.index('data-status="draft"')
+        to_score_start = html.index('data-status="to_score"')
+        open_start = html.index('data-status="open"')
+        draft_tag = html[draft_start:html.index(">", draft_start)]
+        to_score_tag = html[to_score_start:html.index(">", to_score_start)]
+        open_tag = html[open_start:html.index(">", open_start)]
+        assert " open" in draft_tag
+        assert " open" in to_score_tag
+        assert " open" not in open_tag
+    finally:
+        for question_id in ids:
+            _delete_bonus(question_id)
 
 
 def test_unpublished_bonus_cannot_be_submitted_directly(admin_client, participant):

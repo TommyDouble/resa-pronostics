@@ -281,7 +281,11 @@ function initFloatingTooltips() {
   function placeTooltip(trigger) {
     var kind = renderTooltip(trigger);
     if (!kind) return;
+    if (active && active !== trigger) {
+      active.setAttribute('aria-expanded', 'false');
+    }
     active = trigger;
+    active.setAttribute('aria-expanded', 'true');
     bubble.style.maxWidth = Math.min(kind === 'rich' ? 340 : 300, window.innerWidth - 24) + 'px';
     bubble.style.left = '12px';
     bubble.style.top = '12px';
@@ -304,12 +308,22 @@ function initFloatingTooltips() {
 
   function hideTooltip(trigger) {
     if (trigger && active && trigger !== active) return;
+    if (active) active.setAttribute('aria-expanded', 'false');
     active = null;
     bubble.classList.remove('show');
   }
 
+  function toggleTooltip(trigger) {
+    if (active === trigger && bubble.classList.contains('show')) {
+      hideTooltip(trigger);
+      return;
+    }
+    placeTooltip(trigger);
+  }
+
   triggers.forEach(function(trigger) {
     trigger.setAttribute('aria-describedby', bubble.id);
+    trigger.setAttribute('aria-expanded', 'false');
     trigger.addEventListener('mouseenter', function() { placeTooltip(trigger); });
     trigger.addEventListener('focus', function() { placeTooltip(trigger); });
     trigger.addEventListener('mouseleave', function() { hideTooltip(trigger); });
@@ -317,11 +331,24 @@ function initFloatingTooltips() {
     trigger.addEventListener('click', function(e) {
       e.preventDefault();
       e.stopPropagation();
-      placeTooltip(trigger);
+      toggleTooltip(trigger);
     });
+    trigger.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleTooltip(trigger);
+    }, { passive: false });
   });
 
-  document.addEventListener('click', function() { hideTooltip(); });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') hideTooltip();
+  });
+  document.addEventListener('touchstart', function() {
+    hideTooltip();
+  }, { passive: true });
+  document.addEventListener('click', function() {
+    hideTooltip();
+  });
   window.addEventListener('resize', function() {
     if (active) placeTooltip(active);
   });
@@ -764,8 +791,8 @@ function initBonusStack() {
   function focusActive() {
     var active = cards[activeIndex];
     if (!active) return;
-    var target = active.querySelector('input:not([type="hidden"]):not(:disabled), button, a');
-    if (target && target.focus) target.focus({ preventScroll: true });
+    if (!active.hasAttribute('tabindex')) active.setAttribute('tabindex', '-1');
+    if (active.focus) active.focus({ preventScroll: true });
   }
 
   function updateDeck() {
@@ -1462,6 +1489,85 @@ function initAdminTables() {
 
     if (searchInput) searchInput.addEventListener('input', applyFilter);
     applyFilter();
+  });
+}
+
+/* ---- Admin: bonus accordion list ---- */
+function initAdminBonusList() {
+  var controls = document.querySelector('[data-admin-bonus-controls]');
+  if (!controls) return;
+  var items = Array.prototype.slice.call(document.querySelectorAll('[data-admin-bonus-item]'));
+  var search = controls.querySelector('[data-admin-bonus-search]');
+  var filters = Array.prototype.slice.call(controls.querySelectorAll('[data-admin-bonus-filter]'));
+  var empty = document.querySelector('[data-admin-bonus-empty]');
+  var openBtn = controls.querySelector('[data-admin-bonus-open]');
+  var closeBtn = controls.querySelector('[data-admin-bonus-close]');
+  var activeStatus = 'all';
+
+  function setActiveButton() {
+    filters.forEach(function(btn) {
+      var active = btn.dataset.adminBonusFilter === activeStatus;
+      btn.classList.toggle('ghost', !active);
+    });
+  }
+
+  function itemMatches(item, query) {
+    var statusOk = activeStatus === 'all' || item.dataset.status === activeStatus;
+    var text = (item.dataset.search || item.textContent || '').toLowerCase();
+    return statusOk && (!query || text.indexOf(query) !== -1);
+  }
+
+  function update() {
+    var query = search ? search.value.trim().toLowerCase() : '';
+    var visible = 0;
+    items.forEach(function(item) {
+      var match = itemMatches(item, query);
+      item.hidden = !match;
+      if (match) visible += 1;
+    });
+    if (empty) empty.hidden = visible !== 0;
+  }
+
+  filters.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      activeStatus = btn.dataset.adminBonusFilter || 'all';
+      setActiveButton();
+      update();
+    });
+  });
+  if (search) search.addEventListener('input', update);
+  if (openBtn) {
+    openBtn.addEventListener('click', function() {
+      items.forEach(function(item) { if (!item.hidden) item.open = true; });
+    });
+  }
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function() {
+      items.forEach(function(item) { if (!item.hidden) item.open = false; });
+    });
+  }
+  setActiveButton();
+  update();
+}
+
+/* ---- Admin: grouped deadline reminders ---- */
+function initDeadlineReminderForm() {
+  document.querySelectorAll('[data-deadline-reminder-form]').forEach(function(form) {
+    var checks = Array.prototype.slice.call(form.querySelectorAll('[data-deadline-check]'));
+    var count = form.querySelector('[data-deadline-selected-count]');
+    var submit = form.querySelector('[data-deadline-preview-button]');
+    if (!checks.length || !submit) return;
+
+    function update() {
+      var selected = checks.filter(function(check) { return check.checked && !check.disabled; }).length;
+      if (count) {
+        count.textContent = selected + ' deadline' + (selected > 1 ? 's' : '') + ' sélectionnée' + (selected > 1 ? 's' : '');
+      }
+      submit.disabled = selected === 0;
+    }
+
+    checks.forEach(function(check) { check.addEventListener('change', update); });
+    update();
   });
 }
 
@@ -2368,6 +2474,8 @@ document.addEventListener('DOMContentLoaded', function() {
   initFavoriteToggles();
   initResultForms();
   initAdminTables();
+  initAdminBonusList();
+  initDeadlineReminderForm();
   initAdminPushTarget();
   initDashboardRefresh(60);
   initCsvImport();

@@ -1,5 +1,6 @@
 import json
 from html import unescape
+from pathlib import Path
 
 import app.routers.pages as page_routes
 
@@ -279,6 +280,34 @@ def test_home_bonus_stack_and_ajax_submit(client, admin_client, participant, mon
     html_after = unescape(client.get(f"/p/{participant['token']}").text)
     assert "questions bonus attend" in html_after
     assert f'data-question-id="{q["id"]}"' not in html_after
+
+
+def test_bonus_stack_mobile_input_and_tooltip_contract():
+    css = Path("app/static/css/resa.css").read_text()
+    js = Path("app/static/js/resa.js").read_text()
+
+    tooltip_css = css.split(".floating-tooltip {", 1)[1].split("}", 1)[0]
+    assert "z-index: 1200;" in tooltip_css
+
+    stack_css = css.split(".bonus-stack-card .bonus-answer-form", 1)[1].split(
+        ".bonus-stack-done", 1
+    )[0]
+    assert '.bonus-stack-card input[type="number"]' in stack_css
+    assert "font-size: 16px;" in stack_css
+
+    tooltip_js = js.split("function initFloatingTooltips()", 1)[1].split(
+        "/* ---- Prediction anchor", 1
+    )[0]
+    assert "aria-expanded" in tooltip_js
+    assert "toggleTooltip(trigger)" in tooltip_js
+    assert "touchstart" in tooltip_js
+
+    focus_js = js.split("function focusActive()", 1)[1].split(
+        "function updateDeck()", 1
+    )[0]
+    assert "active.focus({ preventScroll: true });" in focus_js
+    assert "querySelector('input" not in focus_js
+    assert "querySelector('button" not in focus_js
 
 
 def test_bonus_title_and_prompt_are_joined(client, admin_client):

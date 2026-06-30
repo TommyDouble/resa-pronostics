@@ -290,31 +290,50 @@
 <h2 style="font-family:var(--display);font-weight:700;font-size:16px;color:var(--n600);margin:4px 0 8px;">
   Questions créées
 </h2>
+<div class="admin-bonus-controls" data-admin-bonus-controls>
+  <div class="field admin-bonus-search">
+    <input type="search" placeholder="Filtrer par question, statut, phase..." data-admin-bonus-search>
+  </div>
+  <div class="admin-bonus-filterbar" role="group" aria-label="Filtrer les questions bonus">
+    <button type="button" class="btn sm" data-admin-bonus-filter="all">Toutes · {{ questions|length }}</button>
+    <button type="button" class="btn ghost sm" data-admin-bonus-filter="draft">Brouillons · {{ bonus_status_counts.draft }}</button>
+    <button type="button" class="btn ghost sm" data-admin-bonus-filter="open">Ouvertes · {{ bonus_status_counts.open }}</button>
+    <button type="button" class="btn ghost sm" data-admin-bonus-filter="to_score">À corriger · {{ bonus_status_counts.to_score }}</button>
+    <button type="button" class="btn ghost sm" data-admin-bonus-filter="scored">Scorées · {{ bonus_status_counts.scored }}</button>
+  </div>
+  <div class="admin-bonus-actions">
+    <button type="button" class="btn ghost sm" data-admin-bonus-open>Tout ouvrir</button>
+    <button type="button" class="btn ghost sm" data-admin-bonus-close>Tout replier</button>
+  </div>
+</div>
+<div class="muted admin-bonus-empty" data-admin-bonus-empty hidden>Aucune question ne correspond.</div>
 {% for q in questions %}
 {% set is_closest = q.scoring_mode == 'closest_podium' %}
 {% set type_label = 'nombre le plus proche' if is_closest else {'choice': 'choix unique', 'multi_choice': 'choix multiple', 'number_multi': 'nombre + équipes', 'number': 'numérique', 'text': 'texte libre'}.get(q.answer_type, q.answer_type) %}
 {% set bar_label = q.points_label if q.points_label is defined else ((q.closest_rank_points|join(' / ')) ~ ' pts' if is_closest else q.points_value ~ ' pts') %}
-<div class="card">
-  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
-    <div style="flex:1;min-width:240px;">
-      <b style="font-size:14px;">{{ q.question_text }}</b>
-      <div class="muted" style="font-size:11px;margin-top:3px;">
+<details class="card admin-bonus-item" data-admin-bonus-item data-status="{{ q.status_key }}" data-search="{{ q.search_text|lower|e }}" {{ 'open' if q.default_open else '' }}>
+  <summary class="admin-bonus-summary">
+    <span class="admin-bonus-main">
+      <b>{{ q.question_text }}</b>
+      <span class="muted">
         {{ phase_labels.get(q.phase, q.phase) }} · {{ type_label }} · barème {{ bar_label }} · deadline:
         <span data-local-utc="{{ q.deadline|utc_iso }}">{{ q.deadline|local_datetime }}</span>
-      </div>
-    </div>
-    <span class="chip {{ 'ok' if q.is_published else 'warn' }}">
-      {{ 'Publié' if q.is_published else 'Brouillon' }}
+      </span>
     </span>
-    <span class="chip {{ 'ok' if q.correct_answer else 'warn' }}">
-      {{ q.scored_answer_count }}/{{ q.answer_count }} avec points
+    <span class="admin-bonus-metrics">
+      <span class="chip {{ q.status_class }}">{{ q.status_label }}</span>
+      <span class="chip gr">{{ q.answer_count }}/{{ q.participant_total }} répondu</span>
+      <span class="chip {{ 'ok' if q.correct_answer else 'warn' }}">{{ q.scored_answer_count }}/{{ q.answer_count }} avec points</span>
+      {% if q.correct_answer %}
+      <span class="chip ok">Réponse: {{ q.correct_answer_display or q.correct_answer }}</span>
+      {% else %}
+      <span class="chip gr">Réponse non définie</span>
+      {% endif %}
     </span>
-    {% if q.correct_answer %}
-    <span class="chip ok">Réponse: {{ q.correct_answer_display or q.correct_answer }}</span>
-    {% else %}
-    <span class="chip gr">Réponse non définie</span>
-    {% endif %}
-  </div>
+    <span class="admin-bonus-chevron" aria-hidden="true">⌄</span>
+  </summary>
+
+  <div class="admin-bonus-detail">
 
   <form method="post" action="/admin/bonus/{{ q.id }}/update" data-admin-bonus-form data-bonus-initial-type="{{ q.answer_type }}" style="display:flex;flex-direction:column;gap:12px;">
     <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;">
@@ -590,7 +609,8 @@
     <div class="muted" style="font-size:12px;">Aucune réponse pour cette question.</div>
     {% endif %}
   </div>
-</div>
+  </div>
+</details>
 {% endfor %}
 {% else %}
 <div class="card" style="text-align:center;color:var(--n600);">
