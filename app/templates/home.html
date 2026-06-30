@@ -48,12 +48,30 @@
   <div class="card home-cta">
     <div>
       <div class="lbl">Prochaine action</div>
-      <p>{{ pending_bonus }} question{{ 's' if pending_bonus > 1 else '' }} bonus attend{{ 'ent' if pending_bonus > 1 else '' }} ta réponse.</p>
+      <p data-bonus-cta-text>{{ pending_bonus }} question{{ 's' if pending_bonus > 1 else '' }} bonus attend{{ 'ent' if pending_bonus > 1 else '' }} ta réponse.</p>
     </div>
     {% if home_bonus_questions|default([]) %}
     <button type="button" class="btn sm" data-bonus-stack-open>Répondre</button>
     {% else %}
     <a href="/p/{{ token }}/bonus" class="btn sm">Répondre</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# CTA bonus secondaire : surface aussi les questions bonus quand l'action
+     prioritaire est un match imminent ou le pré-tournoi (sinon le bonus est
+     déjà l'action principale ci-dessus). #}
+  {% set bonus_is_primary = not urgency and not (pt_open and not pt_complete) and pending_bonus > 0 %}
+  {% if pending_bonus > 0 and not bonus_is_primary %}
+  <div class="card home-cta home-cta-bonus">
+    <div>
+      <div class="lbl">Questions bonus</div>
+      <p data-bonus-cta-text>{{ pending_bonus }} question{{ 's' if pending_bonus > 1 else '' }} bonus attend{{ 'ent' if pending_bonus > 1 else '' }} ta réponse.</p>
+    </div>
+    {% if home_bonus_questions|default([]) %}
+    <button type="button" class="btn sm ghost" data-bonus-stack-open>Répondre</button>
+    {% else %}
+    <a href="/p/{{ token }}/bonus" class="btn sm ghost">Répondre</a>
     {% endif %}
   </div>
   {% endif %}

@@ -745,17 +745,20 @@ function initBonusStack() {
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function setHomePending(remaining) {
-    var cta = document.querySelector('.home-cta p');
     openers.forEach(function(btn) {
       btn.textContent = remaining <= 0 ? 'Voir Bonus' : 'Répondre';
     });
-    if (!cta) return;
-    if (remaining <= 0) {
-      cta.textContent = 'Tu es à jour sur les bonus.';
-      return;
-    }
-    cta.textContent = remaining + ' question' + (remaining > 1 ? 's' : '') +
-      ' bonus attend' + (remaining > 1 ? 'ent' : '') + ' ta réponse.';
+    // Cible uniquement les textes des cartes bonus (jamais la carte pré-tournoi
+    // ou match qui peut coexister avec le CTA bonus secondaire).
+    var ctas = document.querySelectorAll('[data-bonus-cta-text]');
+    ctas.forEach(function(cta) {
+      if (remaining <= 0) {
+        cta.textContent = 'Tu es à jour sur les bonus.';
+        return;
+      }
+      cta.textContent = remaining + ' question' + (remaining > 1 ? 's' : '') +
+        ' bonus attend' + (remaining > 1 ? 'ent' : '') + ' ta réponse.';
+    });
   }
 
   function focusActive() {

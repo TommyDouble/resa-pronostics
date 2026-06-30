@@ -824,6 +824,10 @@ body.bonus-stack-open {
   line-height: 1.4;
 }
 .home-cta .btn { flex: none; }
+.home-cta-bonus {
+  border-left: 3px solid var(--primary);
+  background: var(--paper);
+}
 
 /* ---- Rules page ---- */
 .rules-page { gap: 12px; }
