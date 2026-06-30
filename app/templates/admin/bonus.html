@@ -60,30 +60,44 @@
           <span>Deadline dépassée — aucune réponse enregistrée.</span>
         </div>
       </div>
+      {% set opts = options_text.split('\n') if options_text else [] %}
+      {% set wants_number = answer_type in ('number', 'number_multi') %}
+      {% set wants_badges = answer_type == 'number_multi' %}
+      {% set wants_choice = answer_type in ('choice', 'multi_choice') %}
+      {% set choice_input = 'checkbox' if answer_type == 'multi_choice' else 'radio' %}
       <div data-preview-answer-area style="{{ '' if can_edit else 'display:none;' }}">
-        <div data-preview-choice style="{{ 'display:none;' if answer_type == 'number' else '' }}">
+        <div data-preview-number style="{{ '' if wants_number else 'display:none;' }}">
+          <div class="field" style="margin-bottom:14px;">
+            <input type="number" placeholder="{{ 'Total…' if wants_badges else 'Ta réponse…' }}" inputmode="numeric" disabled>
+          </div>
+        </div>
+        <div data-preview-badges data-preview-input="{{ choice_input }}" style="{{ '' if wants_badges else 'display:none;' }}">
+          <div data-preview-badges-list style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+            {% for opt in opts if opt.strip() %}
+            <span class="nm-badge" style="cursor:default;">{{ opt.strip() }}</span>
+            {% else %}
+            <span class="nm-badge" style="cursor:default;">Équipe 1</span>
+            <span class="nm-badge" style="cursor:default;">Équipe 2</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div data-preview-choice data-preview-input="{{ choice_input }}" style="{{ '' if wants_choice else 'display:none;' }}">
           <div data-preview-choice-list style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
-            {% set opts = options_text.split('\n') if options_text else [] %}
             {% for opt in opts if opt.strip() %}
             <label style="display:flex;align-items:center;gap:8px;cursor:default;">
-              <input type="radio" disabled>
+              <input type="{{ choice_input }}" disabled>
               <span>{{ opt.strip() }}</span>
             </label>
             {% else %}
             <label style="display:flex;align-items:center;gap:8px;cursor:default;">
-              <input type="radio" disabled>
+              <input type="{{ choice_input }}" disabled>
               <span>Option 1</span>
             </label>
             <label style="display:flex;align-items:center;gap:8px;cursor:default;">
-              <input type="radio" disabled>
+              <input type="{{ choice_input }}" disabled>
               <span>Option 2</span>
             </label>
             {% endfor %}
-          </div>
-        </div>
-        <div data-preview-number style="{{ '' if answer_type == 'number' else 'display:none;' }}">
-          <div class="field" style="margin-bottom:14px;">
-            <input type="number" placeholder="Ta réponse…" inputmode="numeric" disabled>
           </div>
         </div>
         <button class="btn full" type="button" disabled style="opacity:.85;">Valider ma réponse</button>
