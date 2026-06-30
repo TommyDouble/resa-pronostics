@@ -9,7 +9,7 @@
     <div>
       <div class="lbl">Deadlines d'encodage</div>
       <div class="muted" style="font-size:11px;margin-top:2px;">
-        {{ deadline_participant_total }} participant(s) confirmé(s) · push {{ 'configuré' if push_is_enabled else 'non configuré' }}
+        {{ deadline_participant_total }} participant(s) confirmé(s) · push {{ 'configuré' if push_is_enabled else 'non configuré' }} · email manuel disponible
       </div>
     </div>
     {% if not push_is_enabled %}<span class="chip warn">VAPID manquant</span>{% endif %}
@@ -17,7 +17,7 @@
 
   {% if not push_is_enabled %}
   <div class="banner soft" style="margin:0 12px 12px;">
-    Les deadlines restent consultables, mais l'envoi groupé push nécessite les clés VAPID.
+    Les deadlines restent consultables. Le push nécessite les clés VAPID, mais un envoi email forcé reste possible après prévisualisation.
   </div>
   {% endif %}
 
@@ -71,6 +71,16 @@
       {% endfor %}
     </div>
 
+    <div class="admin-deadline-options">
+      <label class="admin-deadline-email-toggle">
+        <input type="checkbox" name="force_email" value="1">
+        <span>
+          <b>Forcer aussi l'envoi email</b>
+          <small>Le push reste envoyé aux appareils actifs ; l'email part en plus vers tous les participants impactés.</small>
+        </span>
+      </label>
+    </div>
+
     <div class="admin-deadline-actions">
       <span class="muted" style="font-size:11px;" data-deadline-selected-count>0 deadline sélectionnée</span>
       <button type="submit" class="btn sm" data-deadline-preview-button disabled>Prévisualiser le rappel groupé</button>
@@ -87,13 +97,50 @@
       <div class="muted" style="font-size:11px;margin-top:2px;">
         {{ deadline_preview.missing_item_count }} info(s) à encoder ·
         {{ deadline_preview.reachable_count }} joignable(s) push ·
-        {{ deadline_preview.unreachable_count }} sans push actif
+        {{ deadline_preview.unreachable_count }} sans push actif{% if deadline_preview.force_email %} ·
+        {{ deadline_preview.email_target_count }} email(s) forcé(s){% endif %}
       </div>
     </div>
+    {% if deadline_preview.force_email %}
+    <span class="chip warn">email forcé</span>
+    {% endif %}
     {% if deadline_preview.already_reminded_count %}
     <span class="chip warn">{{ deadline_preview.already_reminded_count }} déjà relancé(s) aujourd'hui</span>
     {% endif %}
   </div>
+
+  {% if deadline_preview.message_preview %}
+  <div class="admin-message-preview">
+    <div class="admin-message-preview-head">
+      <div>
+        <div class="lbl">Contenu prévisualisé</div>
+        <div class="muted" style="font-size:11px;">Exemple personnalisé pour {{ deadline_preview.message_preview.sample_name }}</div>
+      </div>
+      <span class="chip gr">adapté par participant</span>
+    </div>
+    <div class="grid2">
+      <div class="admin-message-box">
+        <b>Push</b>
+        <small>Titre</small>
+        <p>{{ deadline_preview.message_preview.push_title }}</p>
+        <small>Message</small>
+        <p>{{ deadline_preview.message_preview.push_body }}</p>
+      </div>
+      <div class="admin-message-box">
+        <b>Email</b>
+        {% if deadline_preview.force_email %}
+        <small>Sujet</small>
+        <p>{{ deadline_preview.message_preview.email_subject }}</p>
+        <small>Texte</small>
+        <pre>{{ deadline_preview.message_preview.email_text }}</pre>
+        {% else %}
+        <p class="muted">Non envoyé pour cette prévisualisation.</p>
+        <small>Coche “Forcer aussi l'envoi email” avant de prévisualiser pour voir le contenu email.</small>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <div style="border:1.5px solid var(--n300);border-radius:var(--r-sm);overflow:hidden;margin-bottom:12px;">
     <table class="tbl" data-admin-table data-admin-search-placeholder="⌕ Filtrer destinataires...">
@@ -102,6 +149,7 @@
           <th data-sort="text">Participant</th>
           <th data-sort="number">Infos</th>
           <th data-sort="text">Push</th>
+          <th data-sort="text">Email</th>
           <th data-sort="text">Détail</th>
         </tr>
       </thead>
@@ -120,6 +168,7 @@
             <span class="chip lock">non joignable</span>
             {% endif %}
           </td>
+          <td>{{ p.email }}</td>
           <td>{{ p.missing_preview }}</td>
         </tr>
         {% endfor %}
@@ -131,10 +180,18 @@
     {% for key in deadline_preview.selected_deadline_keys %}
     <input type="hidden" name="deadline_keys" value="{{ key }}">
     {% endfor %}
+    <input type="hidden" name="force_email" value="{{ '1' if deadline_preview.force_email else '0' }}">
+    {% set can_send_deadline = (push_is_enabled and deadline_preview.reachable_count > 0) or (deadline_preview.force_email and deadline_preview.participant_count > 0) %}
     <div class="row2">
       <a href="/admin/communications" class="btn ghost sm">Annuler</a>
-      <button type="submit" class="btn sm" {% if not push_is_enabled or deadline_preview.reachable_count == 0 %}disabled{% endif %}>
+      <button type="submit" class="btn sm" {% if not can_send_deadline %}disabled{% endif %}>
+        {% if deadline_preview.force_email and push_is_enabled %}
+        Envoyer {{ deadline_preview.reachable_count }} push + {{ deadline_preview.email_target_count }} email{{ 's' if deadline_preview.email_target_count > 1 else '' }}
+        {% elif deadline_preview.force_email %}
+        Envoyer {{ deadline_preview.email_target_count }} email{{ 's' if deadline_preview.email_target_count > 1 else '' }}
+        {% else %}
         Envoyer {{ deadline_preview.reachable_count }} rappel{{ 's' if deadline_preview.reachable_count > 1 else '' }} push
+        {% endif %}
       </button>
     </div>
   </form>
