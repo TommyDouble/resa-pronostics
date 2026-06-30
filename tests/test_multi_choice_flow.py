@@ -53,7 +53,7 @@ def test_round_of_32_drafts_seeded(client):
     assert favori_config["min_value"] == 0
     assert favori_config["max_value"] == 6
     assert favori["help_text"] and "but contre son camp" in favori["help_text"]
-    assert "5 pts" in favori["help_text"]
+    assert "points de la question" in favori["help_text"]
 
     assert _fetch_question_by_text("au moins une nouvelle séance") is None
 
@@ -65,7 +65,7 @@ def test_round_of_32_drafts_seeded(client):
     tab_config = json.loads(tab_count["scoring_config"])
     assert tab_config["min_value"] == 0
     assert tab_config["max_value"] == 13
-    assert "5 pts" in tab_count["help_text"]
+    assert "points de la question" in tab_count["help_text"]
 
 
 def test_multi_choice_end_to_end(client, admin_client, participant):
@@ -503,6 +503,53 @@ def test_round32_numeric_bonus_only_exact_answers_score(client, admin_client):
 
             assert run(_score(exact["id"], q["id"])) == ROUND32_EXACT_POINTS
             assert run(_score(wrong["id"], q["id"])) == 0
+    finally:
+        _delete_participants(created_ids)
+
+
+def test_round32_exact_numeric_points_remain_admin_editable(client, admin_client):
+    q = _fetch_question_by_text("Le Favori Qui Tremble")
+    exact = _create_participant("Favori Editable Exact")
+    wrong = _create_participant("Favori Editable Wrong")
+    created_ids = [exact["id"], wrong["id"]]
+    try:
+        _publish_question(q["id"], "2030-01-01T12:00:00")
+        assert client.post(
+            f"/p/{exact['token']}/bonus/{q['id']}",
+            data={"answer": "4"},
+            follow_redirects=False,
+        ).status_code == 303
+        assert client.post(
+            f"/p/{wrong['token']}/bonus/{q['id']}",
+            data={"answer": "3"},
+            follow_redirects=False,
+        ).status_code == 303
+
+        resp = admin_client.post(
+            f"/admin/bonus/{q['id']}/update",
+            data={
+                "question_text": q["question_text"],
+                "phase": q["phase"],
+                "answer_type": "number",
+                "points_value": "7",
+                "deadline": "2030-01-01T12:00",
+                "correct_answer": "4",
+                "help_text": q["help_text"] or "",
+                "is_published": "1",
+            },
+            follow_redirects=False,
+        )
+
+        assert resp.status_code == 303
+        updated = _fetch_question_by_text("Le Favori Qui Tremble")
+        assert updated["points_value"] == 7
+        assert updated["scoring_mode"] == "exact"
+        assert run(_score(exact["id"], q["id"])) == 7
+        assert run(_score(wrong["id"], q["id"])) == 0
+
+        html = unescape(admin_client.get("/admin/bonus").text)
+        assert "Cette question numérique est corrigée en exact" in html
+        assert 'name="points_value" min="1" max="50" value="7" required readonly' not in html
     finally:
         _delete_participants(created_ids)
 

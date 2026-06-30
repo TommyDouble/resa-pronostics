@@ -23,7 +23,7 @@ ROUND32_EXACT_POINTS = 5
 ROUND32_TIEBREAK_HELP = (
     "Une séance compte uniquement si la FIFA publie un score de tirs au but. "
     "Les séances déjà jouées (Allemagne-Paraguay, Pays-Bas-Maroc) ne comptent pas. "
-    "Barème : 5 pts si le nombre exact est trouvé, 0 sinon."
+    "Barème : les points de la question si le nombre exact est trouvé, 0 sinon."
 )
 ROUND32_FAVORITE_HELP = (
     "Un favori compte si le 1er but officiel du match est inscrit en faveur de "
@@ -31,7 +31,8 @@ ROUND32_FAVORITE_HELP = (
     "buteur). 0-0 jusqu'aux tirs au but = personne. But en prolongation compté "
     "s'il est le premier. But annulé par la VAR non compté. Penalty en cours de "
     "jeu compté, tirs au but non. Match abandonné/rejoué sans 1er but officiel : "
-    "le favori ne compte pas. Barème : 5 pts si le nombre exact est trouvé, 0 sinon."
+    "le favori ne compte pas. Barème : les points de la question si le nombre exact "
+    "est trouvé, 0 sinon."
 )
 
 
@@ -697,12 +698,40 @@ async def _migrate_round32_exact_numeric_bonus(db):
     )
 
 
+async def _migrate_round32_exact_help_text(db):
+    """Retire le nombre de points codé en dur des tooltips de ces questions."""
+    key = "migr_round32_exact_help_text_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    old_fragment = "Barème : 5 pts si le nombre exact est trouvé, 0 sinon."
+    for question_text, help_text in (
+        (ROUND32_TIEBREAK_COUNT_TEXT, ROUND32_TIEBREAK_HELP),
+        (ROUND32_FAVORITE_CONCEDE_TEXT, ROUND32_FAVORITE_HELP),
+    ):
+        await db.execute(
+            """UPDATE bonus_questions
+               SET help_text=?
+               WHERE question_text=?
+                 AND (help_text IS NULL OR help_text='' OR help_text LIKE ?)""",
+            (help_text, question_text, f"%{old_fragment}%"),
+        )
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
 async def ensure_round_of_32_bonus_drafts(db):
     """Prépare en brouillon les questions « seizièmes » (Afrique, tirs au but,
     favori qui tremble). Idempotent via app_settings. L'admin règle les deadlines
     et les réponses correctes, puis publie."""
     key = "bonus_drafts_round_of_32_2026_v4"
     await _migrate_round32_exact_numeric_bonus(db)
+    await _migrate_round32_exact_help_text(db)
     done = await (await db.execute(
         "SELECT 1 FROM app_settings WHERE key=?", (key,)
     )).fetchone()

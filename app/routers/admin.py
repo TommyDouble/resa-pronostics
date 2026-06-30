@@ -13,7 +13,6 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from app.auth import require_admin, verify_password, hash_password
 from app.config import settings
 from app.database import (
-    ROUND32_EXACT_POINTS,
     ROUND32_FAVORITE_CONCEDE_TEXT,
     ROUND32_FAVORITE_EXACT_CONFIG,
     ROUND32_TIEBREAK_COUNT_TEXT,
@@ -2301,6 +2300,7 @@ async def create_bonus(request: Request,
         scoring_mode = "closest_podium"
     else:
         scoring_mode = "exact"
+    submitted_points_value = points_value
     points_value, scoring_config = _closest_form_config(
         answer_type,
         points_value,
@@ -2312,7 +2312,7 @@ async def create_bonus(request: Request,
         closest_rank3_points,
     )
     if answer_type == "number" and exact_numeric_config is not None:
-        points_value = ROUND32_EXACT_POINTS
+        points_value = submitted_points_value
         scoring_config = json.dumps(exact_numeric_config, ensure_ascii=False, separators=(",", ":"))
     options = _normalize_bonus_options(answer_type, options_text)
     if answer_type == "multi_choice":
@@ -2410,7 +2410,10 @@ async def update_bonus_question(
         if answer_type not in {"choice", "number", "multi_choice", "number_multi"}:
             _flash(request, "Type de question bonus invalide.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)
-        exact_numeric_config = _exact_numeric_bonus_config(question_text)
+        exact_numeric_config = (
+            _exact_numeric_bonus_config(question_text)
+            or _exact_numeric_bonus_config(existing["question_text"])
+        )
         if answer_type == "multi_choice":
             scoring_mode = "multi_select"
         elif answer_type == "number_multi":
@@ -2419,6 +2422,7 @@ async def update_bonus_question(
             scoring_mode = "closest_podium"
         else:
             scoring_mode = "exact"
+        submitted_points_value = points_value
         points_value, scoring_config = _closest_form_config(
             answer_type,
             points_value,
@@ -2430,7 +2434,7 @@ async def update_bonus_question(
             closest_rank3_points,
         )
         if answer_type == "number" and exact_numeric_config is not None:
-            points_value = ROUND32_EXACT_POINTS
+            points_value = submitted_points_value
             scoring_config = json.dumps(exact_numeric_config, ensure_ascii=False, separators=(",", ":"))
         if answer_type == "number":
             scoring_config = _preserve_closest_value_bounds(

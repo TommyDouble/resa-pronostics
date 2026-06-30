@@ -25,7 +25,6 @@ from app.auth import (
 from app.config import settings
 from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import (
-    ROUND32_EXACT_POINTS,
     ROUND32_FAVORITE_CONCEDE_TEXT,
     ROUND32_TIEBREAK_COUNT_TEXT,
     get_db,
@@ -2093,9 +2092,9 @@ def _bonus_help_lead(q: dict, closest_config: dict | None = None) -> str:
             return f"{locked} compte déjà. Le total doit égaler les tuiles cochées."
         return "Le total doit égaler le nombre de tuiles cochées."
     if text == ROUND32_TIEBREAK_COUNT_TEXT:
-        return f"Nombre exact uniquement : {ROUND32_EXACT_POINTS} pts, sinon 0."
+        return f"Nombre exact uniquement : {q.get('points_value', 5)} pts, sinon 0."
     if text == ROUND32_FAVORITE_CONCEDE_TEXT:
-        return f"Réponds de 0 à 6. Nombre exact : {ROUND32_EXACT_POINTS} pts."
+        return f"Réponds de 0 à 6. Nombre exact : {q.get('points_value', 5)} pts."
     if q.get("scoring_mode") == "closest_podium" and closest_config:
         points = " / ".join(str(p) for p in closest_config["rank_points"] if p > 0)
         return f"Le plus proche marque {points} pts."
