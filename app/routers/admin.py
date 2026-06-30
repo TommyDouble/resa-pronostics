@@ -16,6 +16,7 @@ from app.knockout import (
     confirm_match_side,
     confirm_match_teams,
     enrich_knockout_matches,
+    match_predictions_open,
     propagate_from_match,
     set_match_predictions_open,
 )
@@ -51,14 +52,18 @@ from app.scoring import (
 from app.push import push_enabled, send_push_to_participant
 from app.templating import create_templates
 from app.timeutils import (
+    DISPLAY_TZ,
     current_sporting_day,
     format_match_local_date,
     format_sporting_day_fr,
     is_match_locked,
     local_input_to_utc_iso,
+    match_kickoff_utc,
     match_live_state,
     now_utc_iso,
+    parse_utc_iso,
     sporting_day_bounds,
+    utc_iso,
 )
 
 router = APIRouter()
@@ -86,6 +91,8 @@ PUSH_TEST_DESTINATIONS = {
     "classement": ("Classement", "/classement"),
     "profil": ("Profil", "/profil"),
 }
+
+DEADLINE_REMINDER_KIND = "admin_deadline_reminder"
 
 STATUSES = {
     "confirmed": ("ok", "confirmé"),
@@ -343,6 +350,351 @@ def _number_multi_correct_from_form(form, options: list[str], scoring_config: st
 def _push_test_url(token: str, destination: str) -> str:
     _, suffix = PUSH_TEST_DESTINATIONS.get(destination, PUSH_TEST_DESTINATIONS["home"])
     return f"{settings.BASE_URL.rstrip('/')}/p/{token}{suffix}"
+
+
+def _display_deadline_label(deadline: str) -> str:
+    try:
+        return parse_utc_iso(deadline).astimezone(DISPLAY_TZ).strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return deadline or ""
+
+
+def _normalize_deadline_iso(deadline: str) -> str:
+    try:
+        return utc_iso(parse_utc_iso(deadline))
+    except Exception:
+        return (deadline or "").strip()
+
+
+def _admin_deadline_reminder_ref(deadline: str, reminder_day: str | None = None) -> str:
+    if reminder_day is None:
+        reminder_day = parse_utc_iso(_now_utc()).astimezone(DISPLAY_TZ).strftime("%Y-%m-%d")
+    return f"{reminder_day}|{_normalize_deadline_iso(deadline)}"
+
+
+def _short_text(value: str, limit: int = 54) -> str:
+    text = " ".join((value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _bonus_short_label(question_text: str) -> str:
+    text = question_text or "Question bonus"
+    if " — " in text:
+        return text.split(" — ", 1)[0].strip() or text
+    if " - " in text:
+        return text.split(" - ", 1)[0].strip() or text
+    return text
+
+
+def _deadline_push_title(count: int) -> str:
+    suffix = "info" if count == 1 else "infos"
+    return f"RESA Pronostics - {count} {suffix} à encoder"
+
+
+def _deadline_push_body(missing_items: list[dict]) -> str:
+    labels = [_short_text(item["label"], 42) for item in missing_items[:3]]
+    body = "À compléter: " + ", ".join(labels)
+    if len(missing_items) > 3:
+        body += f" +{len(missing_items) - 3}"
+    return body[:180]
+
+
+async def _deadline_participants(db) -> list[dict]:
+    rows = await db.execute(
+        """SELECT p.id, p.name, p.nickname, p.email, p.token,
+                  COUNT(ps.id) AS subscription_count
+           FROM participants p
+           LEFT JOIN push_subscriptions ps ON ps.participant_id = p.id
+           WHERE p.is_confirmed=1 AND p.is_admin=0
+           GROUP BY p.id, p.name, p.nickname, p.email, p.token
+           ORDER BY COALESCE(NULLIF(p.nickname, ''), p.name) COLLATE NOCASE"""
+    )
+    participants = []
+    for row in await rows.fetchall():
+        participant = dict(row)
+        participant["display_name"] = participant.get("nickname") or participant.get("name")
+        participant["subscription_count"] = participant.get("subscription_count") or 0
+        participants.append(participant)
+    return participants
+
+
+async def _answered_ids(db, table: str, ref_column: str | None = None, ref_id: int | None = None) -> set[int]:
+    if table == "pre_tournament_predictions":
+        rows = await db.execute(
+            """SELECT pt.participant_id
+               FROM pre_tournament_predictions pt
+               JOIN participants p ON p.id=pt.participant_id
+               WHERE p.is_confirmed=1 AND p.is_admin=0 AND pt.submitted=1"""
+        )
+    elif table == "predictions":
+        rows = await db.execute(
+            """SELECT pr.participant_id
+               FROM predictions pr
+               JOIN participants p ON p.id=pr.participant_id
+               WHERE p.is_confirmed=1 AND p.is_admin=0 AND pr.match_id=?""",
+            (ref_id,),
+        )
+    elif table == "bonus_answers":
+        rows = await db.execute(
+            """SELECT ba.participant_id
+               FROM bonus_answers ba
+               JOIN participants p ON p.id=ba.participant_id
+               WHERE p.is_confirmed=1 AND p.is_admin=0 AND ba.question_id=?""",
+            (ref_id,),
+        )
+    else:
+        return set()
+    return {row["participant_id"] for row in await rows.fetchall()}
+
+
+def _empty_deadline_group(deadline: str) -> dict:
+    deadline = _normalize_deadline_iso(deadline)
+    return {
+        "key": deadline,
+        "deadline": deadline,
+        "deadline_label": _display_deadline_label(deadline),
+        "events": [],
+    }
+
+
+def _finalize_deadline_groups(groups: dict, participants: list[dict], now: str) -> list[dict]:
+    participant_total = len(participants)
+    finalized = []
+    for deadline, group in groups.items():
+        missing_participants = []
+        for participant in participants:
+            missing_events = [
+                event for event in group["events"]
+                if participant["id"] not in event["answered_ids"]
+            ]
+            if not missing_events:
+                continue
+            missing_participants.append({
+                "id": participant["id"],
+                "name": participant["display_name"],
+                "token": participant["token"],
+                "subscription_count": participant["subscription_count"],
+                "missing": [
+                    {
+                        "label": event["label"],
+                        "kind": event["kind"],
+                        "event_id": event["event_id"],
+                    }
+                    for event in missing_events
+                ],
+            })
+        for event in group["events"]:
+            event.pop("answered_ids", None)
+        group["participant_total"] = participant_total
+        group["missing_participants"] = missing_participants
+        group["missing_count"] = len(missing_participants)
+        group["answered_count"] = max(participant_total - group["missing_count"], 0)
+        group["push_reachable_count"] = sum(
+            1 for item in missing_participants if item["subscription_count"] > 0
+        )
+        group["event_count"] = len(group["events"])
+        group["is_future"] = deadline > now
+        group["selectable"] = group["is_future"] and group["missing_count"] > 0
+        group["event_summary"] = " · ".join(event["label"] for event in group["events"][:3])
+        if len(group["events"]) > 3:
+            group["event_summary"] += f" · +{len(group['events']) - 3}"
+        finalized.append(group)
+    return finalized
+
+
+async def _build_deadline_groups(db, *, future_limit: int | None = 10) -> dict:
+    now = _now_utc()
+    participants = await _deadline_participants(db)
+    groups: dict[str, dict] = {}
+
+    def add_event(deadline: str, event: dict):
+        deadline = _normalize_deadline_iso(deadline)
+        if not deadline:
+            return
+        group = groups.setdefault(deadline, _empty_deadline_group(deadline))
+        group["events"].append(event)
+
+    pt_deadline = _normalize_deadline_iso(await get_pre_tournament_deadline(db))
+    add_event(pt_deadline, {
+        "kind": "pre_tournament",
+        "event_id": "pre_tournament",
+        "label": "Pré-tournoi",
+        "answered_ids": await _answered_ids(db, "pre_tournament_predictions"),
+    })
+
+    match_rows = await db.execute(
+        """SELECT *
+           FROM matches
+           WHERE result IS NULL
+           ORDER BY match_date, kickoff_time, match_number"""
+    )
+    for row in await match_rows.fetchall():
+        match = dict(row)
+        if not match_predictions_open(match):
+            continue
+        deadline = utc_iso(match_kickoff_utc(match))
+        add_event(deadline, {
+            "kind": "match",
+            "event_id": match["id"],
+            "label": f"#{match['match_number']} · {match['team1_name']} – {match['team2_name']}",
+            "answered_ids": await _answered_ids(db, "predictions", "match_id", match["id"]),
+        })
+
+    bonus_rows = await db.execute(
+        """SELECT id, question_text, deadline
+           FROM bonus_questions
+           WHERE is_published=1
+           ORDER BY deadline, id"""
+    )
+    for row in await bonus_rows.fetchall():
+        question = dict(row)
+        add_event(question["deadline"], {
+            "kind": "bonus",
+            "event_id": question["id"],
+            "label": f"Bonus · {_short_text(_bonus_short_label(question['question_text']), 46)}",
+            "answered_ids": await _answered_ids(db, "bonus_answers", "question_id", question["id"]),
+        })
+
+    all_groups = _finalize_deadline_groups(groups, participants, now)
+    late_groups = sorted(
+        [group for group in all_groups if not group["is_future"] and group["missing_count"] > 0],
+        key=lambda item: item["deadline"],
+        reverse=True,
+    )
+    future_groups = sorted(
+        [group for group in all_groups if group["is_future"]],
+        key=lambda item: item["deadline"],
+    )
+    if future_limit is not None:
+        future_groups = future_groups[:future_limit]
+    return {
+        "participant_total": len(participants),
+        "late_groups": late_groups,
+        "future_groups": future_groups,
+        "all_groups": sorted(all_groups, key=lambda item: item["deadline"]),
+    }
+
+
+async def _build_deadline_preview(db, deadline_keys: list[str]) -> dict:
+    selected = {_normalize_deadline_iso(key) for key in deadline_keys if key}
+    deadline_data = await _build_deadline_groups(db, future_limit=None)
+    groups = [
+        group for group in deadline_data["all_groups"]
+        if group["key"] in selected and group["selectable"]
+    ]
+    participant_map: dict[int, dict] = {}
+    for group in groups:
+        for missing in group["missing_participants"]:
+            participant = participant_map.setdefault(missing["id"], {
+                "id": missing["id"],
+                "name": missing["name"],
+                "token": missing["token"],
+                "subscription_count": missing["subscription_count"],
+                "deadline_keys": set(),
+                "missing": [],
+                "today_reminder_refs": set(),
+            })
+            participant["deadline_keys"].add(group["key"])
+            for item in missing["missing"]:
+                participant["missing"].append({
+                    **item,
+                    "deadline": group["deadline"],
+                    "deadline_label": group["deadline_label"],
+                })
+
+    today = parse_utc_iso(_now_utc()).astimezone(DISPLAY_TZ).strftime("%Y-%m-%d")
+    refs = [_admin_deadline_reminder_ref(group["key"], today) for group in groups]
+    if participant_map and refs:
+        placeholders_refs = ",".join("?" for _ in refs)
+        placeholders_ids = ",".join("?" for _ in participant_map)
+        rows = await db.execute(
+            f"""SELECT participant_id, ref
+                FROM notification_log
+                WHERE kind=?
+                  AND ref IN ({placeholders_refs})
+                  AND participant_id IN ({placeholders_ids})""",
+            (DEADLINE_REMINDER_KIND, *refs, *participant_map.keys()),
+        )
+        for row in await rows.fetchall():
+            participant = participant_map.get(row["participant_id"])
+            if participant:
+                participant["today_reminder_refs"].add(row["ref"])
+
+    participants = []
+    for participant in participant_map.values():
+        participant["deadline_keys"] = sorted(participant["deadline_keys"])
+        participant["missing_count"] = len(participant["missing"])
+        participant["has_today_reminder"] = bool(participant["today_reminder_refs"])
+        participant["today_reminder_count"] = len(participant["today_reminder_refs"])
+        participant["today_reminder_refs"] = sorted(participant["today_reminder_refs"])
+        participant["missing_preview"] = ", ".join(
+            _short_text(item["label"], 42) for item in participant["missing"][:4]
+        )
+        if participant["missing_count"] > 4:
+            participant["missing_preview"] += f" +{participant['missing_count'] - 4}"
+        participants.append(participant)
+    participants.sort(key=lambda item: item["name"].lower())
+
+    reachable = [item for item in participants if item["subscription_count"] > 0]
+    return {
+        "groups": groups,
+        "selected_deadline_keys": [group["key"] for group in groups],
+        "participants": participants,
+        "participant_count": len(participants),
+        "reachable_count": len(reachable),
+        "unreachable_count": len(participants) - len(reachable),
+        "already_reminded_count": sum(1 for item in participants if item["has_today_reminder"]),
+        "missing_item_count": sum(item["missing_count"] for item in participants),
+    }
+
+
+async def _communications_context(request: Request, db, *, deadline_preview: dict | None = None) -> dict:
+    ns_row = await db.execute(
+        """SELECT COUNT(*) as cnt FROM participants p
+           WHERE p.is_confirmed=1 AND p.is_admin=0
+           AND NOT EXISTS (SELECT 1 FROM pre_tournament_predictions pt
+                           WHERE pt.participant_id=p.id AND pt.submitted=1)"""
+    )
+    no_pt = (await ns_row.fetchone())["cnt"]
+    now = _now_utc()
+    m_rows = await db.execute(
+        """SELECT * FROM matches
+           WHERE result IS NULL
+           AND datetime(match_date || 'T' || kickoff_time) >= datetime(?)
+           ORDER BY match_date, kickoff_time LIMIT 20""",
+        (now,)
+    )
+    upcoming = [dict(r) for r in await m_rows.fetchall()]
+    p_rows = await db.execute(
+        """SELECT p.id, p.name, p.email, p.token,
+                  COUNT(ps.id) AS subscription_count
+           FROM participants p
+           LEFT JOIN push_subscriptions ps ON ps.participant_id = p.id
+           WHERE p.is_confirmed=1 AND p.is_admin=0
+           GROUP BY p.id, p.name, p.email, p.token
+           ORDER BY p.name COLLATE NOCASE"""
+    )
+    push_participants = [dict(r) for r in await p_rows.fetchall()]
+    deadline_data = await _build_deadline_groups(db)
+    return {
+        "request": request,
+        "active": "communications",
+        "flashes": _get_flashes(request),
+        "no_pt": no_pt,
+        "upcoming_matches": upcoming,
+        "deadline_late_groups": deadline_data["late_groups"],
+        "deadline_future_groups": deadline_data["future_groups"],
+        "deadline_participant_total": deadline_data["participant_total"],
+        "deadline_preview": deadline_preview,
+        "push_is_enabled": push_enabled(),
+        "push_destinations": PUSH_TEST_DESTINATIONS,
+        "push_participants": push_participants,
+        "push_subscription_count": sum(p["subscription_count"] for p in push_participants),
+        "smtp_host": settings.SMTP_HOST,
+        "smtp_port": settings.SMTP_PORT,
+    }
 
 
 def _bracket_flash_suffix(propagation: dict) -> str:
@@ -1646,17 +1998,26 @@ async def bonus_admin(request: Request):
     async with get_db() as db:
         now = _now_utc()
         pt_deadline = await get_pre_tournament_deadline(db)
+        confirmed_row = await db.execute(
+            "SELECT COUNT(*) AS cnt FROM participants WHERE is_confirmed=1 AND is_admin=0"
+        )
+        confirmed_count = (await confirmed_row.fetchone())["cnt"]
         rows = await db.execute(
             """SELECT bq.*,
-                      COUNT(ba.id) as answer_count,
+                      COUNT(DISTINCT CASE WHEN p.is_admin=0 THEN ba.id END) as answer_count,
                       (SELECT COUNT(*) FROM scores s
-                       WHERE s.bonus_question_id = bq.id AND s.points > 0) as scored_answer_count
+                       JOIN participants sp ON sp.id=s.participant_id
+                       WHERE s.bonus_question_id = bq.id
+                         AND s.points > 0
+                         AND sp.is_admin=0) as scored_answer_count
                FROM bonus_questions bq
                LEFT JOIN bonus_answers ba ON ba.question_id = bq.id
+               LEFT JOIN participants p ON p.id = ba.participant_id
                GROUP BY bq.id
                ORDER BY bq.deadline"""
         )
         questions = [dict(r) for r in await rows.fetchall()]
+        bonus_status_counts = {"draft": 0, "open": 0, "to_score": 0, "scored": 0}
         for question in questions:
             try:
                 opts = json.loads(question["options"]) if question.get("options") else []
@@ -1672,6 +2033,28 @@ async def bonus_admin(request: Request):
             question["closest_tie_policy"] = closest_config["tie_policy"]
             question["closest_rank_points"] = closest_config["rank_points"]
             question["preview_can_edit"] = question["deadline"] > now
+            question["participant_total"] = confirmed_count
+            if not question["is_published"]:
+                question["status_key"] = "draft"
+                question["status_label"] = "Brouillon"
+                question["status_class"] = "warn"
+                question["default_open"] = True
+            elif question["deadline"] > now:
+                question["status_key"] = "open"
+                question["status_label"] = "Ouverte"
+                question["status_class"] = "ok"
+                question["default_open"] = False
+            elif question.get("correct_answer"):
+                question["status_key"] = "scored"
+                question["status_label"] = "Scorée"
+                question["status_class"] = "ok"
+                question["default_open"] = False
+            else:
+                question["status_key"] = "to_score"
+                question["status_label"] = "À corriger"
+                question["status_class"] = "lock"
+                question["default_open"] = True
+            bonus_status_counts[question["status_key"]] += 1
             if question["answer_type"] == "multi_choice":
                 question["correct_set"] = sorted(parse_team_set(question.get("correct_answer")))
                 question["correct_count"] = None
@@ -1704,6 +2087,17 @@ async def bonus_admin(request: Request):
                     if question["scoring_mode"] == "closest_podium"
                     else f"{question['points_value']} pts"
                 )
+            question["search_text"] = " ".join([
+                question.get("question_text") or "",
+                question.get("status_label") or "",
+                PHASE_LABELS.get(question.get("phase"), question.get("phase") or ""),
+                question.get("points_label") or "",
+            ])
+        questions.sort(key=lambda item: (
+            {"to_score": 0, "draft": 1, "open": 2, "scored": 3}.get(item["status_key"], 9),
+            item["deadline"],
+            item["id"],
+        ))
         team_ids = {q["id"] for q in questions if q["answer_type"] == "multi_choice"}
         combo_ids = {q["id"] for q in questions if q["answer_type"] == "number_multi"}
         answer_rows = await db.execute(
@@ -1750,7 +2144,7 @@ async def bonus_admin(request: Request):
         )
         pt_submitted_count = (await pt_sub_row.fetchone())["cnt"]
         pt_total_row = await db.execute(
-            "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1"
+            "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0"
         )
         pt_total_count = (await pt_total_row.fetchone())["cnt"]
     return templates.TemplateResponse(request, "admin/bonus.html", {
@@ -1758,7 +2152,8 @@ async def bonus_admin(request: Request):
         "active": "bonus",
         "flashes": _get_flashes(request),
         "questions": questions,
-        "phase_labels": PHASE_LABELS,
+        "bonus_status_counts": bonus_status_counts,
+        "phase_labels": {"pre_tournament": "Pré-tournoi", **PHASE_LABELS},
         "pt_submitted_count": pt_submitted_count,
         "pt_total_count": pt_total_count,
         "pt_deadline": pt_deadline,
@@ -2051,47 +2446,92 @@ async def delete_bonus_question(request: Request, question_id: int):
 async def communications(request: Request):
     await require_admin(request)
     async with get_db() as db:
-        # Count non-submitted pre-tournament
-        ns_row = await db.execute(
-            """SELECT COUNT(*) as cnt FROM participants p
-               WHERE p.is_confirmed=1 AND p.is_admin=0
-               AND NOT EXISTS (SELECT 1 FROM pre_tournament_predictions pt
-                               WHERE pt.participant_id=p.id AND pt.submitted=1)"""
-        )
-        no_pt = (await ns_row.fetchone())["cnt"]
-        # Upcoming matches
-        now = _now_utc()
-        m_rows = await db.execute(
-            """SELECT * FROM matches
-               WHERE result IS NULL
-               AND datetime(match_date || 'T' || kickoff_time) >= datetime(?)
-               ORDER BY match_date, kickoff_time LIMIT 20""",
-            (now,)
-        )
-        upcoming = [dict(r) for r in await m_rows.fetchall()]
-        p_rows = await db.execute(
-            """SELECT p.id, p.name, p.email, p.token,
-                      COUNT(ps.id) AS subscription_count
-               FROM participants p
-               LEFT JOIN push_subscriptions ps ON ps.participant_id = p.id
-               WHERE p.is_confirmed=1 AND p.is_admin=0
-               GROUP BY p.id, p.name, p.email, p.token
-               ORDER BY p.name COLLATE NOCASE"""
-        )
-        push_participants = [dict(r) for r in await p_rows.fetchall()]
-    return templates.TemplateResponse(request, "admin/communications.html", {
-        "request": request,
-        "active": "communications",
-        "flashes": _get_flashes(request),
-        "no_pt": no_pt,
-        "upcoming_matches": upcoming,
-        "push_is_enabled": push_enabled(),
-        "push_destinations": PUSH_TEST_DESTINATIONS,
-        "push_participants": push_participants,
-        "push_subscription_count": sum(p["subscription_count"] for p in push_participants),
-        "smtp_host": settings.SMTP_HOST,
-        "smtp_port": settings.SMTP_PORT,
-    })
+        context = await _communications_context(request, db)
+    return templates.TemplateResponse(request, "admin/communications.html", context)
+
+
+@router.post("/communications/deadline-reminders/preview", response_class=HTMLResponse)
+async def preview_deadline_reminders(
+    request: Request,
+    deadline_keys: list[str] = Form(default=[]),
+):
+    await require_admin(request)
+    selected_keys = list(dict.fromkeys(_normalize_deadline_iso(key) for key in deadline_keys if key))
+    if not selected_keys:
+        _flash(request, "Sélectionne au moins une deadline ouverte à relancer.", "err")
+        return RedirectResponse("/admin/communications", status_code=303)
+    async with get_db() as db:
+        preview = await _build_deadline_preview(db, selected_keys)
+        if not preview["groups"]:
+            _flash(request, "Aucune deadline sélectionnée n'est encore ouverte avec des retardataires.", "err")
+            return RedirectResponse("/admin/communications", status_code=303)
+        context = await _communications_context(request, db, deadline_preview=preview)
+    return templates.TemplateResponse(request, "admin/communications.html", context)
+
+
+@router.post("/communications/deadline-reminders/send")
+async def send_deadline_reminders(
+    request: Request,
+    deadline_keys: list[str] = Form(default=[]),
+):
+    await require_admin(request)
+    selected_keys = list(dict.fromkeys(_normalize_deadline_iso(key) for key in deadline_keys if key))
+    if not selected_keys:
+        _flash(request, "Sélectionne au moins une deadline ouverte à relancer.", "err")
+        return RedirectResponse("/admin/communications", status_code=303)
+    if not push_enabled():
+        _flash(request, "Notifications push non configurées: clés VAPID manquantes.", "err")
+        return RedirectResponse("/admin/communications", status_code=303)
+
+    async with get_db() as db:
+        preview = await _build_deadline_preview(db, selected_keys)
+        participants = preview["participants"]
+        if not participants:
+            _flash(request, "Aucun participant à relancer pour ces deadlines.", "err")
+            return RedirectResponse("/admin/communications", status_code=303)
+
+        sent_count = 0
+        attempted_count = 0
+        duplicate_count = preview["already_reminded_count"]
+        today = parse_utc_iso(_now_utc()).astimezone(DISPLAY_TZ).strftime("%Y-%m-%d")
+        for participant in participants:
+            if participant["subscription_count"] <= 0:
+                continue
+            attempted_count += 1
+            delivered = await send_push_to_participant(
+                db,
+                participant["id"],
+                title=_deadline_push_title(participant["missing_count"]),
+                body=_deadline_push_body(participant["missing"]),
+                url=f"{settings.BASE_URL.rstrip('/')}/p/{participant['token']}",
+            )
+            if delivered:
+                sent_count += 1
+            for deadline in participant["deadline_keys"]:
+                await db.execute(
+                    """INSERT INTO notification_log (participant_id, kind, ref)
+                       VALUES (?,?,?)
+                       ON CONFLICT(participant_id, kind, ref) DO NOTHING""",
+                    (
+                        participant["id"],
+                        DEADLINE_REMINDER_KIND,
+                        _admin_deadline_reminder_ref(deadline, today),
+                    ),
+                )
+        await db.commit()
+
+    not_reachable = preview["unreachable_count"]
+    failed_count = attempted_count - sent_count
+    msg = (
+        f"{sent_count}/{attempted_count} rappel(s) groupé(s) envoyés. "
+        f"{not_reachable} participant(s) sans push actif."
+    )
+    if failed_count:
+        msg += f" {failed_count} échec(s) push."
+    if duplicate_count:
+        msg += f" {duplicate_count} participant(s) avaient déjà reçu un rappel aujourd'hui."
+    _flash(request, msg, "ok" if sent_count else "err")
+    return RedirectResponse("/admin/communications", status_code=303)
 
 
 @router.post("/communications/send-pt-reminder")

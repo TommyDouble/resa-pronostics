@@ -1,9 +1,14 @@
 """Admin communications: manual targeted push tests."""
+from html import unescape
 import uuid
 
 import app.routers.admin as admin_routes
 from app.config import settings
-from app.database import get_db
+from app.database import (
+    ensure_bonus_question_drafts,
+    ensure_round_of_32_bonus_drafts,
+    get_db,
+)
 from tests.conftest import run
 
 
@@ -49,6 +54,97 @@ def notification_log_count():
             return (await row.fetchone())["cnt"]
 
     return run(_count())
+
+
+def clear_operational_data():
+    async def _clear():
+        async with get_db() as db:
+            for table in (
+                "notification_log",
+                "push_subscriptions",
+                "scores",
+                "predictions",
+                "bonus_answers",
+                "bonus_questions",
+                "matches",
+                "pre_tournament_predictions",
+                "participants",
+            ):
+                await db.execute(f"DELETE FROM {table}")
+            await db.execute(
+                """DELETE FROM app_settings
+                   WHERE key IN (
+                     'pre_tournament_deadline',
+                     'bonus_drafts_group_j3_2026_v1',
+                     'bonus_drafts_round_of_32_2026_v4'
+                   )"""
+            )
+            await ensure_bonus_question_drafts(db)
+            await ensure_round_of_32_bonus_drafts(db)
+            await db.commit()
+
+    run(_clear())
+
+
+def mark_pre_tournament_submitted(participant_id):
+    async def _mark():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO pre_tournament_predictions (participant_id, submitted)
+                   VALUES (?, 1)
+                   ON CONFLICT(participant_id) DO UPDATE SET submitted=1""",
+                (participant_id,),
+            )
+            await db.commit()
+
+    run(_mark())
+
+
+def create_match(number, *, kickoff="2035-01-01T12:00:00", team1="France", team2="Brésil"):
+    date, time = kickoff.split("T")
+
+    async def _create():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time, team1_name, team2_name, weight)
+                   VALUES (?, 'group', ?, ?, ?, ?, 1)""",
+                (number, date, time, team1, team2),
+            )
+            await db.commit()
+            return cursor.lastrowid
+
+    return run(_create())
+
+
+def create_bonus_question(text, *, deadline="2035-01-01T12:00:00"):
+    async def _create():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO bonus_questions
+                   (question_text, phase, answer_type, options, points_value,
+                    scoring_mode, is_published, deadline)
+                   VALUES (?, 'group', 'choice', '["Oui","Non"]', 6, 'exact', 1, ?)""",
+                (text, deadline),
+            )
+            await db.commit()
+            return cursor.lastrowid
+
+    return run(_create())
+
+
+def add_prediction(participant_id, match_id):
+    async def _add():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO predictions
+                   (participant_id, match_id, prediction, exact_score_team1, exact_score_team2)
+                   VALUES (?, ?, 'team1', 2, 1)""",
+                (participant_id, match_id),
+            )
+            await db.commit()
+
+    run(_add())
 
 
 def test_communications_shows_manual_push_card(admin_client, participant, monkeypatch):
@@ -184,6 +280,111 @@ def test_push_test_all_targets_confirmed_non_admins_without_notification_log(
         f"{settings.BASE_URL.rstrip('/')}/p/{confirmed['token']}/classement",
     }.issubset({call["url"] for call in calls})
     assert notification_log_count() == before_logs
+
+
+def test_communications_shows_grouped_encoding_deadlines(admin_client):
+    clear_operational_data()
+    first = create_participant(name="Deadline First")
+    second = create_participant(name="Deadline Second")
+    add_subscription(first["id"])
+    mark_pre_tournament_submitted(first["id"])
+    mark_pre_tournament_submitted(second["id"])
+
+    future_match = create_match(
+        970101,
+        kickoff="2035-01-02T12:00:00",
+        team1="France",
+        team2="Japon",
+    )
+    create_bonus_question(
+        "Bonus groupé communications — Question visible",
+        deadline="2035-01-02T12:00:00",
+    )
+    create_match(
+        970102,
+        kickoff="2020-01-02T12:00:00",
+        team1="Retard",
+        team2="Passé",
+    )
+    add_prediction(first["id"], future_match)
+
+    html = admin_client.get("/admin/communications").text
+
+    assert "Deadlines d'encodage" in html
+    assert "10 prochaines deadlines" in html
+    assert "Retards dépassés" in html
+    assert "#970101 · France" in html
+    assert "Bonus · Bonus groupé communications" in html
+    assert 'value="2035-01-02T12:00:00"' in html
+    assert "0/2 complet" in html
+    assert "2 manquants" in html
+    assert "1 joignable" in html
+    assert "#970102 · Retard" in html
+    assert "dépassée" in html
+
+
+def test_grouped_deadline_reminder_preview_send_and_duplicate_notice(
+    admin_client, monkeypatch
+):
+    clear_operational_data()
+    reachable = create_participant(name="Reachable Deadline")
+    unreachable = create_participant(name="Unreachable Deadline")
+    create_participant(name="Admin Deadline", is_admin=1)
+    create_participant(name="Pending Deadline", confirmed=0)
+    add_subscription(reachable["id"])
+    mark_pre_tournament_submitted(reachable["id"])
+    mark_pre_tournament_submitted(unreachable["id"])
+    create_match(970201, kickoff="2035-02-01T12:00:00", team1="Maroc", team2="Canada")
+
+    monkeypatch.setattr(admin_routes, "push_enabled", lambda: True)
+
+    preview = admin_client.post(
+        "/admin/communications/deadline-reminders/preview",
+        data={"deadline_keys": ["2035-02-01T12:00:00"]},
+    )
+
+    assert preview.status_code == 200
+    assert "Confirmation rappel groupé" in preview.text
+    assert "2 participant(s) impacté(s)" in preview.text
+    assert "1 joignable(s) push" in preview.text
+    assert "1 sans push actif" in preview.text
+    assert "Reachable Deadline" in preview.text
+    assert "Unreachable Deadline" in preview.text
+    assert "Admin Deadline" not in preview.text
+    assert "Pending Deadline" not in preview.text
+
+    calls = []
+
+    async def fake_send(db, participant_id, *, title, body, url):
+        calls.append({"participant_id": participant_id, "title": title, "body": body, "url": url})
+        return True
+
+    monkeypatch.setattr(admin_routes, "send_push_to_participant", fake_send)
+
+    sent = admin_client.post(
+        "/admin/communications/deadline-reminders/send",
+        data={"deadline_keys": ["2035-02-01T12:00:00"]},
+        follow_redirects=True,
+    )
+
+    assert sent.status_code == 200
+    assert "1/1 rappel(s) groupé(s) envoyés" in sent.text
+    assert "1 participant(s) sans push actif" in sent.text
+    assert calls == [{
+        "participant_id": reachable["id"],
+        "title": "RESA Pronostics - 1 info à encoder",
+        "body": "À compléter: #970201 · Maroc – Canada",
+        "url": f"{settings.BASE_URL.rstrip('/')}/p/{reachable['token']}",
+    }]
+
+    second = admin_client.post(
+        "/admin/communications/deadline-reminders/send",
+        data={"deadline_keys": ["2035-02-01T12:00:00"]},
+        follow_redirects=True,
+    )
+
+    assert second.status_code == 200
+    assert "1 participant(s) avaient déjà reçu un rappel aujourd'hui" in unescape(second.text)
 
 
 def test_push_test_reports_partial_delivery_without_notification_log(
