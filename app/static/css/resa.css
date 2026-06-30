@@ -252,7 +252,7 @@ body.tooltip-floating .tip[data-tip]::after {
   pointer-events: none;
   transform: translateY(3px);
   transition: opacity 120ms, transform 120ms;
-  z-index: 200;
+  z-index: 1200;
 }
 .floating-tooltip.show {
   opacity: 1;
@@ -707,6 +707,21 @@ body.bonus-stack-open {
 }
 .bonus-stack-card .bonus-answer-form {
   margin-top: 2px;
+}
+.bonus-stack-card:focus {
+  outline: none;
+}
+.bonus-stack-card:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.bonus-stack-card .field,
+.bonus-stack-card input[type="text"],
+.bonus-stack-card input[type="number"],
+.bonus-stack-card select,
+.bonus-stack-card textarea,
+.bonus-stack-card .textarea {
+  font-size: 16px;
 }
 .bonus-stack-done {
   padding: 34px 10px 10px;

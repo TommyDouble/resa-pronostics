@@ -281,7 +281,11 @@ function initFloatingTooltips() {
   function placeTooltip(trigger) {
     var kind = renderTooltip(trigger);
     if (!kind) return;
+    if (active && active !== trigger) {
+      active.setAttribute('aria-expanded', 'false');
+    }
     active = trigger;
+    active.setAttribute('aria-expanded', 'true');
     bubble.style.maxWidth = Math.min(kind === 'rich' ? 340 : 300, window.innerWidth - 24) + 'px';
     bubble.style.left = '12px';
     bubble.style.top = '12px';
@@ -304,12 +308,22 @@ function initFloatingTooltips() {
 
   function hideTooltip(trigger) {
     if (trigger && active && trigger !== active) return;
+    if (active) active.setAttribute('aria-expanded', 'false');
     active = null;
     bubble.classList.remove('show');
   }
 
+  function toggleTooltip(trigger) {
+    if (active === trigger && bubble.classList.contains('show')) {
+      hideTooltip(trigger);
+      return;
+    }
+    placeTooltip(trigger);
+  }
+
   triggers.forEach(function(trigger) {
     trigger.setAttribute('aria-describedby', bubble.id);
+    trigger.setAttribute('aria-expanded', 'false');
     trigger.addEventListener('mouseenter', function() { placeTooltip(trigger); });
     trigger.addEventListener('focus', function() { placeTooltip(trigger); });
     trigger.addEventListener('mouseleave', function() { hideTooltip(trigger); });
@@ -317,11 +331,24 @@ function initFloatingTooltips() {
     trigger.addEventListener('click', function(e) {
       e.preventDefault();
       e.stopPropagation();
-      placeTooltip(trigger);
+      toggleTooltip(trigger);
     });
+    trigger.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleTooltip(trigger);
+    }, { passive: false });
   });
 
-  document.addEventListener('click', function() { hideTooltip(); });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') hideTooltip();
+  });
+  document.addEventListener('touchstart', function() {
+    hideTooltip();
+  }, { passive: true });
+  document.addEventListener('click', function() {
+    hideTooltip();
+  });
   window.addEventListener('resize', function() {
     if (active) placeTooltip(active);
   });
@@ -764,8 +791,8 @@ function initBonusStack() {
   function focusActive() {
     var active = cards[activeIndex];
     if (!active) return;
-    var target = active.querySelector('input:not([type="hidden"]):not(:disabled), button, a');
-    if (target && target.focus) target.focus({ preventScroll: true });
+    if (!active.hasAttribute('tabindex')) active.setAttribute('tabindex', '-1');
+    if (active.focus) active.focus({ preventScroll: true });
   }
 
   function updateDeck() {
