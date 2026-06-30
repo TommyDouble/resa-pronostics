@@ -5,6 +5,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta
+from html import escape
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -21,6 +22,7 @@ from app.knockout import (
     set_match_predictions_open,
 )
 from app.mail import (
+    send_email,
     send_invitation,
     send_match_reminder as send_match_reminder_email,
     send_pre_tournament_reminder,
@@ -401,6 +403,80 @@ def _deadline_push_body(missing_items: list[dict]) -> str:
     return body[:180]
 
 
+def _form_truthy(value: str | None) -> bool:
+    return (value or "").lower() in {"1", "true", "on", "yes"}
+
+
+def _deadline_missing_count_label(count: int) -> str:
+    return f"{count} info{'s' if count > 1 else ''}"
+
+
+def _deadline_items_by_label(missing_items: list[dict]) -> list[tuple[str, list[str]]]:
+    grouped: dict[str, list[str]] = {}
+    for item in missing_items:
+        deadline_label = item.get("deadline_label") or "Deadline"
+        grouped.setdefault(deadline_label, []).append(item.get("label") or "Information à encoder")
+    return list(grouped.items())
+
+
+def _deadline_email_message(participant: dict) -> dict:
+    subject = _deadline_push_title(participant["missing_count"])
+    link = f"{settings.BASE_URL.rstrip('/')}/p/{participant['token']}"
+    count_label = _deadline_missing_count_label(participant["missing_count"])
+    grouped_items = _deadline_items_by_label(participant["missing"])
+
+    text_lines = [
+        f"Bonjour {participant['name']},",
+        "",
+        f"Il te reste {count_label} à encoder sur RESA Pronostics.",
+        "",
+    ]
+    html_groups = []
+    for deadline_label, labels in grouped_items:
+        text_lines.append(f"Deadline {deadline_label}:")
+        text_lines.extend(f"- {label}" for label in labels)
+        text_lines.append("")
+        items_html = "".join(f"<li>{escape(label)}</li>" for label in labels)
+        html_groups.append(
+            f"<p><strong>Deadline {escape(deadline_label)}</strong></p><ul>{items_html}</ul>"
+        )
+    text_lines.extend([
+        f"Compléter mes encodages : {link}",
+        "",
+        "Merci !",
+    ])
+
+    html = f"""
+    <h2>{escape(subject)}</h2>
+    <p>Bonjour {escape(participant['name'])},</p>
+    <p>Il te reste <strong>{escape(count_label)}</strong> à encoder sur RESA Pronostics.</p>
+    {''.join(html_groups)}
+    <p><a href="{escape(link, quote=True)}" style="background:#D3450D;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;">
+       Compléter mes encodages
+    </a></p>
+    <p style="color:#6B7280;font-size:12px;">Envoi manuel de l'organisateur du concours.</p>
+    """
+    return {"subject": subject, "html": html, "text": "\n".join(text_lines)}
+
+
+def _deadline_message_preview(participants: list[dict], *, force_email: bool) -> dict | None:
+    if not participants:
+        return None
+    sample = participants[0]
+    preview = {
+        "sample_name": sample["name"],
+        "push_title": _deadline_push_title(sample["missing_count"]),
+        "push_body": _deadline_push_body(sample["missing"]),
+    }
+    if force_email:
+        email_message = _deadline_email_message(sample)
+        preview.update({
+            "email_subject": email_message["subject"],
+            "email_text": email_message["text"],
+        })
+    return preview
+
+
 async def _deadline_participants(db) -> list[dict]:
     rows = await db.execute(
         """SELECT p.id, p.name, p.nickname, p.email, p.token,
@@ -474,6 +550,7 @@ def _finalize_deadline_groups(groups: dict, participants: list[dict], now: str) 
             missing_participants.append({
                 "id": participant["id"],
                 "name": participant["display_name"],
+                "email": participant["email"],
                 "token": participant["token"],
                 "subscription_count": participant["subscription_count"],
                 "missing": [
@@ -577,7 +654,12 @@ async def _build_deadline_groups(db, *, future_limit: int | None = 10) -> dict:
     }
 
 
-async def _build_deadline_preview(db, deadline_keys: list[str]) -> dict:
+async def _build_deadline_preview(
+    db,
+    deadline_keys: list[str],
+    *,
+    force_email: bool = False,
+) -> dict:
     selected = {_normalize_deadline_iso(key) for key in deadline_keys if key}
     deadline_data = await _build_deadline_groups(db, future_limit=None)
     groups = [
@@ -590,6 +672,7 @@ async def _build_deadline_preview(db, deadline_keys: list[str]) -> dict:
             participant = participant_map.setdefault(missing["id"], {
                 "id": missing["id"],
                 "name": missing["name"],
+                "email": missing["email"],
                 "token": missing["token"],
                 "subscription_count": missing["subscription_count"],
                 "deadline_keys": set(),
@@ -645,8 +728,11 @@ async def _build_deadline_preview(db, deadline_keys: list[str]) -> dict:
         "participant_count": len(participants),
         "reachable_count": len(reachable),
         "unreachable_count": len(participants) - len(reachable),
+        "force_email": force_email,
+        "email_target_count": len(participants) if force_email else 0,
         "already_reminded_count": sum(1 for item in participants if item["has_today_reminder"]),
         "missing_item_count": sum(item["missing_count"] for item in participants),
+        "message_preview": _deadline_message_preview(participants, force_email=force_email),
     }
 
 
@@ -2454,6 +2540,7 @@ async def communications(request: Request):
 async def preview_deadline_reminders(
     request: Request,
     deadline_keys: list[str] = Form(default=[]),
+    force_email: str = Form(default="0"),
 ):
     await require_admin(request)
     selected_keys = list(dict.fromkeys(_normalize_deadline_iso(key) for key in deadline_keys if key))
@@ -2461,7 +2548,11 @@ async def preview_deadline_reminders(
         _flash(request, "Sélectionne au moins une deadline ouverte à relancer.", "err")
         return RedirectResponse("/admin/communications", status_code=303)
     async with get_db() as db:
-        preview = await _build_deadline_preview(db, selected_keys)
+        preview = await _build_deadline_preview(
+            db,
+            selected_keys,
+            force_email=_form_truthy(force_email),
+        )
         if not preview["groups"]:
             _flash(request, "Aucune deadline sélectionnée n'est encore ouverte avec des retardataires.", "err")
             return RedirectResponse("/admin/communications", status_code=303)
@@ -2473,64 +2564,97 @@ async def preview_deadline_reminders(
 async def send_deadline_reminders(
     request: Request,
     deadline_keys: list[str] = Form(default=[]),
+    force_email: str = Form(default="0"),
 ):
     await require_admin(request)
     selected_keys = list(dict.fromkeys(_normalize_deadline_iso(key) for key in deadline_keys if key))
     if not selected_keys:
         _flash(request, "Sélectionne au moins une deadline ouverte à relancer.", "err")
         return RedirectResponse("/admin/communications", status_code=303)
-    if not push_enabled():
+    force_email_enabled = _form_truthy(force_email)
+    push_available = push_enabled()
+    if not push_available and not force_email_enabled:
         _flash(request, "Notifications push non configurées: clés VAPID manquantes.", "err")
         return RedirectResponse("/admin/communications", status_code=303)
 
     async with get_db() as db:
-        preview = await _build_deadline_preview(db, selected_keys)
+        preview = await _build_deadline_preview(
+            db,
+            selected_keys,
+            force_email=force_email_enabled,
+        )
         participants = preview["participants"]
         if not participants:
             _flash(request, "Aucun participant à relancer pour ces deadlines.", "err")
             return RedirectResponse("/admin/communications", status_code=303)
 
-        sent_count = 0
-        attempted_count = 0
+        sent_push_count = 0
+        attempted_push_count = 0
+        sent_email_count = 0
+        attempted_email_count = 0
         duplicate_count = preview["already_reminded_count"]
         today = parse_utc_iso(_now_utc()).astimezone(DISPLAY_TZ).strftime("%Y-%m-%d")
         for participant in participants:
-            if participant["subscription_count"] <= 0:
-                continue
-            attempted_count += 1
-            delivered = await send_push_to_participant(
-                db,
-                participant["id"],
-                title=_deadline_push_title(participant["missing_count"]),
-                body=_deadline_push_body(participant["missing"]),
-                url=f"{settings.BASE_URL.rstrip('/')}/p/{participant['token']}",
-            )
-            if delivered:
-                sent_count += 1
-            for deadline in participant["deadline_keys"]:
-                await db.execute(
-                    """INSERT INTO notification_log (participant_id, kind, ref)
-                       VALUES (?,?,?)
-                       ON CONFLICT(participant_id, kind, ref) DO NOTHING""",
-                    (
-                        participant["id"],
-                        DEADLINE_REMINDER_KIND,
-                        _admin_deadline_reminder_ref(deadline, today),
-                    ),
+            attempted_for_participant = False
+            if push_available and participant["subscription_count"] > 0:
+                attempted_push_count += 1
+                attempted_for_participant = True
+                delivered = await send_push_to_participant(
+                    db,
+                    participant["id"],
+                    title=_deadline_push_title(participant["missing_count"]),
+                    body=_deadline_push_body(participant["missing"]),
+                    url=f"{settings.BASE_URL.rstrip('/')}/p/{participant['token']}",
                 )
+                if delivered:
+                    sent_push_count += 1
+            if force_email_enabled:
+                attempted_email_count += 1
+                attempted_for_participant = True
+                message = _deadline_email_message(participant)
+                delivered_email = await send_email(
+                    participant["email"],
+                    message["subject"],
+                    message["html"],
+                    message["text"],
+                )
+                if delivered_email:
+                    sent_email_count += 1
+            if attempted_for_participant:
+                for deadline in participant["deadline_keys"]:
+                    await db.execute(
+                        """INSERT INTO notification_log (participant_id, kind, ref)
+                           VALUES (?,?,?)
+                           ON CONFLICT(participant_id, kind, ref) DO NOTHING""",
+                        (
+                            participant["id"],
+                            DEADLINE_REMINDER_KIND,
+                            _admin_deadline_reminder_ref(deadline, today),
+                        ),
+                    )
         await db.commit()
 
     not_reachable = preview["unreachable_count"]
-    failed_count = attempted_count - sent_count
-    msg = (
-        f"{sent_count}/{attempted_count} rappel(s) groupé(s) envoyés. "
-        f"{not_reachable} participant(s) sans push actif."
-    )
-    if failed_count:
-        msg += f" {failed_count} échec(s) push."
+    failed_push_count = attempted_push_count - sent_push_count
+    failed_email_count = attempted_email_count - sent_email_count
+    msg_parts = []
+    if push_available:
+        msg_parts.append(f"{sent_push_count}/{attempted_push_count} push envoyé(s).")
+    if force_email_enabled:
+        msg_parts.append(f"{sent_email_count}/{attempted_email_count} email(s) envoyé(s).")
+    if not_reachable and (push_available or not force_email_enabled):
+        msg_parts.append(f"{not_reachable} participant(s) sans push actif.")
+    if failed_push_count:
+        msg_parts.append(f"{failed_push_count} échec(s) push.")
+    if failed_email_count:
+        msg_parts.append(f"{failed_email_count} échec(s) email.")
     if duplicate_count:
-        msg += f" {duplicate_count} participant(s) avaient déjà reçu un rappel aujourd'hui."
-    _flash(request, msg, "ok" if sent_count else "err")
+        msg_parts.append(f"{duplicate_count} participant(s) avaient déjà reçu un rappel aujourd'hui.")
+    _flash(
+        request,
+        " ".join(msg_parts),
+        "ok" if (sent_push_count or sent_email_count) else "err",
+    )
     return RedirectResponse("/admin/communications", status_code=303)
 
 

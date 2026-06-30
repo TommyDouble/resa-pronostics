@@ -312,6 +312,7 @@ def test_communications_shows_grouped_encoding_deadlines(admin_client):
 
     assert "Deadlines d'encodage" in html
     assert "10 prochaines deadlines" in html
+    assert "Forcer aussi l'envoi email" in html
     assert "Retards dépassés" in html
     assert "#970101 · France" in html
     assert "Bonus · Bonus groupé communications" in html
@@ -368,7 +369,7 @@ def test_grouped_deadline_reminder_preview_send_and_duplicate_notice(
     )
 
     assert sent.status_code == 200
-    assert "1/1 rappel(s) groupé(s) envoyés" in sent.text
+    assert "1/1 push envoyé(s)" in sent.text
     assert "1 participant(s) sans push actif" in sent.text
     assert calls == [{
         "participant_id": reachable["id"],
@@ -385,6 +386,111 @@ def test_grouped_deadline_reminder_preview_send_and_duplicate_notice(
 
     assert second.status_code == 200
     assert "1 participant(s) avaient déjà reçu un rappel aujourd'hui" in unescape(second.text)
+
+
+def test_grouped_deadline_reminder_force_email_previews_and_sends_all_channels(
+    admin_client, monkeypatch
+):
+    clear_operational_data()
+    reachable = create_participant(name="Alpha Email")
+    no_push = create_participant(name="Beta Email")
+    add_subscription(reachable["id"])
+    mark_pre_tournament_submitted(reachable["id"])
+    mark_pre_tournament_submitted(no_push["id"])
+    create_match(970301, kickoff="2035-03-01T12:00:00", team1="Italie", team2="Chili")
+
+    monkeypatch.setattr(admin_routes, "push_enabled", lambda: True)
+
+    preview = admin_client.post(
+        "/admin/communications/deadline-reminders/preview",
+        data={"deadline_keys": ["2035-03-01T12:00:00"], "force_email": "1"},
+    )
+
+    html = unescape(preview.text)
+    assert preview.status_code == 200
+    assert "email forcé" in html
+    assert "2 email(s) forcé(s)" in html
+    assert "Contenu prévisualisé" in html
+    assert "Exemple personnalisé pour Alpha Email" in html
+    assert "RESA Pronostics - 1 info à encoder" in html
+    assert "Bonjour Alpha Email" in html
+    assert "#970301 · Italie – Chili" in html
+    assert 'name="force_email" value="1"' in html
+    assert "Envoyer 1 push + 2 emails" in html
+
+    push_calls = []
+    email_calls = []
+
+    async def fake_push(db, participant_id, *, title, body, url):
+        push_calls.append({"participant_id": participant_id, "title": title, "body": body, "url": url})
+        return True
+
+    async def fake_email(to, subject, html_body, text_body):
+        email_calls.append({
+            "to": to,
+            "subject": subject,
+            "html": html_body,
+            "text": text_body,
+        })
+        return True
+
+    monkeypatch.setattr(admin_routes, "send_push_to_participant", fake_push)
+    monkeypatch.setattr(admin_routes, "send_email", fake_email)
+
+    sent = admin_client.post(
+        "/admin/communications/deadline-reminders/send",
+        data={"deadline_keys": ["2035-03-01T12:00:00"], "force_email": "1"},
+        follow_redirects=True,
+    )
+
+    assert sent.status_code == 200
+    assert "1/1 push envoyé(s)" in sent.text
+    assert "2/2 email(s) envoyé(s)" in sent.text
+    assert [call["participant_id"] for call in push_calls] == [reachable["id"]]
+    assert {call["to"] for call in email_calls} == {reachable["email"], no_push["email"]}
+    assert all(call["subject"] == "RESA Pronostics - 1 info à encoder" for call in email_calls)
+    assert all("#970301 · Italie – Chili" in call["text"] for call in email_calls)
+    assert any(f"/p/{reachable['token']}" in call["text"] for call in email_calls)
+    assert any(f"/p/{no_push['token']}" in call["text"] for call in email_calls)
+
+
+def test_grouped_deadline_reminder_force_email_works_without_push_config(
+    admin_client, monkeypatch
+):
+    clear_operational_data()
+    participant = create_participant(name="Mail Only Deadline")
+    mark_pre_tournament_submitted(participant["id"])
+    create_match(970302, kickoff="2035-03-02T12:00:00", team1="Suisse", team2="Ghana")
+    email_calls = []
+
+    async def fake_email(to, subject, html_body, text_body):
+        email_calls.append({"to": to, "subject": subject, "text": text_body})
+        return True
+
+    monkeypatch.setattr(admin_routes, "push_enabled", lambda: False)
+    monkeypatch.setattr(admin_routes, "send_email", fake_email)
+
+    sent = admin_client.post(
+        "/admin/communications/deadline-reminders/send",
+        data={"deadline_keys": ["2035-03-02T12:00:00"], "force_email": "1"},
+        follow_redirects=True,
+    )
+
+    assert sent.status_code == 200
+    assert "Notifications push non configurées" not in sent.text
+    assert "1/1 email(s) envoyé(s)" in sent.text
+    assert email_calls == [{
+        "to": participant["email"],
+        "subject": "RESA Pronostics - 1 info à encoder",
+        "text": (
+            "Bonjour Mail Only Deadline,\n\n"
+            "Il te reste 1 info à encoder sur RESA Pronostics.\n\n"
+            "Deadline 02/03/2035 13:00:\n"
+            "- #970302 · Suisse – Ghana\n\n"
+            f"Compléter mes encodages : {settings.BASE_URL.rstrip('/')}/p/{participant['token']}\n\n"
+            "Merci !"
+        ),
+    }]
 
 
 def test_push_test_reports_partial_delivery_without_notification_log(
