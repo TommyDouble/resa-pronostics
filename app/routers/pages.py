@@ -46,6 +46,8 @@ from app.prizes import get_prize_info
 from app.result_display import qualified_team_name, result_full_label
 from app.scoring import (
     actual_match_winner,
+    format_number_multi,
+    format_team_list,
     get_department_rankings,
     get_latest_finalized_climbers,
     get_rank_evolution,
@@ -54,6 +56,8 @@ from app.scoring import (
     is_match_prediction_correct,
     is_match_score_exact,
     parse_bonus_number,
+    parse_number_multi,
+    parse_team_set,
     predicted_match_winner,
 )
 from app.templating import create_templates
@@ -2075,6 +2079,21 @@ async def bonus_page(request: Request, token: str):
             q["has_answer"] = q["answer"] is not None
             q["has_score"] = q["points"] is not None
             q["can_edit"] = q["is_open"] and not q["has_score"]
+            if q["answer_type"] == "multi_choice":
+                q["answer_set"] = parse_team_set(q["answer"])
+                q["answer_display"] = format_team_list(q["answer"])
+                q["correct_answer_display"] = format_team_list(q["correct_answer"])
+            elif q["answer_type"] == "number_multi":
+                parsed = parse_number_multi(q["answer"])
+                q["answer_set"] = parsed["teams"]
+                q["answer_count"] = parsed["count"]
+                q["answer_display"] = format_number_multi(q["answer"])
+                q["correct_answer_display"] = format_number_multi(q["correct_answer"])
+            else:
+                q["answer_set"] = set()
+                q["answer_count"] = None
+                q["answer_display"] = q["answer"]
+                q["correct_answer_display"] = q["correct_answer"]
             if q["is_open"] and not q["has_answer"]:
                 pending_count += 1
             bonus_questions.append(q)
@@ -2100,9 +2119,9 @@ async def bonus_page(request: Request, token: str):
 
 
 @router.post("/p/{token}/bonus/{question_id}", response_class=HTMLResponse)
-async def submit_bonus(request: Request, token: str, question_id: int,
-                       answer: str = Form(...)):
+async def submit_bonus(request: Request, token: str, question_id: int):
     p = await require_participant(token)
+    form = await request.form()
     async with get_db() as db:
         q_row = await db.execute(
             "SELECT * FROM bonus_questions WHERE id=? AND is_published=1",
@@ -2113,15 +2132,35 @@ async def submit_bonus(request: Request, token: str, question_id: int,
             raise HTTPException(404)
         if q["deadline"] < _now_utc():
             raise HTTPException(403, "Deadline dépassée")
-        answer = answer.strip()
-        if not answer:
-            raise HTTPException(400, "Réponse vide")
-        if q["answer_type"] == "choice" and q["options"]:
-            options = json.loads(q["options"])
-            if answer not in options:
-                raise HTTPException(400, "Réponse invalide")
-        if q["answer_type"] == "number" and parse_bonus_number(answer) is None:
-            raise HTTPException(400, "Réponse numérique invalide")
+        if q["answer_type"] == "multi_choice":
+            options = json.loads(q["options"]) if q["options"] else []
+            selected = [v for v in form.getlist("answer") if v in options]
+            if not selected:
+                raise HTTPException(400, "Coche au moins une équipe")
+            answer = json.dumps(selected, ensure_ascii=False)
+        elif q["answer_type"] == "number_multi":
+            options = json.loads(q["options"]) if q["options"] else []
+            raw_count = (form.get("count") or "").strip()
+            try:
+                count = int(raw_count)
+            except ValueError:
+                raise HTTPException(400, "Total invalide")
+            if count < 1 or count > 8:
+                raise HTTPException(400, "Total hors limites (1 à 8)")
+            teams = [v for v in form.getlist("teams") if v in options]
+            if len(set(teams)) != count - 1:
+                raise HTTPException(400, f"Sélectionne exactement {count - 1} équipe(s)")
+            answer = json.dumps({"count": count, "teams": teams}, ensure_ascii=False)
+        else:
+            answer = (form.get("answer") or "").strip()
+            if not answer:
+                raise HTTPException(400, "Réponse vide")
+            if q["answer_type"] == "choice" and q["options"]:
+                options = json.loads(q["options"])
+                if answer not in options:
+                    raise HTTPException(400, "Réponse invalide")
+            if q["answer_type"] == "number" and parse_bonus_number(answer) is None:
+                raise HTTPException(400, "Réponse numérique invalide")
         await db.execute(
             """INSERT INTO bonus_answers (participant_id, question_id, answer)
                VALUES (?,?,?)

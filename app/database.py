@@ -1,4 +1,5 @@
 import aiosqlite
+import json
 import os
 from contextlib import asynccontextmanager
 from app.config import settings
@@ -119,12 +120,13 @@ CREATE TABLE IF NOT EXISTS bonus_questions (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   question_text  TEXT    NOT NULL,
   phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','group','round_of_32','round_of_16','quarter','semi','third_place','final')),
-  answer_type    TEXT    NOT NULL CHECK(answer_type IN ('choice','number','text')),
+  answer_type    TEXT    NOT NULL CHECK(answer_type IN ('choice','number','text','multi_choice','number_multi')),
   options        TEXT,
   points_value   INTEGER NOT NULL DEFAULT 5,
   correct_answer TEXT,
-  scoring_mode   TEXT    NOT NULL DEFAULT 'exact' CHECK(scoring_mode IN ('exact','closest_podium')),
+  scoring_mode   TEXT    NOT NULL DEFAULT 'exact' CHECK(scoring_mode IN ('exact','closest_podium','multi_select','number_multi')),
   scoring_config TEXT,
+  help_text      TEXT,
   is_published   INTEGER NOT NULL DEFAULT 1,
   deadline       TEXT    NOT NULL,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -413,6 +415,9 @@ CREATE INDEX IF NOT EXISTS idx_knockout_slots_source
                 or "scoring_mode" not in bonus_col_names
                 or "scoring_config" not in bonus_col_names
                 or "is_published" not in bonus_col_names
+                or "multi_choice" not in bonus_schema
+                or "number_multi" not in bonus_schema
+                or "help_text" not in bonus_col_names
             )
         ):
             is_published_expr = (
@@ -424,18 +429,22 @@ CREATE INDEX IF NOT EXISTS idx_knockout_slots_source
             scoring_config_expr = (
                 "scoring_config" if "scoring_config" in bonus_col_names else "NULL"
             )
+            help_text_expr = (
+                "help_text" if "help_text" in bonus_col_names else "NULL"
+            )
             await db.execute("PRAGMA foreign_keys = OFF")
             await db.executescript("""
 CREATE TABLE bonus_questions_new (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   question_text  TEXT    NOT NULL,
   phase          TEXT    NOT NULL CHECK(phase IN ('pre_tournament','group','round_of_32','round_of_16','quarter','semi','third_place','final')),
-  answer_type    TEXT    NOT NULL CHECK(answer_type IN ('choice','number','text')),
+  answer_type    TEXT    NOT NULL CHECK(answer_type IN ('choice','number','text','multi_choice','number_multi')),
   options        TEXT,
   points_value   INTEGER NOT NULL DEFAULT 5,
   correct_answer TEXT,
-  scoring_mode   TEXT    NOT NULL DEFAULT 'exact' CHECK(scoring_mode IN ('exact','closest_podium')),
+  scoring_mode   TEXT    NOT NULL DEFAULT 'exact' CHECK(scoring_mode IN ('exact','closest_podium','multi_select','number_multi')),
   scoring_config TEXT,
+  help_text      TEXT,
   is_published   INTEGER NOT NULL DEFAULT 1,
   deadline       TEXT    NOT NULL,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -444,11 +453,11 @@ CREATE TABLE bonus_questions_new (
             await db.execute(
                 f"""INSERT INTO bonus_questions_new
                       (id, question_text, phase, answer_type, options, points_value,
-                       correct_answer, scoring_mode, scoring_config, is_published,
-                       deadline, created_at)
+                       correct_answer, scoring_mode, scoring_config, help_text,
+                       is_published, deadline, created_at)
                     SELECT id, question_text, phase, answer_type, options, points_value,
                            correct_answer, {scoring_mode_expr}, {scoring_config_expr},
-                           {is_published_expr}, deadline, created_at
+                           {help_text_expr}, {is_published_expr}, deadline, created_at
                     FROM bonus_questions"""
             )
             await db.executescript("""
@@ -458,6 +467,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
             await db.execute("PRAGMA foreign_keys = ON")
 
         await ensure_bonus_question_drafts(db)
+        await ensure_round_of_32_bonus_drafts(db)
 
         # Les anciens brouillons comptent désormais comme des réponses valides.
         await db.execute(
@@ -567,6 +577,119 @@ async def ensure_bonus_question_drafts(db):
                 draft["scoring_config"],
                 draft["is_published"],
                 draft["deadline"],
+            ),
+        )
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
+async def ensure_round_of_32_bonus_drafts(db):
+    """Prépare en brouillon les 3 questions « seizièmes » (Afrique, tirs au but,
+    favori qui tremble). Idempotent via app_settings. L'admin règle les deadlines
+    et les réponses correctes, puis publie."""
+    key = "bonus_drafts_round_of_32_2026_v2"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    AFRICA_IN_RACE = [
+        "Côte d'Ivoire", "RD Congo", "Sénégal", "Algérie",
+        "Égypte", "Cap-Vert", "Ghana",
+    ]
+    fun_config = '{"preset_key":"fun_balanced","award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[6,4,2]}'
+    placeholder_deadline = "2026-07-03T16:00:00"
+
+    # Nettoyage des deux anciennes questions Afrique (v1) désormais fusionnées en
+    # une seule question number_multi — uniquement si non répondues.
+    obsolete_v1 = [
+        "Afrique Mode Patron — Maroc déjà qualifié : combien d'équipes africaines (Maroc inclus) seront en huitièmes au total ?",
+        "Afrique Mode Patron (expert) — Quelles équipes africaines encore en course rejoindront le Maroc en huitièmes ?",
+    ]
+    for text in obsolete_v1:
+        await db.execute(
+            """DELETE FROM bonus_questions
+               WHERE question_text=?
+                 AND id NOT IN (SELECT question_id FROM bonus_answers)""",
+            (text,),
+        )
+
+    drafts = [
+        {
+            "question_text": "Afrique Mode Patron — Combien d'équipes africaines (Maroc inclus) seront en huitièmes, et lesquelles parmi celles encore en course ?",
+            "answer_type": "number_multi",
+            "options": json.dumps(AFRICA_IN_RACE, ensure_ascii=False),
+            "points_value": 3,
+            "scoring_mode": "number_multi",
+            "scoring_config": '{"part1_points":3,"team_step":1}',
+            "help_text": (
+                "Maroc déjà qualifié, toujours compté dans le total. Entre le total "
+                "d'équipes africaines en huitièmes (Maroc inclus, de 1 à 8), puis "
+                "coche parmi les équipes encore en course celles qui se qualifient — "
+                "tu dois en cocher exactement (total − 1). Barème : 3 pts si le total "
+                "est exact, +1 par équipe juste, −1 par erreur (jamais en dessous de "
+                "0 sur cette partie). Résultat officiel FIFA, prolongation incluse, "
+                "tirs au but exclus."
+            ),
+        },
+        {
+            "question_text": "Encore des tirs au but ? — Combien de nouvelles séances de tirs au but auront lieu sur les matchs restants des seizièmes ?",
+            "answer_type": "number",
+            "options": None,
+            "points_value": 3,
+            "scoring_mode": "closest_podium",
+            "scoring_config": '{"preset_key":"custom","award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[3,2,1]}',
+            "help_text": (
+                "Une séance compte uniquement si la FIFA publie un score de tirs au "
+                "but. Les séances déjà jouées (Allemagne-Paraguay, Pays-Bas-Maroc) "
+                "ne comptent pas. Barème : nombre le plus proche, 3 / 2 / 1."
+            ),
+        },
+        {
+            "question_text": "Le Favori Qui Tremble — Parmi France, Angleterre, Belgique, Espagne, Portugal et Argentine, combien encaisseront le premier but de leur match ?",
+            "answer_type": "number",
+            "options": None,
+            "points_value": 6,
+            "scoring_mode": "closest_podium",
+            "scoring_config": fun_config,
+            "help_text": (
+                "Un favori compte si le 1er but officiel du match est inscrit en "
+                "faveur de l'adversaire — but contre son camp inclus (on regarde le "
+                "score, pas le buteur). 0-0 jusqu'aux tirs au but = personne. But en "
+                "prolongation compté s'il est le premier. But annulé par la VAR non "
+                "compté. Penalty en cours de jeu compté, tirs au but non. Match "
+                "abandonné/rejoué sans 1er but officiel : le favori ne compte pas."
+            ),
+        },
+    ]
+    for draft in drafts:
+        exists = await (await db.execute(
+            "SELECT 1 FROM bonus_questions WHERE question_text=?",
+            (draft["question_text"],),
+        )).fetchone()
+        if exists:
+            continue
+        await db.execute(
+            """INSERT INTO bonus_questions
+               (question_text, phase, answer_type, options, points_value,
+                correct_answer, scoring_mode, scoring_config, help_text,
+                is_published, deadline)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                draft["question_text"],
+                "round_of_32",
+                draft["answer_type"],
+                draft["options"],
+                draft["points_value"],
+                None,
+                draft["scoring_mode"],
+                draft["scoring_config"],
+                draft["help_text"],
+                0,
+                placeholder_deadline,
             ),
         )
     await db.execute(

@@ -470,6 +470,17 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
 .chip.dn { background: #FBE3E3; color: var(--error); }
 .chip.fl { background: var(--n100); color: var(--n400); }
 
+/* ---- Number+teams badges (number_multi bonus) ---- */
+.nm-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 13px; border: 1.5px solid var(--line); border-radius: var(--pill);
+  background: var(--paper); cursor: pointer; font-size: 14px; font-weight: 600;
+  user-select: none; transition: background .12s, border-color .12s, color .12s, opacity .12s;
+}
+.nm-badge.is-on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.nm-badge.is-disabled { opacity: .4; cursor: not-allowed; }
+.nm-badge:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
+
 /* ---- Status dots ---- */
 .dot {
   width: 9px; height: 9px;

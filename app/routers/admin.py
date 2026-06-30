@@ -35,10 +35,14 @@ from app.pre_tournament import (
 from app.scoring import (
     calculate_bonus_scores,
     closest_bonus_standings,
+    format_number_multi,
+    format_team_list,
     get_rankings,
     normalize_closest_config,
     parse_bonus_number,
+    parse_number_multi,
     parse_revelation_winners,
+    parse_team_set,
     recalculate_match_scores,
     recalculate_pre_tournament_scores,
     serialize_closest_config,
@@ -208,7 +212,7 @@ def _get_flashes(request: Request):
 
 
 def _normalize_bonus_options(answer_type: str, options_text: str):
-    if answer_type != "choice":
+    if answer_type not in ("choice", "multi_choice", "number_multi"):
         return None
     options = [
         opt.strip()
@@ -1600,6 +1604,21 @@ async def bonus_admin(request: Request):
             question["closest_tie_policy"] = closest_config["tie_policy"]
             question["closest_rank_points"] = closest_config["rank_points"]
             question["preview_can_edit"] = question["deadline"] > now
+            if question["answer_type"] == "multi_choice":
+                question["correct_set"] = sorted(parse_team_set(question.get("correct_answer")))
+                question["correct_count"] = None
+                question["correct_answer_display"] = format_team_list(question.get("correct_answer"))
+            elif question["answer_type"] == "number_multi":
+                parsed = parse_number_multi(question.get("correct_answer"))
+                question["correct_set"] = sorted(parsed["teams"])
+                question["correct_count"] = parsed["count"]
+                question["correct_answer_display"] = format_number_multi(question.get("correct_answer"))
+            else:
+                question["correct_set"] = []
+                question["correct_count"] = None
+                question["correct_answer_display"] = question.get("correct_answer") or ""
+        team_ids = {q["id"] for q in questions if q["answer_type"] == "multi_choice"}
+        combo_ids = {q["id"] for q in questions if q["answer_type"] == "number_multi"}
         answer_rows = await db.execute(
             """SELECT
                   ba.question_id,
@@ -1619,6 +1638,12 @@ async def bonus_admin(request: Request):
         answers_by_question = {}
         for answer in await answer_rows.fetchall():
             answer_dict = dict(answer)
+            if answer_dict["question_id"] in team_ids:
+                answer_dict["answer_display"] = format_team_list(answer_dict.get("answer"))
+            elif answer_dict["question_id"] in combo_ids:
+                answer_dict["answer_display"] = format_number_multi(answer_dict.get("answer"))
+            else:
+                answer_dict["answer_display"] = answer_dict.get("answer")
             answers_by_question.setdefault(answer_dict["question_id"], []).append(answer_dict)
         closest_standings_by_question = {}
         for question in questions:
@@ -1661,6 +1686,7 @@ async def create_bonus(request: Request,
                        deadline: str = Form(...), timezone_name: str = Form(default=""),
                        options_text: str = Form(default=""),
                        correct_answer: str = Form(default=""),
+                       help_text: str = Form(default=""),
                        is_published: int = Form(default=0),
                        closest_preset_key: str = Form(default="fun_balanced"),
                        closest_award_mode: str = Form(default="podium_custom"),
@@ -1669,7 +1695,7 @@ async def create_bonus(request: Request,
                        closest_rank2_points: int = Form(default=4),
                        closest_rank3_points: int = Form(default=2)):
     await require_admin(request)
-    if answer_type not in {"choice", "number"}:
+    if answer_type not in {"choice", "number", "multi_choice", "number_multi"}:
         _flash(request, "Type de question bonus invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
     if phase not in BONUS_PHASES:
@@ -1680,7 +1706,14 @@ async def create_bonus(request: Request,
     except Exception:
         _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
-    scoring_mode = "closest_podium" if answer_type == "number" else "exact"
+    if answer_type == "multi_choice":
+        scoring_mode = "multi_select"
+    elif answer_type == "number_multi":
+        scoring_mode = "number_multi"
+    elif answer_type == "number":
+        scoring_mode = "closest_podium"
+    else:
+        scoring_mode = "exact"
     points_value, scoring_config = _closest_form_config(
         answer_type,
         points_value,
@@ -1691,8 +1724,16 @@ async def create_bonus(request: Request,
         closest_rank2_points,
         closest_rank3_points,
     )
+    if answer_type == "multi_choice":
+        scoring_config = json.dumps({"error_step": 2}, ensure_ascii=False)
+        # La réponse correcte multi-choix se renseigne via l'édition (cases à cocher).
+        correct_answer = ""
+    elif answer_type == "number_multi":
+        scoring_config = json.dumps({"part1_points": 3, "team_step": 1}, ensure_ascii=False)
+        # La réponse correcte (total + équipes) se renseigne via l'édition.
+        correct_answer = ""
     options = _normalize_bonus_options(answer_type, options_text)
-    if answer_type == "choice" and (not options or len(json.loads(options)) < 2):
+    if answer_type in ("choice", "multi_choice", "number_multi") and (not options or len(json.loads(options)) < 2):
         _flash(request, "Ajoute au moins deux options de réponse.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
     if scoring_mode == "closest_podium" and correct_answer.strip():
@@ -1703,9 +1744,9 @@ async def create_bonus(request: Request,
         cursor = await db.execute(
             """INSERT INTO bonus_questions
                (question_text, phase, answer_type, options, points_value,
-                correct_answer, scoring_mode, scoring_config, is_published,
-                deadline)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                correct_answer, scoring_mode, scoring_config, help_text,
+                is_published, deadline)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 question_text.strip(),
                 phase,
@@ -1715,6 +1756,7 @@ async def create_bonus(request: Request,
                 correct_answer.strip() or None,
                 scoring_mode,
                 scoring_config,
+                help_text.strip() or None,
                 1 if is_published else 0,
                 deadline_utc,
             )
@@ -1739,6 +1781,7 @@ async def update_bonus_question(
     timezone_name: str = Form(default=""),
     options_text: str = Form(default=""),
     correct_answer: str = Form(default=""),
+    help_text: str = Form(default=""),
     is_published: int = Form(default=0),
     closest_preset_key: str = Form(default="custom"),
     closest_award_mode: str = Form(default="podium_custom"),
@@ -1769,10 +1812,17 @@ async def update_bonus_question(
             raise HTTPException(404)
         type_can_change = not existing["is_published"] and existing["answer_count"] == 0
         answer_type = answer_type if type_can_change and answer_type else existing["answer_type"]
-        if answer_type not in {"choice", "number"}:
+        if answer_type not in {"choice", "number", "multi_choice", "number_multi"}:
             _flash(request, "Type de question bonus invalide.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)
-        scoring_mode = "closest_podium" if answer_type == "number" else "exact"
+        if answer_type == "multi_choice":
+            scoring_mode = "multi_select"
+        elif answer_type == "number_multi":
+            scoring_mode = "number_multi"
+        elif answer_type == "number":
+            scoring_mode = "closest_podium"
+        else:
+            scoring_mode = "exact"
         points_value, scoring_config = _closest_form_config(
             answer_type,
             points_value,
@@ -1784,9 +1834,33 @@ async def update_bonus_question(
             closest_rank3_points,
         )
         options = _normalize_bonus_options(answer_type, options_text)
-        if answer_type == "choice" and (not options or len(json.loads(options)) < 2):
+        if answer_type in ("choice", "multi_choice", "number_multi") and (not options or len(json.loads(options)) < 2):
             _flash(request, "Ajoute au moins deux options de réponse.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)
+        if answer_type == "multi_choice":
+            scoring_config = json.dumps({"error_step": 2}, ensure_ascii=False)
+            # Réponse correcte = cases cochées (plusieurs valeurs "correct_answer").
+            form = await request.form()
+            valid_options = set(json.loads(options)) if options else set()
+            selected = [v for v in form.getlist("correct_answer") if v in valid_options]
+            correct_answer = json.dumps(selected, ensure_ascii=False) if selected else ""
+        elif answer_type == "number_multi":
+            scoring_config = json.dumps({"part1_points": 3, "team_step": 1}, ensure_ascii=False)
+            # Réponse correcte = total (correct_count) + équipes cochées (correct_answer).
+            form = await request.form()
+            valid_options = set(json.loads(options)) if options else set()
+            selected = [v for v in form.getlist("correct_answer") if v in valid_options]
+            raw_count = (form.get("correct_count") or "").strip()
+            if raw_count or selected:
+                try:
+                    count_val = int(raw_count) if raw_count else None
+                except ValueError:
+                    count_val = None
+                correct_answer = json.dumps(
+                    {"count": count_val, "teams": selected}, ensure_ascii=False
+                )
+            else:
+                correct_answer = ""
         if scoring_mode == "closest_podium" and correct_answer.strip():
             if parse_bonus_number(correct_answer) is None:
                 _flash(request, "La réponse correcte doit être un nombre.", "err")
@@ -1795,7 +1869,7 @@ async def update_bonus_question(
             """UPDATE bonus_questions
                SET question_text=?, phase=?, answer_type=?, options=?,
                    points_value=?, correct_answer=?, scoring_mode=?,
-                   scoring_config=?, is_published=?, deadline=?
+                   scoring_config=?, help_text=?, is_published=?, deadline=?
                WHERE id=?""",
             (
                 question_text.strip(),
@@ -1806,6 +1880,7 @@ async def update_bonus_question(
                 correct_answer.strip() or None,
                 scoring_mode,
                 scoring_config,
+                help_text.strip() or None,
                 1 if is_published else 0,
                 deadline_utc,
                 question_id,
@@ -1819,13 +1894,33 @@ async def update_bonus_question(
 
 @router.post("/bonus/{question_id}/answer")
 async def set_bonus_answer(request: Request, question_id: int,
-                            correct_answer: str = Form(...)):
+                            correct_answer: str = Form(default="")):
     await require_admin(request)
     async with get_db() as db:
-        row = await db.execute("SELECT scoring_mode FROM bonus_questions WHERE id=?", (question_id,))
+        row = await db.execute(
+            "SELECT scoring_mode, options FROM bonus_questions WHERE id=?", (question_id,)
+        )
         question = await row.fetchone()
         if not question:
             raise HTTPException(404)
+        if question["scoring_mode"] == "multi_select":
+            form = await request.form()
+            valid_options = set(json.loads(question["options"])) if question["options"] else set()
+            selected = [v for v in form.getlist("correct_answer") if v in valid_options]
+            correct_answer = json.dumps(selected, ensure_ascii=False) if selected else ""
+        if question["scoring_mode"] == "number_multi":
+            form = await request.form()
+            valid_options = set(json.loads(question["options"])) if question["options"] else set()
+            selected = [v for v in form.getlist("correct_answer") if v in valid_options]
+            raw_count = (form.get("correct_count") or "").strip()
+            try:
+                count_val = int(raw_count) if raw_count else None
+            except ValueError:
+                count_val = None
+            correct_answer = (
+                json.dumps({"count": count_val, "teams": selected}, ensure_ascii=False)
+                if (raw_count or selected) else ""
+            )
         if question["scoring_mode"] == "closest_podium" and parse_bonus_number(correct_answer) is None:
             _flash(request, "La réponse correcte doit être un nombre.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)

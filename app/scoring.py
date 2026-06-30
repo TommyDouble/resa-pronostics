@@ -6,16 +6,17 @@ from app.database import get_db
 from app.timeutils import sporting_day
 
 
-def parse_revelation_winners(correct_answer) -> set:
-    """Winning outsiders for the révélation question.
+def parse_team_set(value) -> set:
+    """Parse a stored answer holding several items (teams) into a set.
 
-    Stored as a JSON list (new format, supports ties → several winning teams).
-    Falls back to a single team string for legacy answers. Returns a set of
-    non-empty team names.
+    Accepts a JSON list (canonical format for multi-choice answers) or a single
+    string (legacy / single value). Returns a set of non-empty trimmed strings.
     """
-    if not correct_answer:
+    if not value:
         return set()
-    raw = str(correct_answer).strip()
+    if isinstance(value, (list, tuple, set)):
+        return {str(t).strip() for t in value if str(t).strip()}
+    raw = str(value).strip()
     if not raw:
         return set()
     try:
@@ -27,6 +28,24 @@ def parse_revelation_winners(correct_answer) -> set:
     if isinstance(parsed, str) and parsed.strip():
         return {parsed.strip()}
     return set()
+
+
+def format_team_list(value) -> str:
+    """Human-readable rendering of a stored multi-choice answer."""
+    teams = parse_team_set(value)
+    if not teams:
+        return str(value or "")
+    return ", ".join(sorted(teams))
+
+
+def parse_revelation_winners(correct_answer) -> set:
+    """Winning outsiders for the révélation question.
+
+    Stored as a JSON list (new format, supports ties → several winning teams).
+    Falls back to a single team string for legacy answers. Returns a set of
+    non-empty team names.
+    """
+    return parse_team_set(correct_answer)
 
 
 def _winner_from_scores(score_team1, score_team2) -> str:
@@ -661,6 +680,104 @@ def closest_podium_bonus_points(points_value: int, correct_answer, answers, scor
     return scores
 
 
+def parse_number_multi(value) -> dict:
+    """Parse a combined "number + teams" answer.
+
+    Stored as JSON ``{"count": int, "teams": [..]}``. Returns
+    ``{"count": int|None, "teams": set}``.
+    """
+    count = None
+    teams = set()
+    if not value:
+        return {"count": count, "teams": teams}
+    try:
+        parsed = json.loads(value) if isinstance(value, str) else value
+    except (TypeError, ValueError):
+        parsed = None
+    if isinstance(parsed, dict):
+        raw_count = parsed.get("count")
+        try:
+            count = int(raw_count) if raw_count is not None and str(raw_count).strip() != "" else None
+        except (TypeError, ValueError):
+            count = None
+        teams = parse_team_set(parsed.get("teams"))
+    return {"count": count, "teams": teams}
+
+
+def format_number_multi(value) -> str:
+    """Human-readable rendering of a combined number+teams answer."""
+    parsed = parse_number_multi(value)
+    count = parsed["count"]
+    teams = sorted(parsed["teams"])
+    parts = []
+    if count is not None:
+        parts.append(f"{count} au total")
+    if teams:
+        parts.append(", ".join(teams))
+    return " — ".join(parts) if parts else str(value or "")
+
+
+def number_multi_bonus_points(points_value: int, correct_answer, answers, scoring_config=None) -> dict[int, int]:
+    """Points for the combined "number + qualifying teams" question (Q1).
+
+    Part 1 (the total number): ``part1_points`` (default 3) all-or-nothing on an
+    exact match. Part 2 (the teams): ``+team_step`` per correctly selected team,
+    ``-team_step`` per wrongly selected team, floored at 0. Total = part1 + part2.
+    """
+    correct = parse_number_multi(correct_answer)
+    part1_points = 3
+    team_step = 1
+    if scoring_config:
+        try:
+            cfg = json.loads(scoring_config) if isinstance(scoring_config, str) else scoring_config
+            if isinstance(cfg, dict):
+                if cfg.get("part1_points") is not None:
+                    part1_points = max(int(cfg["part1_points"]), 0)
+                if cfg.get("team_step") is not None:
+                    team_step = max(int(cfg["team_step"]), 1)
+        except (TypeError, ValueError):
+            part1_points, team_step = 3, 1
+    scores = {}
+    for ans in answers:
+        pid = _row_get(ans, "participant_id")
+        given = parse_number_multi(_row_get(ans, "answer"))
+        p1 = part1_points if (
+            given["count"] is not None
+            and correct["count"] is not None
+            and given["count"] == correct["count"]
+        ) else 0
+        good = len(given["teams"] & correct["teams"])
+        wrong = len(given["teams"] - correct["teams"])
+        p2 = max(team_step * good - team_step * wrong, 0)
+        scores[pid] = p1 + p2
+    return scores
+
+
+def multi_select_bonus_points(points_value: int, correct_answer, answers, scoring_config=None) -> dict[int, int]:
+    """Points for a multi-choice bonus question (e.g. "which teams qualify?").
+
+    Each error costs ``error_step`` points (default 2), floored at 0. An error is
+    a team checked by mistake OR a correct team forgotten — i.e. the size of the
+    symmetric difference between the participant's set and the correct set.
+    """
+    correct_set = parse_team_set(correct_answer)
+    step = 2
+    if scoring_config:
+        try:
+            cfg = json.loads(scoring_config) if isinstance(scoring_config, str) else scoring_config
+            if isinstance(cfg, dict) and cfg.get("error_step"):
+                step = max(int(cfg["error_step"]), 1)
+        except (TypeError, ValueError):
+            step = 2
+    scores = {}
+    for ans in answers:
+        pid = _row_get(ans, "participant_id")
+        given = parse_team_set(_row_get(ans, "answer"))
+        errors = len(given ^ correct_set)
+        scores[pid] = max(int(points_value) - step * errors, 0)
+    return scores
+
+
 async def calculate_bonus_scores(question_id: int):
     """Calculate scores for a bonus question after correct answer is set."""
     async with get_db() as db:
@@ -687,10 +804,24 @@ async def calculate_bonus_scores(question_id: int):
                     answers,
                     question["scoring_config"],
                 )
+            elif question["scoring_mode"] == "multi_select":
+                points_by_participant = multi_select_bonus_points(
+                    question["points_value"],
+                    question["correct_answer"],
+                    answers,
+                    question["scoring_config"],
+                )
+            elif question["scoring_mode"] == "number_multi":
+                points_by_participant = number_multi_bonus_points(
+                    question["points_value"],
+                    question["correct_answer"],
+                    answers,
+                    question["scoring_config"],
+                )
             else:
                 points_by_participant = {}
             for ans in answers:
-                if question["scoring_mode"] == "closest_podium":
+                if question["scoring_mode"] in ("closest_podium", "multi_select", "number_multi"):
                     points = points_by_participant.get(ans["participant_id"], 0)
                 else:
                     correct = answers_match(

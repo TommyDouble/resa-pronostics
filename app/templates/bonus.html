@@ -59,14 +59,20 @@
       </span>
     </div>
 
-    <p style="font-family:var(--sketch);font-weight:600;font-size:24px;line-height:1.1;margin:9px 0 12px;">
+    <p style="font-family:var(--sketch);font-weight:600;font-size:24px;line-height:1.1;margin:9px 0 {{ '6px' if q.help_text else '12px' }};">
       {{ q.question_text }}
     </p>
+
+    {% if q.help_text %}
+    <p class="muted tip" tabindex="0" data-tip="{{ q.help_text }}" style="font-size:12px;margin:0 0 12px;cursor:help;">
+      ⓘ Règle de résolution
+    </p>
+    {% endif %}
 
     {% if q.has_answer %}
     <div class="banner acc" style="margin-bottom:12px;">
       <span>✓</span>
-      <span>Ta réponse : <b>{{ q.answer }}</b></span>
+      <span>Ta réponse : <b>{{ q.answer_display or q.answer }}</b></span>
       {% if q.answered_at %}
       <span class="muted" style="margin-left:auto;font-size:11px;" data-local-utc="{{ q.answered_at|utc_iso }}">{{ q.answered_at|local_datetime }}</span>
       {% endif %}
@@ -82,7 +88,7 @@
 
     {% if q.has_score and q.correct_answer %}
     <div class="muted" style="font-size:12px;margin-bottom:12px;">
-      Réponse correcte : <b style="color:var(--n900);">{{ q.correct_answer }}</b>
+      Réponse correcte : <b style="color:var(--n900);">{{ q.correct_answer_display or q.correct_answer }}</b>
     </div>
     {% endif %}
 
@@ -91,6 +97,33 @@
       {% if q.answer_type == 'number' %}
       <div class="field" style="margin-bottom:14px;">
         <input type="number" name="answer" min="0" value="{{ q.answer or '' }}" placeholder="Ta réponse…" inputmode="numeric">
+      </div>
+      {% elif q.answer_type == 'number_multi' and q.options %}
+      <div data-number-multi style="margin-bottom:14px;">
+        <div class="field" style="margin-bottom:10px;">
+          <input type="number" name="count" min="1" max="8" value="{{ q.answer_count if q.answer_count is not none else '' }}"
+                 placeholder="Total d'équipes africaines (Maroc inclus)…" inputmode="numeric" data-nm-count>
+        </div>
+        <div class="muted" data-nm-hint style="font-size:12px;margin-bottom:8px;">
+          Indique d'abord le total, puis coche les équipes qui se qualifient.
+        </div>
+        <div data-nm-badges style="display:flex;flex-wrap:wrap;gap:8px;">
+          {% for opt in q.options | fromjson %}
+          <label class="nm-badge" data-nm-badge>
+            <input type="checkbox" name="teams" value="{{ opt }}" {{ 'checked' if opt in q.answer_set else '' }} hidden>
+            <span>{{ opt }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% elif q.answer_type == 'multi_choice' and q.options %}
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+        {% for opt in q.options | fromjson %}
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" name="answer" value="{{ opt }}" {{ 'checked' if opt in q.answer_set else '' }}>
+          <span>{{ opt }}</span>
+        </label>
+        {% endfor %}
       </div>
       {% elif q.answer_type == 'choice' and q.options %}
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">

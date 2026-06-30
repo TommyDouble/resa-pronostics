@@ -739,7 +739,80 @@ function initBonusForms() {
       errorBox.textContent = message || '';
       errorBox.classList.toggle('show', !!message);
     }
+
+    // ---- number_multi widget (nombre + badges équipes) ----
+    var nm = form.querySelector('[data-number-multi]');
+    var nmCount = nm && nm.querySelector('[data-nm-count]');
+    var nmBadges = nm ? Array.prototype.slice.call(nm.querySelectorAll('[data-nm-badge]')) : [];
+    var nmHint = nm && nm.querySelector('[data-nm-hint]');
+    function nmMax() {
+      if (!nmCount) return null;
+      var n = parseInt(nmCount.value, 10);
+      if (isNaN(n) || n < 1) return null;
+      return Math.max(n - 1, 0);
+    }
+    function nmSelected() {
+      return nmBadges.filter(function(b) { return b.querySelector('input').checked; }).length;
+    }
+    function nmRefresh() {
+      var max = nmMax();
+      var sel = nmSelected();
+      nmBadges.forEach(function(b) {
+        var cb = b.querySelector('input');
+        b.classList.toggle('is-on', cb.checked);
+        b.classList.toggle('is-disabled', max === null || (!cb.checked && sel >= max));
+      });
+      if (nmHint) {
+        if (max === null) {
+          nmHint.textContent = "Indique d'abord le total, puis coche les équipes qui se qualifient.";
+        } else {
+          nmHint.textContent = sel + ' / ' + max + ' équipe' + (max > 1 ? 's' : '') +
+            ' sélectionnée' + (sel > 1 ? 's' : '');
+        }
+      }
+    }
+    if (nm) {
+      nmBadges.forEach(function(b) {
+        var cb = b.querySelector('input');
+        cb.addEventListener('change', function() {
+          var max = nmMax();
+          if (cb.checked && (max === null || nmSelected() > max)) {
+            cb.checked = false;
+          }
+          setError('');
+          nmRefresh();
+        });
+      });
+      if (nmCount) {
+        nmCount.addEventListener('input', function() {
+          var max = nmMax();
+          if (max !== null) {
+            var checked = nmBadges.filter(function(b) { return b.querySelector('input').checked; });
+            checked.slice(max).forEach(function(b) { b.querySelector('input').checked = false; });
+          }
+          setError('');
+          nmRefresh();
+        });
+      }
+      nmRefresh();
+    }
+
     form.addEventListener('submit', function(e) {
+      if (nm) {
+        var max = nmMax();
+        if (max === null) {
+          e.preventDefault();
+          setError('Indique le total (1 à 8) avant de valider.');
+          return;
+        }
+        if (nmSelected() !== max) {
+          e.preventDefault();
+          setError('Sélectionne exactement ' + max + ' équipe' + (max > 1 ? 's' : '') + '.');
+          return;
+        }
+        setError('');
+        return;
+      }
       var radios = form.querySelectorAll('input[type="radio"][name="answer"]');
       if (radios.length) {
         var checked = Array.prototype.some.call(radios, function(radio) {
@@ -748,6 +821,17 @@ function initBonusForms() {
         if (!checked) {
           e.preventDefault();
           setError('Choisis une réponse avant de valider.');
+          return;
+        }
+      }
+      var checkboxes = form.querySelectorAll('input[type="checkbox"][name="answer"]');
+      if (checkboxes.length) {
+        var anyChecked = Array.prototype.some.call(checkboxes, function(box) {
+          return box.checked;
+        });
+        if (!anyChecked) {
+          e.preventDefault();
+          setError('Coche au moins une équipe avant de valider.');
           return;
         }
       }
@@ -874,7 +958,7 @@ function initAdminBonusQuestionForms() {
       }
       if (answerArea) answerArea.style.display = isOpen ? '' : 'none';
       if (locked) locked.style.display = isOpen ? 'none' : '';
-      if (choice) choice.style.display = type === 'choice' ? '' : 'none';
+      if (choice) choice.style.display = type === 'number' ? 'none' : '';
       if (number) number.style.display = type === 'number' ? '' : 'none';
       updatePreviewOptions();
     }

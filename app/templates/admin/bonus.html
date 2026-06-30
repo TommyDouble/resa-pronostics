@@ -145,6 +145,8 @@
           <div class="field">
             <select name="answer_type" style="flex:1;">
               <option value="choice">Choix unique</option>
+              <option value="multi_choice">Choix multiple</option>
+              <option value="number_multi">Nombre + équipes</option>
               <option value="number">Nombre le plus proche</option>
             </select>
           </div>
@@ -239,6 +241,10 @@
 
     <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
       {{ step_head('4', 'Correction et publication', 'Tu peux enregistrer sans réponse correcte, puis publier plus tard.') }}
+      <div style="margin-bottom:10px;">
+        <div class="lbl" style="margin-bottom:5px;">Règle / aide (tooltip côté participant, optionnel)</div>
+        <textarea name="help_text" class="textarea" rows="2" placeholder="Ex: règle de résolution, cas VAR/prolongation…"></textarea>
+      </div>
       <div style="display:grid;grid-template-columns:1fr minmax(220px,.5fr);gap:10px;align-items:end;">
         <div>
           <div class="lbl" style="margin-bottom:5px;">Réponse correcte optionnelle</div>
@@ -266,7 +272,7 @@
 </h2>
 {% for q in questions %}
 {% set is_closest = q.scoring_mode == 'closest_podium' %}
-{% set type_label = 'nombre le plus proche' if is_closest else ('choix unique' if q.answer_type == 'choice' else q.answer_type) %}
+{% set type_label = 'nombre le plus proche' if is_closest else {'choice': 'choix unique', 'multi_choice': 'choix multiple', 'number_multi': 'nombre + équipes', 'number': 'numérique', 'text': 'texte libre'}.get(q.answer_type, q.answer_type) %}
 {% set bar_label = (q.closest_rank_points|join(' / ')) ~ ' pts' if is_closest else q.points_value ~ ' pts' %}
 <div class="card">
   <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
@@ -284,7 +290,7 @@
       {{ q.correct_count }}/{{ q.answer_count }} avec points
     </span>
     {% if q.correct_answer %}
-    <span class="chip ok">Réponse: {{ q.correct_answer }}</span>
+    <span class="chip ok">Réponse: {{ q.correct_answer_display or q.correct_answer }}</span>
     {% else %}
     <span class="chip gr">Réponse non définie</span>
     {% endif %}
@@ -304,12 +310,14 @@
           <div class="field">
             <select name="answer_type">
               <option value="choice" {{ 'selected' if q.answer_type == 'choice' else '' }}>Choix unique</option>
+              <option value="multi_choice" {{ 'selected' if q.answer_type == 'multi_choice' else '' }}>Choix multiple</option>
+              <option value="number_multi" {{ 'selected' if q.answer_type == 'number_multi' else '' }}>Nombre + équipes</option>
               <option value="number" {{ 'selected' if q.answer_type == 'number' else '' }}>Nombre le plus proche</option>
             </select>
           </div>
           {% else %}
           <div class="field readonly">
-            <input type="text" value="{{ 'Nombre le plus proche' if is_closest else {'choice': 'Choix unique', 'number': 'Numérique', 'text': 'Texte libre'}.get(q.answer_type, q.answer_type) }}" readonly tabindex="-1">
+            <input type="text" value="{{ 'Nombre le plus proche' if is_closest else {'choice': 'Choix unique', 'multi_choice': 'Choix multiple', 'number_multi': 'Nombre + équipes', 'number': 'Numérique', 'text': 'Texte libre'}.get(q.answer_type, q.answer_type) }}" readonly tabindex="-1">
           </div>
           {% endif %}
         </div>
@@ -402,10 +410,39 @@
 
     <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
       {{ step_head('4', 'Correction et publication', 'La réponse correcte déclenche le recalcul des points.') }}
+      <div style="margin-bottom:10px;">
+        <div class="lbl" style="margin-bottom:5px;">Règle / aide (tooltip côté participant, optionnel)</div>
+        <textarea name="help_text" class="textarea" rows="2" placeholder="Ex: règle de résolution, cas VAR/prolongation…">{{ q.help_text or '' }}</textarea>
+      </div>
       <div style="display:grid;grid-template-columns:1fr minmax(220px,.4fr);gap:10px;align-items:end;">
         <div data-bonus-choice-only>
           <div class="lbl" style="margin-bottom:5px;">Réponse correcte</div>
-          {% if q.answer_type == 'choice' and q.options_text %}
+          {% if q.answer_type == 'number_multi' and q.options %}
+          <div style="margin-bottom:8px;max-width:160px;">
+            <div class="muted" style="font-size:11px;margin-bottom:4px;">Total (Maroc inclus)</div>
+            <div class="field"><input type="number" name="correct_count" min="1" max="8" value="{{ q.correct_count if q.correct_count is not none else '' }}" placeholder="ex: 4"></div>
+          </div>
+          <div class="muted" style="font-size:11px;margin-bottom:4px;">Équipes qualifiées (parmi celles en course)</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            {% for opt in q.options | fromjson %}
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+              <input type="checkbox" name="correct_answer" value="{{ opt }}" {{ 'checked' if opt in q.correct_set else '' }}>
+              <span>{{ opt }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          <p class="muted helper-text" style="margin-bottom:0;">3 pts si le total est exact, +1 par équipe juste, −1 par erreur (plancher 0).</p>
+          {% elif q.answer_type == 'multi_choice' and q.options %}
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            {% for opt in q.options | fromjson %}
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+              <input type="checkbox" name="correct_answer" value="{{ opt }}" {{ 'checked' if opt in q.correct_set else '' }}>
+              <span>{{ opt }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          <p class="muted helper-text" style="margin-bottom:0;">Coche les équipes qualifiées. Le barème 6/4/2/0 retire 2 pts par erreur.</p>
+          {% elif q.answer_type == 'choice' and q.options_text %}
           <div class="field">
             <select name="correct_answer">
               <option value="">— Non définie —</option>
@@ -420,7 +457,7 @@
         </div>
         <div data-bonus-number-only>
           <div class="lbl" style="margin-bottom:5px;">Réponse correcte numérique</div>
-          <div class="field"><input type="text" name="correct_answer" value="{{ q.correct_answer or '' }}" placeholder="Déclenche le recalcul"></div>
+          <div class="field"><input type="number" step="any" name="correct_answer" value="{{ q.correct_answer or '' }}" placeholder="Déclenche le recalcul" inputmode="numeric"></div>
         </div>
         <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;cursor:pointer;padding-bottom:12px;">
           <input type="checkbox" name="is_published" value="1" {{ 'checked' if q.is_published else '' }}>
@@ -508,7 +545,7 @@
               {% if a.full_name != a.participant_name %}<div class="muted" style="font-size:10px;">{{ a.full_name }}</div>{% endif %}
             </td>
             <td>
-              {{ a.answer }}
+              {{ a.answer_display or a.answer }}
               {% if q.correct_answer and a.points > 0 %}
               <span class="chip ok" style="margin-left:6px;">correct</span>
               {% elif q.correct_answer %}
