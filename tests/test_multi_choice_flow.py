@@ -1,10 +1,17 @@
 import json
 from html import unescape
 from pathlib import Path
+import uuid
 
 import app.routers.pages as page_routes
 
-from app.database import get_db
+from app.database import (
+    ROUND32_EXACT_POINTS,
+    ROUND32_FAVORITE_CONCEDE_TEXT,
+    ROUND32_TIEBREAK_COUNT_TEXT,
+    ensure_round_of_32_bonus_drafts,
+    get_db,
+)
 from conftest import run
 
 
@@ -39,16 +46,26 @@ def test_round_of_32_drafts_seeded(client):
 
     favori = _fetch_question_by_text("Le Favori Qui Tremble")
     assert favori is not None
+    assert favori["answer_type"] == "number"
+    assert favori["scoring_mode"] == "exact"
+    assert favori["points_value"] == ROUND32_EXACT_POINTS
+    favori_config = json.loads(favori["scoring_config"])
+    assert favori_config["min_value"] == 0
+    assert favori_config["max_value"] == 6
     assert favori["help_text"] and "but contre son camp" in favori["help_text"]
+    assert "5 pts" in favori["help_text"]
 
     assert _fetch_question_by_text("au moins une nouvelle séance") is None
 
     tab_count = _fetch_question_by_text("Combien de nouvelles séances")
     assert tab_count is not None
+    assert tab_count["answer_type"] == "number"
+    assert tab_count["scoring_mode"] == "exact"
+    assert tab_count["points_value"] == ROUND32_EXACT_POINTS
     tab_config = json.loads(tab_count["scoring_config"])
-    assert tab_config["rank_points"] == [3, 2, 1]
     assert tab_config["min_value"] == 0
     assert tab_config["max_value"] == 13
+    assert "5 pts" in tab_count["help_text"]
 
 
 def test_multi_choice_end_to_end(client, admin_client, participant):
@@ -392,6 +409,47 @@ def _publish_question(qid, deadline):
     run(_go())
 
 
+def _create_participant(name):
+    token = str(uuid.uuid4())
+
+    async def _go():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO participants
+                   (name, first_name, last_name, email, token, is_confirmed)
+                   VALUES (?,?,?,?,?,1)""",
+                (name, name.split()[0], "Exact", f"{token}@test.local", token),
+            )
+            await db.commit()
+            return {"id": cursor.lastrowid, "token": token}
+
+    return run(_go())
+
+
+def _delete_participants(participant_ids):
+    if not participant_ids:
+        return
+
+    async def _go():
+        async with get_db() as db:
+            placeholders = ",".join("?" for _ in participant_ids)
+            await db.execute(
+                f"DELETE FROM scores WHERE participant_id IN ({placeholders})",
+                tuple(participant_ids),
+            )
+            await db.execute(
+                f"DELETE FROM bonus_answers WHERE participant_id IN ({placeholders})",
+                tuple(participant_ids),
+            )
+            await db.execute(
+                f"DELETE FROM participants WHERE id IN ({placeholders})",
+                tuple(participant_ids),
+            )
+            await db.commit()
+
+    run(_go())
+
+
 def test_bonus_number_rejects_out_of_bounds(client, participant):
     # "Le Favori Qui Tremble" is seeded with min_value=0 / max_value=6.
     q = _fetch_question_by_text("Le Favori Qui Tremble")
@@ -409,6 +467,111 @@ def test_bonus_number_rejects_out_of_bounds(client, participant):
     assert ok.status_code == 303
     stored = run(_stored_answer(participant["id"], q["id"]))
     assert stored == "3"
+
+
+def test_round32_numeric_bonus_only_exact_answers_score(client, admin_client):
+    scenarios = [
+        ("Le Favori Qui Tremble", "3", "2"),
+        ("Encore des tirs au but ?", "1", "2"),
+    ]
+    created_ids = []
+    try:
+        for label, correct_answer, wrong_answer in scenarios:
+            q = _fetch_question_by_text(label)
+            exact = _create_participant(f"{label} Exact")
+            wrong = _create_participant(f"{label} Wrong")
+            created_ids.extend([exact["id"], wrong["id"]])
+            _publish_question(q["id"], "2030-01-01T12:00:00")
+
+            assert client.post(
+                f"/p/{exact['token']}/bonus/{q['id']}",
+                data={"answer": correct_answer},
+                follow_redirects=False,
+            ).status_code == 303
+            assert client.post(
+                f"/p/{wrong['token']}/bonus/{q['id']}",
+                data={"answer": wrong_answer},
+                follow_redirects=False,
+            ).status_code == 303
+
+            resp = admin_client.post(
+                f"/admin/bonus/{q['id']}/answer",
+                data={"correct_answer": correct_answer},
+                follow_redirects=False,
+            )
+            assert resp.status_code == 303
+
+            assert run(_score(exact["id"], q["id"])) == ROUND32_EXACT_POINTS
+            assert run(_score(wrong["id"], q["id"])) == 0
+    finally:
+        _delete_participants(created_ids)
+
+
+def test_round32_exact_numeric_migration_updates_existing_questions_and_scores():
+    right = _create_participant("Round32 Migration Exact")
+    wrong = _create_participant("Round32 Migration Wrong")
+
+    async def _downgrade_then_migrate():
+        async with get_db() as db:
+            await db.execute(
+                "DELETE FROM app_settings WHERE key='migr_round32_exact_numeric_bonus_v1'"
+            )
+            for text in (ROUND32_TIEBREAK_COUNT_TEXT, ROUND32_FAVORITE_CONCEDE_TEXT):
+                row = await db.execute(
+                    "SELECT id FROM bonus_questions WHERE question_text=?",
+                    (text,),
+                )
+                question = await row.fetchone()
+                qid = question["id"]
+                await db.execute(
+                    """UPDATE bonus_questions
+                       SET points_value=6,
+                           scoring_mode='closest_podium',
+                           scoring_config='{"preset_key":"fun_balanced","award_mode":"podium_custom","tie_policy":"full_skip","rank_points":[6,4,2],"min_value":0,"max_value":6}',
+                           correct_answer='3'
+                       WHERE id=?""",
+                    (qid,),
+                )
+                await db.execute(
+                    """INSERT INTO bonus_answers (participant_id, question_id, answer)
+                       VALUES (?,?,?)
+                       ON CONFLICT(participant_id, question_id)
+                       DO UPDATE SET answer=excluded.answer""",
+                    (right["id"], qid, "3"),
+                )
+                await db.execute(
+                    """INSERT INTO bonus_answers (participant_id, question_id, answer)
+                       VALUES (?,?,?)
+                       ON CONFLICT(participant_id, question_id)
+                       DO UPDATE SET answer=excluded.answer""",
+                    (wrong["id"], qid, "4"),
+                )
+                await db.execute(
+                    "DELETE FROM scores WHERE bonus_question_id=?",
+                    (qid,),
+                )
+                await db.execute(
+                    "INSERT INTO scores (participant_id, bonus_question_id, points) VALUES (?,?,6)",
+                    (right["id"], qid),
+                )
+                await db.execute(
+                    "INSERT INTO scores (participant_id, bonus_question_id, points) VALUES (?,?,6)",
+                    (wrong["id"], qid),
+                )
+            await ensure_round_of_32_bonus_drafts(db)
+            await db.commit()
+
+    try:
+        run(_downgrade_then_migrate())
+
+        for text in (ROUND32_TIEBREAK_COUNT_TEXT, ROUND32_FAVORITE_CONCEDE_TEXT):
+            q = _fetch_question_by_text(text)
+            assert q["points_value"] == ROUND32_EXACT_POINTS
+            assert q["scoring_mode"] == "exact"
+            assert run(_score(right["id"], q["id"])) == ROUND32_EXACT_POINTS
+            assert run(_score(wrong["id"], q["id"])) == 0
+    finally:
+        _delete_participants([right["id"], wrong["id"]])
 
 
 def test_bonus_rejects_answer_after_deadline(client, participant):

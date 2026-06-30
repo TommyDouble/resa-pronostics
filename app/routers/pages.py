@@ -24,7 +24,12 @@ from app.auth import (
 )
 from app.config import settings
 from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
-from app.database import get_db
+from app.database import (
+    ROUND32_EXACT_POINTS,
+    ROUND32_FAVORITE_CONCEDE_TEXT,
+    ROUND32_TIEBREAK_COUNT_TEXT,
+    get_db,
+)
 from app.flags import team_flag
 from app.knockout import is_placeholder_team, match_predictions_open, parse_source_label
 from app.mail import send_invitation
@@ -2087,10 +2092,10 @@ def _bonus_help_lead(q: dict, closest_config: dict | None = None) -> str:
         if locked:
             return f"{locked} compte déjà. Le total doit égaler les tuiles cochées."
         return "Le total doit égaler le nombre de tuiles cochées."
-    if "Combien de nouvelles séances de tirs au but" in text:
-        return "Nouvelles séances uniquement, celles déjà jouées ne comptent pas."
-    if "Le Favori Qui Tremble" in text:
-        return "Réponds de 0 à 6. On regarde le premier but officiel du match."
+    if text == ROUND32_TIEBREAK_COUNT_TEXT:
+        return f"Nombre exact uniquement : {ROUND32_EXACT_POINTS} pts, sinon 0."
+    if text == ROUND32_FAVORITE_CONCEDE_TEXT:
+        return f"Réponds de 0 à 6. Nombre exact : {ROUND32_EXACT_POINTS} pts."
     if q.get("scoring_mode") == "closest_podium" and closest_config:
         points = " / ".join(str(p) for p in closest_config["rank_points"] if p > 0)
         return f"Le plus proche marque {points} pts."
