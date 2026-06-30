@@ -279,6 +279,46 @@ def test_home_bonus_stack_and_ajax_submit(client, admin_client, participant, mon
     assert f'data-question-id="{q["id"]}"' not in html_after
 
 
+def test_bonus_title_and_prompt_are_joined(client, admin_client):
+    # Two separate admin fields are stored as "Title — Prompt".
+    resp = admin_client.post(
+        "/admin/bonus/create",
+        data={
+            "question_text": "Combien de buts au total ?",
+            "question_title": "Festival offensif",
+            "phase": "round_of_32",
+            "answer_type": "number",
+            "points_value": "6",
+            "deadline": "2030-01-01T12:00",
+            "is_published": "0",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    q = _fetch_question_by_text("Festival offensif")
+    assert q is not None
+    assert q["question_text"] == "Festival offensif — Combien de buts au total ?"
+
+    # Empty title → only the prompt is stored (no leading separator).
+    resp = admin_client.post(
+        "/admin/bonus/create",
+        data={
+            "question_text": "Question sans titre court",
+            "question_title": "",
+            "phase": "round_of_32",
+            "answer_type": "number",
+            "points_value": "6",
+            "deadline": "2030-01-01T12:00",
+            "is_published": "0",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    q2 = _fetch_question_by_text("Question sans titre court")
+    assert q2 is not None
+    assert q2["question_text"] == "Question sans titre court"
+
+
 def _publish_question(qid, deadline):
     async def _go():
         async with get_db() as db:
