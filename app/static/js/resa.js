@@ -883,6 +883,75 @@ function initBonusStack() {
   updateDeck();
 }
 
+/* ---- Admin mobile "Plus" menu ---- */
+function initAdminMobileMenu() {
+  var panel = document.querySelector('[data-admin-more]');
+  if (!panel) return;
+  var openers = document.querySelectorAll('[data-admin-more-open]');
+  var closers = panel.querySelectorAll('[data-admin-more-close]');
+  var focusables = Array.prototype.slice.call(
+    panel.querySelectorAll('a[href], button:not([disabled])')
+  );
+  var lastOpener = null;
+
+  function openPanel(e) {
+    lastOpener = e && e.currentTarget ? e.currentTarget : openers[0];
+    panel.hidden = false;
+    document.body.classList.add('admin-more-open');
+    openers.forEach(function(btn) { btn.setAttribute('aria-expanded', 'true'); });
+    var target = panel.querySelector('button[data-admin-more-close]') || focusables[0];
+    if (target && target.focus) target.focus();
+  }
+
+  function closePanel(returnFocus) {
+    if (panel.hidden) return;
+    panel.hidden = true;
+    document.body.classList.remove('admin-more-open');
+    openers.forEach(function(btn) { btn.setAttribute('aria-expanded', 'false'); });
+    if (returnFocus !== false && lastOpener && lastOpener.focus) lastOpener.focus();
+    lastOpener = null;
+  }
+
+  openers.forEach(function(btn) {
+    btn.addEventListener('click', openPanel);
+  });
+  closers.forEach(function(btn) {
+    btn.addEventListener('click', function() { closePanel(); });
+  });
+  document.addEventListener('keydown', function(e) {
+    if (panel.hidden) return;
+    if (e.key === 'Escape') {
+      closePanel();
+      return;
+    }
+    // Focus-trap léger : Tab/Shift+Tab bouclent dans le panneau tant qu'il est ouvert.
+    if (e.key === 'Tab' && focusables.length) {
+      var first = focusables[0];
+      var last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  });
+
+  // Le panneau est masqué par CSS dès 768px : si l'écran passe en desktop pendant
+  // qu'il est ouvert (rotation, resize), on aligne l'état JS (hidden/aria/scroll body)
+  // sur le CSS pour éviter un body verrouillé ou un aria-expanded désynchronisé.
+  var desktopQuery = window.matchMedia('(min-width: 768px)');
+  var onBreakpointChange = function(e) {
+    if (e.matches) closePanel(false);
+  };
+  if (desktopQuery.addEventListener) {
+    desktopQuery.addEventListener('change', onBreakpointChange);
+  } else if (desktopQuery.addListener) {
+    desktopQuery.addListener(onBreakpointChange);
+  }
+}
+
 /* ---- Bonus answer validation ---- */
 function initBonusForms() {
   document.querySelectorAll('.bonus-answer-form').forEach(function(form) {
@@ -2484,6 +2553,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initWinnerFinalistGuard();
   initScorerCombos();
   initBonusStack();
+  initAdminMobileMenu();
   initBonusForms();
   initAdminBonusQuestionForms();
   initPush();
