@@ -2,19 +2,61 @@
 {% block title %}Tableau de bord — Admin RESA{% endblock %}
 {% block admin_content %}
 
+{% macro encode_form(m) %}
+<form class="result-form dash-encode" method="post" action="/admin/resultats/{{ m.id }}" data-phase="{{ m.phase }}">
+  <input type="hidden" name="redirect_to" value="dashboard">
+  <span class="result-score-group">
+    <small>90'</small>
+    <input class="score-input" type="number" name="score_team1" min="0" max="30" placeholder="0" required>
+    <span class="score-sep">–</span>
+    <input class="score-input" type="number" name="score_team2" min="0" max="30" placeholder="0" required>
+  </span>
+  {% if m.phase != 'group' %}
+  <span class="result-score-group ko-final-fields" data-ko-final-fields>
+    <small>final a.p.</small>
+    <input class="score-input" type="number" name="final_score_team1" min="0" max="30" placeholder="0">
+    <span class="score-sep">–</span>
+    <input class="score-input" type="number" name="final_score_team2" min="0" max="30" placeholder="0">
+  </span>
+  <select name="qualifier_winner">
+    <option value="">Qualifié si nul final...</option>
+    <option value="team1">{{ m.team1_name }}</option>
+    <option value="team2">{{ m.team2_name }}</option>
+  </select>
+  {% endif %}
+  <button type="submit" class="btn sm">OK</button>
+</form>
+{% endmacro %}
+
 <h1>Tableau de bord</h1>
 
 <section data-dash-swap="todo">
 
-  {% if late_matches > 0 %}
-  <div class="admin-alert">
-    <span>⏱</span> {{ late_matches }} match{{ 's' if late_matches > 1 else '' }} joué{{ 's' if late_matches > 1 else '' }}
-    depuis &gt; 2h sans résultat encodé.
-    <a href="/admin/resultats" style="margin-left:8px;font-weight:700;color:var(--error);">Encoder →</a>
-  </div>
-  {% endif %}
-
   <h2 class="dash-h2">À faire</h2>
+
+  <div class="card p0 dash-today">
+    <div class="dash-card-head">
+      <span class="lbl">Résultats à encoder</span>
+      <span class="muted" style="font-size:11px;">{{ late_matches }} en retard</span>
+    </div>
+    {% for m in pending_results_shown %}
+    <div class="dash-match">
+      <div class="dm-state"><span class="dot o"></span></div>
+      <div class="dm-info">
+        <b>#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</b>
+        <div class="muted" style="font-size:11px;">
+          <span data-local-utc="{{ m|match_utc_iso }}" data-local-format="datetime">{{ m|match_time }}</span>
+        </div>
+      </div>
+      {{ encode_form(m) }}
+    </div>
+    {% else %}
+    <p class="muted" style="font-size:13px;padding:12px;"><span class="chip ok">Rien à encoder ✓</span></p>
+    {% endfor %}
+    {% if pending_results_overflow > 0 %}
+    <div style="padding:8px 12px;"><a class="dash-link" href="/admin/resultats">+{{ pending_results_overflow }} autre{{ 's' if pending_results_overflow > 1 else '' }} → Voir tous les résultats</a></div>
+    {% endif %}
+  </div>
 
   <div class="card p0 dash-today">
     <div class="dash-card-head">
@@ -45,30 +87,12 @@
       </div>
       {% if m.live_state == 'done' %}
       <span class="dash-score">{{ m|result_score }}</span>
+      {% elif m.id in pending_results_shown_ids %}
+      <span class="muted" style="font-size:11px;">À encoder ci-dessus ↑</span>
+      {% elif m.id in pending_result_ids %}
+      <a class="dash-link" href="/admin/resultats">À encoder dans Résultats →</a>
       {% elif m.live_state in ('live', 'awaiting') %}
-      <form class="result-form dash-encode" method="post" action="/admin/resultats/{{ m.id }}" data-phase="{{ m.phase }}">
-        <input type="hidden" name="redirect_to" value="dashboard">
-        <span class="result-score-group">
-          <small>90'</small>
-          <input class="score-input" type="number" name="score_team1" min="0" max="30" placeholder="0" required>
-          <span class="score-sep">–</span>
-          <input class="score-input" type="number" name="score_team2" min="0" max="30" placeholder="0" required>
-        </span>
-        {% if m.phase != 'group' %}
-        <span class="result-score-group ko-final-fields" data-ko-final-fields>
-          <small>final a.p.</small>
-          <input class="score-input" type="number" name="final_score_team1" min="0" max="30" placeholder="0">
-          <span class="score-sep">–</span>
-          <input class="score-input" type="number" name="final_score_team2" min="0" max="30" placeholder="0">
-        </span>
-        <select name="qualifier_winner">
-          <option value="">Qualifié si nul final...</option>
-          <option value="team1">{{ m.team1_name }}</option>
-          <option value="team2">{{ m.team2_name }}</option>
-        </select>
-        {% endif %}
-        <button type="submit" class="btn sm">OK</button>
-      </form>
+      {{ encode_form(m) }}
       {% else %}
       <span class="muted" style="font-size:11px;">à venir</span>
       {% endif %}
@@ -99,6 +123,32 @@
       {% else %}
       <p class="muted" style="font-size:13px;">Aucun match à venir.</p>
       {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="lbl" style="margin-bottom:8px;">Échéances</div>
+      {% if deadline_late_groups %}
+      <div class="dash-big" style="color:var(--error);">{{ deadline_late_total }}<small> dépassée{{ 's' if deadline_late_total > 1 else '' }}</small></div>
+      <details>
+        <summary class="dash-details-toggle">Voir</summary>
+        <div class="dash-names">
+          {% for g in deadline_late_groups %}{{ g.deadline|local_datetime }} · {{ g.event_summary }}{% if not loop.last %} · {% endif %}{% endfor %}
+        </div>
+      </details>
+      {% if deadline_late_overflow > 0 %}<div class="muted" style="font-size:11px;">+{{ deadline_late_overflow }} autre{{ 's' if deadline_late_overflow > 1 else '' }}</div>{% endif %}
+      {% endif %}
+      {% if deadline_future_groups %}
+      <details {% if not deadline_late_groups %}open{% endif %}>
+        <summary class="dash-details-toggle">{{ deadline_future_groups|length }} prochaine{{ 's' if deadline_future_groups|length > 1 else '' }}</summary>
+        <div class="dash-names">
+          {% for g in deadline_future_groups %}{{ g.deadline|local_datetime }} · {{ g.event_summary }}{% if not loop.last %} · {% endif %}{% endfor %}
+        </div>
+      </details>
+      {% endif %}
+      {% if not deadline_late_groups and not deadline_future_groups %}
+      <span class="chip ok">Rien à venir ✓</span>
+      {% endif %}
+      <a class="dash-link" href="/admin/communications">Gérer les rappels →</a>
     </div>
 
     <div class="card">

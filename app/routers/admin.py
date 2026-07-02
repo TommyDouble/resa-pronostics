@@ -871,13 +871,19 @@ async def dashboard(request: Request):
             m["is_overnight"] = calendar_day != dashboard_sporting_day
             m["calendar_day_label"] = format_sporting_day_fr(calendar_day).split(" ", 1)[0]
 
-        alert_row = await db.execute(
-            """SELECT COUNT(*) as cnt FROM matches
+        pending_rows = await db.execute(
+            """SELECT * FROM matches
                WHERE result IS NULL
-               AND datetime(match_date || 'T' || kickoff_time) < datetime(?, '-2 hours')""",
+               AND datetime(match_date || 'T' || kickoff_time) < datetime(?, '-2 hours')
+               ORDER BY match_date, kickoff_time""",
             (now,)
         )
-        late_matches = (await alert_row.fetchone())["cnt"]
+        pending_results = [dict(r) for r in await pending_rows.fetchall()]
+        late_matches = len(pending_results)
+        pending_results_shown = pending_results[:8]
+        pending_results_overflow = late_matches - len(pending_results_shown)
+        pending_result_ids = {m["id"] for m in pending_results}
+        pending_results_shown_ids = {m["id"] for m in pending_results_shown}
 
         confirmed_row = await db.execute(
             "SELECT COUNT(*) as cnt FROM participants WHERE is_confirmed=1 AND is_admin=0"
@@ -939,6 +945,17 @@ async def dashboard(request: Request):
             (now, now),
         )
         bonus_closing_soon = [dict(r) for r in await bonus_soon_rows.fetchall()]
+
+        # Carte « Échéances » : réutilise _build_deadline_groups (déjà utilisée par
+        # /admin/communications). Attention : future_limit ne borne pas le coût SQL (une
+        # requête par match non joué + par bonus publié), seulement la liste retournée —
+        # acceptable à l'échelle actuelle du tournoi, à surveiller si le volume grossit,
+        # vu que cette route est pollée toutes les 60s par l'auto-refresh du dashboard.
+        deadline_data = await _build_deadline_groups(db, future_limit=3)
+        deadline_late_total = len(deadline_data["late_groups"])
+        deadline_late_groups = deadline_data["late_groups"][:3]
+        deadline_late_overflow = deadline_late_total - len(deadline_late_groups)
+        deadline_future_groups = deadline_data["future_groups"]
 
         # ---- Section « Santé du jeu » ----
         total_row = await db.execute("SELECT COUNT(*) as cnt FROM participants WHERE is_admin=0")
@@ -1004,6 +1021,10 @@ async def dashboard(request: Request):
             f"{format_sporting_day_fr((datetime.fromisoformat(dashboard_sporting_day).date() + timedelta(days=1)).isoformat())} à 8 h 59"
         ),
         "late_matches": late_matches,
+        "pending_results_shown": pending_results_shown,
+        "pending_results_overflow": pending_results_overflow,
+        "pending_result_ids": pending_result_ids,
+        "pending_results_shown_ids": pending_results_shown_ids,
         "next_match": next_match,
         "next_pred_count": next_pred_count,
         "missing_players": missing_players,
@@ -1011,6 +1032,10 @@ async def dashboard(request: Request):
         "unpaid": unpaid,
         "bonus_to_close": bonus_to_close,
         "bonus_closing_soon": bonus_closing_soon,
+        "deadline_late_total": deadline_late_total,
+        "deadline_late_groups": deadline_late_groups,
+        "deadline_late_overflow": deadline_late_overflow,
+        "deadline_future_groups": deadline_future_groups,
         "total_participants": total_participants,
         "paid": paid,
         "preds_today": preds_today,

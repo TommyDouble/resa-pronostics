@@ -50,10 +50,20 @@ def test_home_and_admin_show_same_sporting_day_window(
         dashboard = admin_client.get("/admin/dashboard").text
         assert "Aujourd’hui" in home
         assert "Matchs de la journée sportive" in dashboard
-        for html in (home, dashboard):
-            assert "Dans la journée" in html
-            assert "Après minuit" in html
-            assert "Hors fenêtre" not in html
-            assert "04:00" in html  # le jour civil du match nocturne est explicite
+        assert "Dans la journée" in home
+        assert "Après minuit" in home
+        assert "Hors fenêtre" not in home
+        assert "04:00" in home  # le jour civil du match nocturne est explicite
+        # Sur le dashboard, on ne vérifie la fenêtre 9h-8h59 que dans la carte
+        # planning : le match « Hors fenêtre » peut légitimement apparaître par
+        # ailleurs (carte « Échéances », qui liste les prochaines deadlines toutes
+        # dates confondues, indépendamment de la journée sportive courante).
+        schedule_start = dashboard.index("Matchs de la journée sportive")
+        schedule_end = dashboard.index("dash-grid", schedule_start)
+        schedule = dashboard[schedule_start:schedule_end]
+        assert "Dans la journée" in schedule
+        assert "Après minuit" in schedule
+        assert "Hors fenêtre" not in schedule
+        assert "04:00" in schedule
     finally:
         _cleanup_window()
