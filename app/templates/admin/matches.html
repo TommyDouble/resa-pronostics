@@ -78,7 +78,7 @@
               {% endif %}
               {% if m.result is none %}
               <form method="post" action="/admin/matches/{{ m.id }}/predictions-open/toggle"
-                    onsubmit="return confirm('{{ 'Fermer les pronostics de ce match ?' if m.predictions_open_effective else 'Ouvrir les pronostics de ce match ?' }}')">
+                    data-confirm="{{ 'Fermer les pronostics de ce match ?' if m.predictions_open_effective else 'Ouvrir les pronostics de ce match ?' }}">
                 <button type="submit" class="btn ghost sm" style="font-size:11px;"
                         {% if not m.bracket_ready and not m.predictions_open_effective %}disabled{% endif %}>
                   {{ 'Fermer' if m.predictions_open_effective else 'Ouvrir' }}

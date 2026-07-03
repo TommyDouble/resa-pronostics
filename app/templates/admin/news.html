@@ -128,7 +128,8 @@
     <div class="news-actions">
       <a class="btn ghost sm" href="/admin/nouveautes/{{ item.id }}/preview" target="_blank" rel="noopener">👁 Prévisualiser</a>
       <form method="post" action="/admin/nouveautes/{{ item.id }}/delete" style="margin-left:auto;"
-            onsubmit="return confirm('Supprimer cette nouveauté ?');">
+            data-confirm="Supprimer cette nouveauté ?"
+            data-confirm-danger>
         <button type="submit" class="btn ghost sm">Supprimer</button>
       </form>
     </div>

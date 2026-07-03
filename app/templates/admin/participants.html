@@ -56,13 +56,15 @@
         <td data-sort-value="{{ p.pred_count }}">{{ '✓' if p.pred_count > 0 else '—' }}</td>
         <td>
           <button class="btn ghost sm" style="font-size:11px;padding:4px 8px;"
-                  onclick="copyToken('{{ base_url }}p/{{ p.token }}')">⧉ Lien</button>
+                  data-copy-token="{{ base_url }}p/{{ p.token }}">⧉ Lien</button>
           <form method="post" action="/admin/participants/{{ p.id }}/invite" style="display:inline;">
             <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;">✉ Inviter</button>
           </form>
           <form method="post" action="/admin/participants/{{ p.id }}/delete"
                 style="display:inline;"
-                onsubmit="return confirm('Supprimer définitivement {{ p.name }}{% if p.pred_count > 0 %} ainsi que ses {{ p.pred_count }} pronostic(s) et tous ses points{% endif %} ? Cette action est irréversible.')">
+                data-confirm-title="Supprimer {{ p.name }} ?"
+                data-confirm="Supprimer définitivement {{ p.name }}{% if p.pred_count > 0 %} ainsi que ses {{ p.pred_count }} pronostic(s) et tous ses points{% endif %} ? Cette action est irréversible."
+                data-confirm-strong="SUPPRIMER">
             <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;color:var(--error);">🗑</button>
           </form>
         </td>
@@ -112,13 +114,4 @@
   </div>
 </div>
 
-{% endblock %}
-{% block scripts %}
-<script>
-function copyToken(url) {
-  navigator.clipboard.writeText(url).then(function() {
-    alert('Lien copié : ' + url);
-  });
-}
-</script>
 {% endblock %}

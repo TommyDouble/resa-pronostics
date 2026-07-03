@@ -1296,13 +1296,205 @@ function initAdminBonusQuestionForms() {
 }
 
 /* ---- Flash message auto-dismiss ---- */
+function scheduleDismiss(msg, delay) {
+  setTimeout(function() {
+    msg.style.transition = 'opacity 300ms';
+    msg.style.opacity = '0';
+    setTimeout(function() { msg.remove(); }, 300);
+  }, delay || 3000);
+}
+
 function initFlash() {
   document.querySelectorAll('.flash-msg').forEach(function(msg) {
-    setTimeout(function() {
-      msg.style.transition = 'opacity 300ms';
-      msg.style.opacity = '0';
-      setTimeout(function() { msg.remove(); }, 300);
-    }, 3000);
+    scheduleDismiss(msg);
+  });
+}
+
+/* ---- Toast (déclenchable dynamiquement en JS, réutilise .flash/.flash-msg) ---- */
+function getToastRegion() {
+  // Réutilise la région .flash déjà rendue par le serveur si elle existe (évite deux
+  // conteneurs fixes superposés) ; n'en crée une nouvelle qu'en fallback.
+  var region = document.querySelector('.flash');
+  if (!region) {
+    region = document.createElement('div');
+    region.className = 'flash';
+    region.setAttribute('data-toast-region', '');
+    document.body.appendChild(region);
+  }
+  region.setAttribute('aria-live', 'polite');
+  return region;
+}
+
+function resaToast(text, kind) {
+  var region = getToastRegion();
+  var msg = document.createElement('div');
+  msg.className = 'flash-msg ' + (kind === 'err' ? 'err' : 'ok');
+  msg.setAttribute('role', kind === 'err' ? 'alert' : 'status');
+  msg.textContent = text;
+  region.appendChild(msg);
+  scheduleDismiss(msg);
+}
+
+/* ---- Admin: shared confirmation dialog (data-confirm / data-confirm-strong) ---- */
+var _confirmCtx = null;
+
+function _confirmDialogEls() {
+  var root = document.querySelector('[data-confirm-dialog]');
+  if (!root) return null;
+  return {
+    root: root,
+    title: root.querySelector('[data-confirm-title]'),
+    body: root.querySelector('[data-confirm-body]'),
+    wordWrap: root.querySelector('[data-confirm-word-wrap]'),
+    wordInput: root.querySelector('[data-confirm-word-input]'),
+    wordHint: root.querySelector('[data-confirm-word-hint]'),
+    okBtn: root.querySelector('[data-confirm-ok]'),
+    cancelEls: root.querySelectorAll('[data-confirm-cancel]')
+  };
+}
+
+function _confirmReset(els) {
+  els.root.hidden = true;
+  document.body.classList.remove('admin-confirm-open');
+  els.wordWrap.hidden = true;
+  els.wordInput.value = '';
+  els.okBtn.disabled = false;
+  els.okBtn.classList.remove('danger');
+}
+
+function closeConfirm(runCancel) {
+  var els = _confirmDialogEls();
+  if (!els || els.root.hidden) return;
+  var ctx = _confirmCtx;
+  _confirmReset(els);
+  _confirmCtx = null;
+  if (ctx && ctx.opener && ctx.opener.focus) ctx.opener.focus();
+  if (runCancel && ctx && typeof ctx.onCancel === 'function') ctx.onCancel();
+}
+
+// Point d'entrée partagé : appelé en mode déclaratif par initFormConfirm() (via data-confirm
+// sur un <form>) et en mode impératif par initResultForms() (garde-fou 0-0 en phase KO).
+function showConfirm(options) {
+  var els = _confirmDialogEls();
+  if (!els) return;
+  options = options || {};
+  _confirmCtx = {
+    onConfirm: options.onConfirm,
+    onCancel: options.onCancel,
+    opener: document.activeElement,
+    strongWord: options.strongWord || null
+  };
+  els.title.textContent = options.title || 'Confirmer';
+  els.body.textContent = options.body || '';
+  els.okBtn.classList.toggle('danger', !!options.danger || !!options.strongWord);
+  if (options.strongWord) {
+    els.wordWrap.hidden = false;
+    els.wordHint.textContent = 'Tape ' + options.strongWord + ' pour confirmer.';
+    els.okBtn.disabled = true;
+  } else {
+    els.wordWrap.hidden = true;
+    els.okBtn.disabled = false;
+  }
+  els.root.hidden = false;
+  document.body.classList.add('admin-confirm-open');
+  var target = options.strongWord ? els.wordInput : els.okBtn;
+  if (target && target.focus) target.focus();
+}
+
+function initConfirmDialog() {
+  var els = _confirmDialogEls();
+  if (!els) return;
+
+  els.cancelEls.forEach(function(btn) {
+    btn.addEventListener('click', function() { closeConfirm(true); });
+  });
+
+  els.okBtn.addEventListener('click', function() {
+    if (els.okBtn.disabled) return;
+    var ctx = _confirmCtx;
+    _confirmReset(els);
+    _confirmCtx = null;
+    if (ctx && typeof ctx.onConfirm === 'function') ctx.onConfirm();
+  });
+
+  els.wordInput.addEventListener('input', function() {
+    if (!_confirmCtx || !_confirmCtx.strongWord) return;
+    els.okBtn.disabled = els.wordInput.value.trim().toUpperCase() !== _confirmCtx.strongWord.toUpperCase();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (els.root.hidden) return;
+    if (e.key === 'Escape') {
+      closeConfirm(true);
+      return;
+    }
+    if (e.key === 'Tab') {
+      var focusables = Array.prototype.slice.call(
+        els.root.querySelectorAll('button:not([disabled]), input:not([disabled])')
+      ).filter(function(el) { return el.offsetParent !== null; });
+      if (!focusables.length) return;
+      var first = focusables[0];
+      var last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  });
+}
+
+/* ---- Admin: confirmation déclarative sur formulaires (data-confirm / data-confirm-strong) ---- */
+function initFormConfirm() {
+  document.querySelectorAll('form[data-confirm], form[data-confirm-strong]').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+      if (form.dataset.confirmDone === '1') return;
+      e.preventDefault();
+      showConfirm({
+        title: form.dataset.confirmTitle || 'Confirmer',
+        body: form.dataset.confirm || '',
+        danger: 'confirmDanger' in form.dataset,
+        strongWord: form.dataset.confirmStrong || null,
+        onConfirm: function() {
+          form.dataset.confirmDone = '1';
+          if (form.requestSubmit) form.requestSubmit();
+          else form.submit();
+          // La page qui a déclenché le submit peut survivre en bfcache (retour arrière) :
+          // on retire le flag tout de suite pour qu'un futur clic sur ce même formulaire
+          // restauré redemande une confirmation au lieu de partir directement.
+          delete form.dataset.confirmDone;
+        }
+      });
+    });
+  });
+}
+
+/* ---- Admin: copie du lien magic (toast au lieu d'alert) ---- */
+function initCopyToken() {
+  document.querySelectorAll('[data-copy-token]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var url = btn.dataset.copyToken;
+      function done() { resaToast('Lien copié.', 'ok'); }
+      function fail() { resaToast('Copie impossible, sélectionne le lien manuellement.', 'err'); }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done, fail);
+        return;
+      }
+      // Fallback : API Clipboard indisponible (contexte non sécurisé, vieux navigateur...).
+      var input = document.createElement('textarea');
+      input.value = url;
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+      input.remove();
+      if (ok) done(); else fail();
+    });
   });
 }
 
@@ -1346,7 +1538,7 @@ function initPaidToggles() {
           if (cell) cell.setAttribute('data-sort-value', paid ? '1' : '0');
         })
         .catch(function() {
-          alert('Mise à jour du paiement impossible, réessaie.');
+          resaToast('Mise à jour du paiement impossible, réessaie.', 'err');
         })
         .then(function() { btn.disabled = false; });
     });
@@ -1371,7 +1563,7 @@ function initFavoriteToggles() {
           if (cell) cell.setAttribute('data-sort-value', on ? '1' : '0');
         })
         .catch(function() {
-          alert('Mise à jour du favori impossible, réessaie.');
+          resaToast('Mise à jour du favori impossible, réessaie.', 'err');
         })
         .then(function() { btn.disabled = false; });
     });
@@ -1389,6 +1581,21 @@ function initResultForms() {
     var qualifier = form.querySelector('select[name="qualifier_winner"]');
     var phase = form.dataset.phase;
     var isKnockout = phase && phase !== 'group';
+
+    // Le formulaire "résultats" (results.html) porte déjà une .form-error, mais celui du
+    // dashboard (dashboard.html, macro encode_form) n'en a pas encore : on la crée à la volée
+    // pour que le message bloquant s'affiche partout où .result-form est utilisé.
+    var errorBox = form.querySelector('.form-error');
+    if (!errorBox) {
+      errorBox = document.createElement('div');
+      errorBox.className = 'form-error';
+      errorBox.setAttribute('role', 'alert');
+      form.appendChild(errorBox);
+    }
+    function setError(message) {
+      errorBox.textContent = message || '';
+      errorBox.classList.toggle('show', !!message);
+    }
 
     function scoreValue(input) {
       if (!input || input.value === '') return null;
@@ -1409,6 +1616,7 @@ function initResultForms() {
     }
 
     function updateFinalFields() {
+      setError('');
       if (!finalFields) return;
       var s1 = scoreValue(score1);
       var s2 = scoreValue(score2);
@@ -1435,22 +1643,31 @@ function initResultForms() {
       var s2 = scoreValue(score2);
       var f1 = scoreValue(final1);
       var f2 = scoreValue(final2);
+      setError('');
       if (isKnockout && s1 === s2) {
         if ((f1 !== null && f1 < s1) || (f2 !== null && f2 < s2)) {
-          alert("Le score final ne peut pas être inférieur au score à 90 minutes.");
+          setError('Le score final ne peut pas être inférieur au score à 90 minutes.');
           e.preventDefault();
           return;
         }
         if ((f1 === null || f2 === null || f1 === f2) && qualifier && !qualifier.value) {
-          alert("Choisis l'équipe qualifiée pour ce match de phase finale.");
+          setError("Choisis l'équipe qualifiée pour ce match de phase finale.");
           e.preventDefault();
           return;
         }
       }
-      if (s1 === 0 && s2 === 0 && isKnockout) {
-        if (!confirm('Score 0-0 sur un match éliminatoire. Confirmer ?')) {
-          e.preventDefault();
-        }
+      if (s1 === 0 && s2 === 0 && isKnockout && form.dataset.resultConfirmed !== '1') {
+        e.preventDefault();
+        showConfirm({
+          title: 'Score 0-0 en phase éliminatoire',
+          body: 'Score 0-0 sur un match éliminatoire. Confirmer ?',
+          onConfirm: function() {
+            form.dataset.resultConfirmed = '1';
+            if (form.requestSubmit) form.requestSubmit();
+            else form.submit();
+            delete form.dataset.resultConfirmed;
+          }
+        });
       }
     });
   });
@@ -2538,6 +2755,9 @@ document.addEventListener('DOMContentLoaded', function() {
   initCountdown();
   initOutsiderChips();
   initFlash();
+  initConfirmDialog();
+  initFormConfirm();
+  initCopyToken();
   initTopMatchToggles();
   initPaidToggles();
   initFavoriteToggles();
