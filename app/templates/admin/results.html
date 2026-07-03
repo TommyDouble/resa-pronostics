@@ -7,105 +7,105 @@
 
 {% if pending %}
 {% for m in pending %}
-<div class="card">
-  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-    <div style="flex:1;min-width:160px;">
-      <b style="font-size:14px;">#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</b>
+<div class="card result-card">
+  <div class="result-card-row">
+    <div class="result-card-info">
+      <span class="chip {{ 'gr' if m.phase == 'group' else 'warn' }}">{{ 'Groupe' if m.phase == 'group' else 'Phase finale' }}</span>
+      <b>#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</b>
       <div class="muted" style="font-size:11px;margin-top:2px;">
         <span data-local-utc="{{ m|match_utc_iso }}">{{ m|match_datetime }}</span>
         {% if m.is_top_match %} · ★ Top ×2{% endif %}
       </div>
     </div>
-    <form class="result-form" method="post" action="/admin/resultats/{{ m.id }}"
-          data-phase="{{ m.phase }}"
-          style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <form class="result-form result-card-form" method="post" action="/admin/resultats/{{ m.id }}"
+          data-phase="{{ m.phase }}">
       <span class="result-score-group">
         <small>90'</small>
         <input class="score-input" type="number" name="score_team1" min="0" max="30"
-               placeholder="0" required>
-        <span style="font-family:var(--sketch);font-size:20px;color:var(--n600);">–</span>
+               inputmode="numeric" pattern="[0-9]*" placeholder="0" required>
+        <span class="score-sep">–</span>
         <input class="score-input" type="number" name="score_team2" min="0" max="30"
-               placeholder="0" required>
+               inputmode="numeric" pattern="[0-9]*" placeholder="0" required>
       </span>
       {% if m.phase != 'group' %}
-      <span class="result-score-group ko-final-fields" data-ko-final-fields>
-        <small>final a.p.</small>
-        <input class="score-input" type="number" name="final_score_team1" min="0" max="30"
-               placeholder="0">
-        <span style="font-family:var(--sketch);font-size:20px;color:var(--n600);">–</span>
-        <input class="score-input" type="number" name="final_score_team2" min="0" max="30"
-               placeholder="0">
-      </span>
-      <select name="qualifier_winner" style="min-width:160px;">
-        <option value="">Qualifié si nul final...</option>
-        <option value="team1">{{ m.team1_name }}</option>
-        <option value="team2">{{ m.team2_name }}</option>
-      </select>
+      <div class="result-ko-extra">
+        <span class="result-score-group ko-final-fields" data-ko-final-fields>
+          <small>final a.p.</small>
+          <input class="score-input" type="number" name="final_score_team1" min="0" max="30"
+                 inputmode="numeric" pattern="[0-9]*" placeholder="0">
+          <span class="score-sep">–</span>
+          <input class="score-input" type="number" name="final_score_team2" min="0" max="30"
+                 inputmode="numeric" pattern="[0-9]*" placeholder="0">
+        </span>
+        <select name="qualifier_winner">
+          <option value="">Qualifié si nul final...</option>
+          <option value="team1">{{ m.team1_name }}</option>
+          <option value="team2">{{ m.team2_name }}</option>
+        </select>
+      </div>
       {% endif %}
-      <button type="submit" class="btn sm">Valider</button>
+      <button type="submit" class="btn sm result-submit">Valider</button>
     </form>
   </div>
 </div>
 {% endfor %}
 {% else %}
-<div class="card" style="text-align:center;padding:32px;">
-  <p style="font-family:var(--sketch);font-size:22px;color:var(--n600);">
+<div class="card result-empty">
+  <p class="result-empty-msg">
     ✓ Tous les matchs joués ont un résultat encodé.
   </p>
 </div>
 {% endif %}
 
 {% if done %}
-<h2 style="font-family:var(--display);font-weight:700;font-size:16px;color:var(--n600);margin:20px 0 8px;">
-  Récemment encodés
-</h2>
+<h2 class="result-section-title">Récemment encodés</h2>
 {% for m in done %}
-<div class="card flat" style="display:flex;align-items:center;gap:14px;padding:10px 13px;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:8px;background:var(--n50);">
-  <div style="flex:1;">
-    <b style="font-size:13px;">#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</b>
-    <span style="color:var(--primary);font-weight:800;font-family:var(--display);margin-left:10px;">
-      {{ m|result_score }}
+<details class="card flat result-done">
+  <summary class="result-done-summary">
+    <span class="result-done-info">
+      <b>#{{ m.match_number }} · {{ m.team1_name }} – {{ m.team2_name }}</b>
+      <span class="result-done-score">{{ m|result_score }}</span>
+      {% set detail = m|result_detail %}
+      {% if detail and detail != 'Score final' %}
+      <span class="muted result-done-detail">{{ detail }}</span>
+      {% endif %}
+      <span class="result-done-recalc">recalcul ✓</span>
     </span>
-    {% set detail = m|result_detail %}
-    {% if detail and detail != 'Score final' %}
-    <span class="muted" style="font-size:10px;margin-left:6px;">
-      {{ detail }}
-    </span>
-    {% endif %}
-    <span style="font-size:10px;color:var(--n400);margin-left:6px;">recalcul ✓</span>
-  </div>
-  <button class="btn ghost sm" style="font-size:11px;"
-          onclick="document.getElementById('correct-{{ m.id }}').style.display='flex'">Corriger</button>
-  <form id="correct-{{ m.id }}" method="post" action="/admin/resultats/{{ m.id }}/correct"
-        class="result-form"
-        data-phase="{{ m.phase }}"
-        style="display:none;align-items:center;gap:6px;flex-wrap:wrap;">
+    <span class="result-done-action">Corriger</span>
+  </summary>
+  <form method="post" action="/admin/resultats/{{ m.id }}/correct"
+        class="result-form result-card-form"
+        data-phase="{{ m.phase }}">
     <span class="result-score-group">
       <small>90'</small>
       <input class="score-input" type="number" name="score_team1" min="0" max="30"
-             value="{{ m.score_team1 }}" style="width:40px;">
-      <span style="font-family:var(--sketch);">–</span>
+             inputmode="numeric" pattern="[0-9]*" value="{{ m.score_team1 }}">
+      <span class="score-sep">–</span>
       <input class="score-input" type="number" name="score_team2" min="0" max="30"
-             value="{{ m.score_team2 }}" style="width:40px;">
+             inputmode="numeric" pattern="[0-9]*" value="{{ m.score_team2 }}">
     </span>
     {% if m.phase != 'group' %}
-    <span class="result-score-group ko-final-fields" data-ko-final-fields>
-      <small>final a.p.</small>
-      <input class="score-input" type="number" name="final_score_team1" min="0" max="30"
-             value="{{ m.final_score_team1 if m.final_score_team1 is not none else m.score_team1 }}" style="width:40px;">
-      <span style="font-family:var(--sketch);">–</span>
-      <input class="score-input" type="number" name="final_score_team2" min="0" max="30"
-             value="{{ m.final_score_team2 if m.final_score_team2 is not none else m.score_team2 }}" style="width:40px;">
-    </span>
-    <select name="qualifier_winner" style="min-width:150px;font-size:12px;">
-      <option value="">Qualifié si nul final...</option>
-      <option value="team1" {{ 'selected' if m.qualifier_winner == 'team1' else '' }}>{{ m.team1_name }}</option>
-      <option value="team2" {{ 'selected' if m.qualifier_winner == 'team2' else '' }}>{{ m.team2_name }}</option>
-    </select>
+    <div class="result-ko-extra">
+      <span class="result-score-group ko-final-fields" data-ko-final-fields>
+        <small>final a.p.</small>
+        <input class="score-input" type="number" name="final_score_team1" min="0" max="30"
+               inputmode="numeric" pattern="[0-9]*"
+               value="{{ m.final_score_team1 if m.final_score_team1 is not none else m.score_team1 }}">
+        <span class="score-sep">–</span>
+        <input class="score-input" type="number" name="final_score_team2" min="0" max="30"
+               inputmode="numeric" pattern="[0-9]*"
+               value="{{ m.final_score_team2 if m.final_score_team2 is not none else m.score_team2 }}">
+      </span>
+      <select name="qualifier_winner">
+        <option value="">Qualifié si nul final...</option>
+        <option value="team1" {{ 'selected' if m.qualifier_winner == 'team1' else '' }}>{{ m.team1_name }}</option>
+        <option value="team2" {{ 'selected' if m.qualifier_winner == 'team2' else '' }}>{{ m.team2_name }}</option>
+      </select>
+    </div>
     {% endif %}
-    <button type="submit" class="btn sm" style="font-size:11px;">OK</button>
+    <button type="submit" class="btn sm result-submit">OK</button>
   </form>
-</div>
+</details>
 {% endfor %}
 {% endif %}
 
