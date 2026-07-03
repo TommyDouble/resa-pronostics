@@ -534,7 +534,8 @@
   </form>
 
   <form method="post" action="/admin/bonus/{{ q.id }}/delete"
-        onsubmit="return confirm('Supprimer cette question bonus et ses réponses ?')"
+        data-confirm="Supprimer cette question bonus et ses réponses ?"
+        data-confirm-danger
         style="margin-top:8px;">
     <button type="submit" class="btn ghost sm" style="color:var(--error);">Supprimer</button>
   </form>

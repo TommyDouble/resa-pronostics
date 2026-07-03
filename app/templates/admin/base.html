@@ -111,6 +111,25 @@
     </section>
   </div>
 
+  <!-- Modale de confirmation partagée (actions critiques) -->
+  <div class="admin-confirm-overlay" data-confirm-dialog hidden>
+    <div class="admin-confirm-backdrop" data-confirm-cancel></div>
+    <section class="admin-confirm-panel" role="alertdialog" aria-modal="true"
+              aria-labelledby="admin-confirm-title" aria-describedby="admin-confirm-body">
+      <h2 id="admin-confirm-title" data-confirm-title></h2>
+      <p id="admin-confirm-body" data-confirm-body></p>
+      <div class="admin-confirm-word" data-confirm-word-wrap hidden>
+        <div class="field"><input type="text" data-confirm-word-input autocomplete="off" autocapitalize="off" spellcheck="false"
+                                   aria-label="Tape SUPPRIMER pour confirmer" aria-describedby="admin-confirm-word-hint"></div>
+        <p class="muted" id="admin-confirm-word-hint" data-confirm-word-hint style="font-size:11px;margin:6px 0 0;"></p>
+      </div>
+      <div class="row2" style="margin-top:16px;">
+        <button type="button" class="btn ghost" data-confirm-cancel>Annuler</button>
+        <button type="button" class="btn" data-confirm-ok>Confirmer</button>
+      </div>
+    </section>
+  </div>
+
 </div>
 
 <script src="/static/js/resa.js?v={{ static_version }}"></script>

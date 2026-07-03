@@ -380,6 +380,8 @@ body.tooltip-floating .tip[data-tip]::after {
   border: none;
   box-shadow: none;
 }
+.btn.danger { background: var(--error); box-shadow: 0 2px 8px -2px rgba(220,38,38,.5); }
+.btn.danger:hover { background: #B91C1C; }
 
 /* ---- Form elements ---- */
 .field {
@@ -2268,7 +2270,11 @@ label.admin-deadline-row:hover {
 .autocomplete-wrap { position: relative; }
 
 /* ---- Flash messages ---- */
-.flash { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 100; min-width: 260px; max-width: 400px; }
+.flash {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 100;
+  min-width: 260px; max-width: 400px;
+  display: flex; flex-direction: column; gap: 8px;
+}
 .flash-msg {
   display: flex; align-items: center; gap: 10px;
   padding: 12px 16px;
@@ -2774,6 +2780,45 @@ body.admin-more-open { overflow: hidden; }
   .admin-more-overlay { display: none !important; }
 }
 
+/* ---- Admin: modale de confirmation partagée (actions critiques) ---- */
+body.admin-confirm-open { overflow: hidden; }
+.admin-confirm-overlay[hidden] { display: none; }
+.admin-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.admin-confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(22,24,35,.46);
+  backdrop-filter: blur(4px);
+}
+.admin-confirm-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  border-radius: var(--r-card);
+  background: var(--paper);
+  box-shadow: var(--sh2);
+  padding: 20px;
+}
+.admin-confirm-panel h2 {
+  margin: 0 0 8px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 17px;
+}
+.admin-confirm-panel p { margin: 0; font-size: 13px; color: var(--n600); line-height: 1.5; }
+.admin-confirm-word { margin-top: 14px; }
+
 /* ---- Admin tables: scroll horizontal mobile, structure table/thead/tbody/tr intacte ---- */
 @media (max-width: 767px) {
   .admin-main div:has(> table.tbl) {
@@ -2847,6 +2892,10 @@ body.admin-more-open { overflow: hidden; }
 }
 .ko-final-fields { display: none; }
 .ko-final-fields.is-open { display: inline-flex; }
+/* Le formulaire .result-form est en display:flex/flex-wrap (inline ou via .dash-encode) :
+   la zone d'erreur doit occuper toute la largeur pour passer à la ligne proprement,
+   qu'elle soit rendue par le serveur ou créée dynamiquement par initResultForms(). */
+.result-form .form-error { flex-basis: 100%; margin: 2px 0 0; }
 
 /* ---- Onboarding ---- */
 .onboard-wrap {
