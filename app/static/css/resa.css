@@ -2897,6 +2897,60 @@ body.admin-confirm-open { overflow: hidden; }
    qu'elle soit rendue par le serveur ou créée dynamiquement par initResultForms(). */
 .result-form .form-error { flex-basis: 100%; margin: 2px 0 0; }
 
+/* ---- Résultats admin : cartes mobile-first (encodage + corrections) ---- */
+.result-section-title {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--n600);
+  margin: 18px 0 10px;
+}
+.result-card-row { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.result-card-info { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 4px; }
+.result-card-info > b { font-size: 14px; }
+.result-card-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; }
+.result-card-form .score-input,
+.result-done .score-input { width: 52px; height: 44px; font-size: 20px; }
+.result-card-form .score-sep,
+.result-done .score-sep { font-family: var(--sketch); font-size: 20px; color: var(--n600); }
+/* Bloc purement visuel : ne pilote jamais l'affichage de [data-ko-final-fields],
+   qui reste géré exclusivement par initResultForms() via la classe .is-open. */
+.result-ko-extra {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  flex-basis: 100%;
+  margin-top: 4px; padding: 8px 0 0 10px;
+  border-left: 2px solid var(--line);
+}
+.result-ko-extra select { min-width: 160px; }
+.result-submit { margin-left: auto; }
+@media (max-width: 520px) {
+  .result-card-row { flex-direction: column; align-items: stretch; }
+  .result-submit { width: 100%; margin-left: 0; }
+}
+
+.result-empty { text-align: center; padding: 32px; }
+.result-empty-msg { font-family: var(--sketch); font-size: 22px; color: var(--n600); margin: 0; }
+
+.result-done { padding: 0; margin-bottom: 8px; background: var(--n50); border-radius: var(--r-sm); }
+.result-done > summary {
+  list-style: none; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 13px;
+}
+.result-done > summary::-webkit-details-marker { display: none; }
+.result-done[open] > summary { border-bottom: 1px solid var(--line); }
+.result-done-info { flex: 1; min-width: 160px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.result-done-info > b { font-size: 13px; }
+.result-done-score { color: var(--primary); font-weight: 800; font-family: var(--display); }
+.result-done-detail { font-size: 10px; }
+.result-done-recalc { font-size: 10px; color: var(--n400); }
+.result-done-action {
+  font-size: 11px; font-weight: 800; color: var(--n900);
+  border: 1.5px solid var(--n300); border-radius: var(--pill);
+  padding: 6px 12px; white-space: nowrap;
+}
+.result-done form.result-card-form { padding: 10px 13px; }
+
 /* ---- Onboarding ---- */
 .onboard-wrap {
   min-height: 100vh;
