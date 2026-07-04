@@ -517,7 +517,7 @@
         </div>
         <div data-bonus-number-only>
           <div class="lbl" style="margin-bottom:5px;">Réponse correcte numérique</div>
-          <div class="field"><input type="number" step="any" name="correct_answer" value="{{ q.correct_answer or '' }}" placeholder="Déclenche le recalcul" inputmode="numeric"></div>
+          <div class="field"><input type="number" step="{{ '1' if q.integer_only else 'any' }}" name="correct_answer" value="{{ q.correct_answer or '' }}" placeholder="Déclenche le recalcul" inputmode="numeric"{% if q.answer_min is not none %} min="{{ q.answer_min }}"{% endif %}{% if q.answer_max is not none %} max="{{ q.answer_max }}"{% endif %}></div>
         </div>
         <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;cursor:pointer;padding-bottom:12px;">
           <input type="checkbox" name="is_published" value="1" {{ 'checked' if q.is_published else '' }}>

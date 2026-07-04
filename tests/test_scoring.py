@@ -5,6 +5,7 @@ from app.scoring import (
     calculate_finalists_points,
     calculate_match_score,
     calculate_pre_tournament_points,
+    closest_bonus_standings,
     closest_podium_bonus_points,
     normalize_closest_config,
     parse_revelation_winners,
@@ -326,6 +327,78 @@ class TestClosestPodiumBonusPoints:
         )
 
         assert scores == {1: 5, 2: 5, 3: 2}
+
+    def test_depart_canon_dense_531_with_ties(self):
+        scores = closest_podium_bonus_points(
+            5,
+            "7",
+            [
+                self.answer(1, "7"),
+                self.answer(2, "6"),
+                self.answer(3, "8"),
+                self.answer(4, "10"),
+                self.answer(5, "12"),
+            ],
+            {
+                "award_mode": "podium_custom",
+                "tie_policy": "full_dense",
+                "rank_points": [5, 3, 1],
+                "integer_only": True,
+            },
+        )
+
+        assert scores == {1: 5, 2: 3, 3: 3, 4: 1, 5: 0}
+
+    def test_depart_canon_dense_tie_on_second_distance(self):
+        scores = closest_podium_bonus_points(
+            5,
+            "7",
+            [
+                self.answer(1, "7"),
+                self.answer(2, "5"),
+                self.answer(3, "9"),
+                self.answer(4, "10"),
+            ],
+            {
+                "award_mode": "podium_custom",
+                "tie_policy": "full_dense",
+                "rank_points": [5, 3, 1],
+                "integer_only": True,
+            },
+        )
+
+        assert scores == {1: 5, 2: 3, 3: 3, 4: 1}
+
+    def test_integer_only_closest_ignores_decimal_answers(self):
+        scores = closest_podium_bonus_points(
+            5,
+            "7",
+            [self.answer(1, "7.5"), self.answer(2, "8")],
+            {
+                "award_mode": "podium_custom",
+                "tie_policy": "full_dense",
+                "rank_points": [5, 3, 1],
+                "integer_only": True,
+            },
+        )
+
+        assert scores == {1: 0, 2: 5}
+
+    def test_integer_only_marks_decimal_official_answer_invalid(self):
+        standings = closest_bonus_standings(
+            5,
+            "7.5",
+            [self.answer(1, "7"), self.answer(2, "8")],
+            {
+                "award_mode": "podium_custom",
+                "tie_policy": "full_dense",
+                "rank_points": [5, 3, 1],
+                "integer_only": True,
+            },
+        )
+
+        assert standings["invalid_actual"] is True
+        assert standings["groups"] == []
 
     def test_legacy_config_infers_fun_balanced_preset(self):
         config = normalize_closest_config(

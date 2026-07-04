@@ -525,6 +525,11 @@ def parse_bonus_number(value) -> Decimal | None:
         return None
 
 
+def bonus_number_is_integer(value: Decimal) -> bool:
+    """Whether a parsed numeric bonus answer is an integer value."""
+    return value == value.to_integral_value()
+
+
 def _row_get(row, key, default=None):
     if isinstance(row, dict):
         return row.get(key, default)
@@ -597,6 +602,11 @@ def normalize_closest_config(points_value: int, raw_config=None) -> dict:
     max_value = _optional_int(config.get("max_value"))
     if min_value is not None and max_value is not None and max_value < min_value:
         max_value = min_value
+    integer_only = config.get("integer_only")
+    if isinstance(integer_only, str):
+        integer_only = integer_only.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        integer_only = bool(integer_only)
 
     return {
         "preset_key": preset_key,
@@ -605,6 +615,7 @@ def normalize_closest_config(points_value: int, raw_config=None) -> dict:
         "rank_points": rank_points,
         "min_value": min_value,
         "max_value": max_value,
+        "integer_only": integer_only,
     }
 
 
@@ -628,6 +639,8 @@ def serialize_closest_config(
         config.pop("min_value", None)
     if config.get("max_value") is None:
         config.pop("max_value", None)
+    if not config.get("integer_only"):
+        config.pop("integer_only", None)
     return json.dumps(config, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -655,11 +668,17 @@ def closest_bonus_standings(points_value: int, correct_answer, answers, scoring_
     }
     if actual is None:
         return standings
+    if config["integer_only"] and not bonus_number_is_integer(actual):
+        standings["invalid_actual"] = True
+        return standings
 
     by_distance = {}
     for ans in answers:
         predicted = parse_bonus_number(_row_get(ans, "answer"))
         if predicted is None:
+            standings["invalid"].append(ans)
+            continue
+        if config["integer_only"] and not bonus_number_is_integer(predicted):
             standings["invalid"].append(ans)
             continue
         distance = abs(predicted - actual)
