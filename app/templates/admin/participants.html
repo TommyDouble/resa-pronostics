@@ -11,7 +11,7 @@
 </div>
 
 <div class="card p0">
-  <table class="tbl" data-admin-table data-admin-search="participant-search">
+  <table class="tbl tbl-cards" data-admin-table data-admin-search="participant-search">
     <thead>
       <tr>
         <th data-sort="text">Nom</th>
@@ -28,49 +28,48 @@
     <tbody>
       {% for p in participants %}
       <tr class="participant-row">
-        <td style="font-weight:600;">{{ p.name }}</td>
-        <td class="muted">{{ p.email }}</td>
-        <td class="muted" style="font-size:11px;">{{ p.department or '—' }}</td>
-        <td data-sort-value="{{ 1 if p.is_confirmed else 0 }}">
+        <td class="tbl-strong" data-label="Nom">{{ p.name }}</td>
+        <td class="muted" data-label="Email">{{ p.email }}</td>
+        <td class="muted" data-label="Département">{{ p.department or '—' }}</td>
+        <td data-label="Statut" data-sort-value="{{ 1 if p.is_confirmed else 0 }}">
           {% if p.is_confirmed %}
             <span class="chip ok">confirmé</span>
           {% else %}
             <span class="chip warn">invité</span>
           {% endif %}
         </td>
-        <td data-sort-value="{{ 1 if p.has_paid else 0 }}">
+        <td data-label="Payé" data-sort-value="{{ 1 if p.has_paid else 0 }}">
           <button type="button" data-toggle-paid="{{ p.id }}"
-                  class="chip {% if p.has_paid %}ok{% else %}gr{% endif %}"
-                  style="cursor:pointer;border:none;padding:4px 9px;font-size:11px;">
+                  class="chip chip-toggle {% if p.has_paid %}ok{% else %}gr{% endif %}">
             {{ '✓ payé' if p.has_paid else '— en att.' }}
           </button>
         </td>
-        <td data-sort-value="{{ 1 if p.is_favorite else 0 }}">
+        <td data-label="Favori" data-sort-value="{{ 1 if p.is_favorite else 0 }}">
           <button type="button" data-toggle-favorite="{{ p.id }}"
                   class="fav-btn {% if p.is_favorite %}on{% endif %}"
                   title="Favori : passe devant en cas d'égalité au classement">
             {{ '★' if p.is_favorite else '☆' }}
           </button>
         </td>
-        <td data-sort-value="{{ 1 if p.pt_submitted else 0 }}">{{ '✓' if p.pt_submitted else '—' }}</td>
-        <td data-sort-value="{{ p.pred_count }}">{{ '✓' if p.pred_count > 0 else '—' }}</td>
-        <td>
-          <button class="btn ghost sm" style="font-size:11px;padding:4px 8px;"
+        <td data-label="Pré-t." data-sort-value="{{ 1 if p.pt_submitted else 0 }}">{{ '✓' if p.pt_submitted else '—' }}</td>
+        <td data-label="≥1 prono" data-sort-value="{{ p.pred_count }}">{{ '✓' if p.pred_count > 0 else '—' }}</td>
+        <td class="tbl-actions">
+          <button class="btn ghost sm compact"
                   data-copy-token="{{ base_url }}p/{{ p.token }}">⧉ Lien</button>
           <form method="post" action="/admin/participants/{{ p.id }}/invite" style="display:inline;">
-            <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;">✉ Inviter</button>
+            <button type="submit" class="btn ghost sm compact">✉ Inviter</button>
           </form>
           <form method="post" action="/admin/participants/{{ p.id }}/delete"
                 style="display:inline;"
                 data-confirm-title="Supprimer {{ p.name }} ?"
                 data-confirm="Supprimer définitivement {{ p.name }}{% if p.pred_count > 0 %} ainsi que ses {{ p.pred_count }} pronostic(s) et tous ses points{% endif %} ? Cette action est irréversible."
                 data-confirm-strong="SUPPRIMER">
-            <button type="submit" class="btn ghost sm" style="font-size:11px;padding:4px 8px;color:var(--error);">🗑</button>
+            <button type="submit" class="btn ghost sm compact" style="color:var(--error);">🗑</button>
           </form>
         </td>
       </tr>
       {% else %}
-      <tr data-empty-row><td colspan="9" style="text-align:center;padding:24px;color:var(--n400);">Aucun participant.</td></tr>
+      <tr data-empty-row><td data-empty-cell colspan="9" style="text-align:center;padding:24px;color:var(--n400);">Aucun participant.</td></tr>
       {% endfor %}
     </tbody>
   </table>

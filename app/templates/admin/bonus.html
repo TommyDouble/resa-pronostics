@@ -42,8 +42,10 @@
 {%- endmacro %}
 
 {% macro participant_preview(title, phase_label, points_label, answer_type='choice', options_text='', deadline_label='à définir', can_edit=True) -%}
-  <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;" data-bonus-preview>
-    {{ step_head('5', 'Aperçu participant', 'Miniature non interactive du rendu côté participant.') }}
+  <details class="bonus-step" data-bonus-preview>
+    <summary>
+      {{ step_head('5', 'Aperçu participant', 'Miniature non interactive du rendu côté participant.') }}
+    </summary>
     <div style="max-width:480px;margin:0 auto;background:var(--paper);border:1.5px solid var(--line);border-radius:var(--r-card);padding:14px;box-shadow:var(--sh);">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span class="chip acc"><span data-preview-phase>{{ phase_label }}</span> · <span data-preview-points>{{ points_label }}</span></span>
@@ -107,7 +109,7 @@
         <button class="btn full" type="button" disabled style="opacity:.85;">Valider ma réponse</button>
       </div>
     </div>
-  </section>
+  </details>
 {%- endmacro %}
 
 <h1>Questions bonus</h1>
@@ -151,9 +153,9 @@
     <button type="button" class="btn ghost sm" onclick="document.getElementById('add-bonus-card').style.display='none'">Fermer</button>
   </div>
   <form method="post" action="/admin/bonus/create" data-admin-bonus-form data-bonus-initial-type="choice" style="display:flex;flex-direction:column;gap:12px;">
-    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;">
+    <section class="bonus-step">
       {{ step_head('1', 'Question', 'Intitulé, type, phase et deadline.') }}
-      <div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(180px,.6fr);gap:10px;margin-bottom:10px;">
+      <div class="stack-sm" style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(180px,.6fr);gap:10px;margin-bottom:10px;">
         <div>
           <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
           <div class="field" style="margin-bottom:6px;"><input type="text" name="question_title" placeholder="Titre court — ex: Afrique Mode Patron (optionnel)" style="flex:1;"></div>
@@ -172,7 +174,7 @@
           </div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="grid2 stack-sm">
         <div>
           <div class="lbl" style="margin-bottom:5px;">Phase</div>
           <div class="field"><select name="phase" style="flex:1;">{{ phase_options() }}</select></div>
@@ -184,7 +186,7 @@
       </div>
     </section>
 
-    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
+    <section class="bonus-step-alt">
       {{ step_head('2', 'Réponses attendues', 'Choisis ce que les participants pourront saisir.') }}
       <div data-bonus-choice-only>
         <div class="lbl" style="margin-bottom:5px;">Options de choix unique</div>
@@ -199,11 +201,11 @@
       </div>
     </section>
 
-    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;">
+    <section class="bonus-step">
       {{ step_head('3', 'Barème', 'Définis la règle de points affichée et calculée.') }}
       <div data-bonus-choice-only>
         <div class="lbl" style="margin-bottom:5px;">Points si réponse exacte</div>
-        <div class="field" style="max-width:220px;"><input type="number" name="points_value" min="1" max="50" value="6" required></div>
+        <div class="field field-sm"><input type="number" name="points_value" min="1" max="50" value="6" required></div>
       </div>
       <div data-bonus-number-only>
         <input type="hidden" name="points_value" value="6">
@@ -224,7 +226,7 @@
           <p class="muted helper-text">Choisis un preset pour aller vite, ou “Avancé personnalisé” pour régler les rangs et les ex aequo.</p>
         </div>
         <div data-bonus-custom-only style="margin-top:10px;border-top:1px dashed var(--n300);padding-top:10px;">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div class="grid2 stack-sm" style="margin-bottom:10px;">
             <div>
               <div class="muted" style="font-size:11px;margin-bottom:5px;">
                 Mode d'attribution
@@ -240,7 +242,7 @@
               <div class="field"><select name="closest_tie_policy">{{ closest_tie_options() }}</select></div>
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+          <div class="grid3 stack-sm">
             <div>
               <div class="muted" style="font-size:11px;margin-bottom:5px;">1er</div>
               <div class="field"><input type="number" name="closest_rank1_points" min="0" max="50" value="6"></div>
@@ -259,13 +261,13 @@
       </div>
     </section>
 
-    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
+    <section class="bonus-step-alt">
       {{ step_head('4', 'Correction et publication', 'Tu peux enregistrer sans réponse correcte, puis publier plus tard.') }}
       <div style="margin-bottom:10px;">
         <div class="lbl" style="margin-bottom:5px;">Règle / aide (tooltip côté participant, optionnel)</div>
         <textarea name="help_text" class="textarea" rows="2" placeholder="Ex: règle de résolution, cas VAR/prolongation…"></textarea>
       </div>
-      <div style="display:grid;grid-template-columns:1fr minmax(220px,.5fr);gap:10px;align-items:end;">
+      <div class="stack-sm" style="display:grid;grid-template-columns:1fr minmax(220px,.5fr);gap:10px;align-items:end;">
         <div>
           <div class="lbl" style="margin-bottom:5px;">Réponse correcte optionnelle</div>
           <div class="field"><input type="text" name="correct_answer" placeholder="Déclenche le recalcul si renseignée"></div>
@@ -342,7 +344,7 @@
         data-confirm-danger
         {% endif %}
         style="display:flex;flex-direction:column;gap:12px;">
-    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;">
+    <section class="bonus-step">
       {{ step_head('1', 'Question', 'Modifie le libellé, la phase et la deadline.') }}
       {% set _split = q.question_text.split(' — ', 1) %}
       {% set _qtitle = _split[0] if _split|length > 1 else '' %}
@@ -353,7 +355,7 @@
         <div class="field"><input type="text" name="question_text" value="{{ _qprompt }}" required></div>
         <div class="muted" style="font-size:11px;margin-top:4px;">Le titre court s'affiche en manuscrit ; la question en dessous, en police normale.</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px;">
+      <div class="grid3 stack-sm" style="margin-top:10px;">
         <div>
           <div class="lbl" style="margin-bottom:5px;">Type{% if q.is_published or q.answer_count %} (figé){% endif %}</div>
           {% if not q.is_published and q.answer_count == 0 %}
@@ -382,7 +384,7 @@
       </div>
     </section>
 
-    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
+    <section class="bonus-step-alt">
       {{ step_head('2', 'Réponses attendues', 'Ce bloc change selon le type de question.') }}
       <div data-bonus-choice-only>
         <div class="lbl" style="margin-bottom:5px;">Options de choix unique</div>
@@ -403,22 +405,22 @@
       </div>
     </section>
 
-    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;">
+    <section class="bonus-step">
       {{ step_head('3', 'Barème', 'Une seule source de vérité pour les points.') }}
       <div data-bonus-choice-only>
         <div class="lbl" style="margin-bottom:5px;">Points si réponse exacte</div>
-        <div class="field" style="max-width:220px;"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
+        <div class="field field-sm"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
       </div>
       <div data-bonus-number-only>
         {% if not is_closest %}
         <div class="lbl" style="margin-bottom:5px;">Points si réponse exacte</div>
-        <div class="field" style="max-width:220px;"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
+        <div class="field field-sm"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
         <p class="muted helper-text">
           Cette question numérique est corrigée en exact : les points indiqués si la réponse correspond, 0 sinon.
         </p>
         {% else %}
         <input type="hidden" name="points_value" value="{{ q.points_value }}">
-        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.35fr);gap:10px;align-items:end;">
+        <div class="stack-sm" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.35fr);gap:10px;align-items:end;">
           <div>
             <div class="lbl" style="margin-bottom:5px;">Preset de répartition</div>
             <div class="field">
@@ -436,7 +438,7 @@
           “Fun équilibré” est le réglage doux recommandé pour une question fun. “Avancé personnalisé” permet de changer le mode d'attribution, les ex aequo et chaque palier.
         </p>
         <div data-bonus-custom-only style="margin-top:10px;border-top:1px dashed var(--n300);padding-top:10px;">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div class="grid2 stack-sm" style="margin-bottom:10px;">
             <div>
               <div class="muted" style="font-size:11px;margin-bottom:5px;">
                 Mode d'attribution
@@ -452,7 +454,7 @@
               <div class="field"><select name="closest_tie_policy">{{ closest_tie_options(q.closest_tie_policy) }}</select></div>
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+          <div class="grid3 stack-sm">
             <div>
               <div class="muted" style="font-size:11px;margin-bottom:5px;">1er</div>
               <div class="field"><input type="number" name="closest_rank1_points" min="0" max="50" value="{{ q.closest_rank_points[0] }}"></div>
@@ -472,13 +474,13 @@
       </div>
     </section>
 
-    <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:var(--n50);">
+    <section class="bonus-step-alt">
       {{ step_head('4', 'Correction et publication', 'La réponse correcte déclenche le recalcul des points.') }}
       <div style="margin-bottom:10px;">
         <div class="lbl" style="margin-bottom:5px;">Règle / aide (tooltip côté participant, optionnel)</div>
         <textarea name="help_text" class="textarea" rows="2" placeholder="Ex: règle de résolution, cas VAR/prolongation…">{{ q.help_text or '' }}</textarea>
       </div>
-      <div style="display:grid;grid-template-columns:1fr minmax(220px,.4fr);gap:10px;align-items:end;">
+      <div class="stack-sm" style="display:grid;grid-template-columns:1fr minmax(220px,.4fr);gap:10px;align-items:end;">
         <div data-bonus-choice-only>
           <div class="lbl" style="margin-bottom:5px;">Réponse correcte</div>
           {% if q.answer_type == 'number_multi' and q.options %}
