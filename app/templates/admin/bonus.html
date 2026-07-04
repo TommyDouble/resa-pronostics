@@ -335,7 +335,13 @@
 
   <div class="admin-bonus-detail">
 
-  <form method="post" action="/admin/bonus/{{ q.id }}/update" data-admin-bonus-form data-bonus-initial-type="{{ q.answer_type }}" style="display:flex;flex-direction:column;gap:12px;">
+  <form method="post" action="/admin/bonus/{{ q.id }}/update" data-admin-bonus-form data-bonus-initial-type="{{ q.answer_type }}"
+        {% if q.answer_count %}
+        data-confirm-title="Enregistrer et recalculer ?"
+        data-confirm="Cette mise à jour recalculera les points de {{ q.answer_count }} participant(s) ayant répondu à cette question."
+        data-confirm-danger
+        {% endif %}
+        style="display:flex;flex-direction:column;gap:12px;">
     <section style="border:1.5px solid var(--n300);border-radius:var(--r-sm);padding:12px;background:#fff;">
       {{ step_head('1', 'Question', 'Modifie le libellé, la phase et la deadline.') }}
       {% set _split = q.question_text.split(' — ', 1) %}

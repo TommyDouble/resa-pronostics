@@ -1661,11 +1661,30 @@ function initResultForms() {
           return;
         }
       }
-      if (s1 === 0 && s2 === 0 && isKnockout && form.dataset.resultConfirmed !== '1') {
+      // Confirmation KO 0-0 (garde-fou existant) et confirmation d'impact
+      // (recalcul de points, cf. data-impact-confirm* posé par results.html)
+      // partagent le même <form> : au plus UNE confirmation par submit, combinée
+      // si les deux cas s'appliquent en même temps.
+      var isZeroZeroKo = s1 === 0 && s2 === 0 && isKnockout;
+      var hasImpact = 'impactConfirm' in form.dataset;
+      if ((isZeroZeroKo || hasImpact) && form.dataset.resultConfirmed !== '1') {
         e.preventDefault();
+        var title;
+        var body;
+        if (isZeroZeroKo && hasImpact) {
+          title = 'Score 0-0 en phase éliminatoire';
+          body = "Score 0-0 en phase éliminatoire. Vérifie qu'il s'agit bien du score officiel à 90'. " + form.dataset.impactConfirm;
+        } else if (isZeroZeroKo) {
+          title = 'Score 0-0 en phase éliminatoire';
+          body = 'Score 0-0 sur un match éliminatoire. Confirmer ?';
+        } else {
+          title = form.dataset.impactConfirmTitle || 'Confirmer';
+          body = form.dataset.impactConfirm;
+        }
         showConfirm({
-          title: 'Score 0-0 en phase éliminatoire',
-          body: 'Score 0-0 sur un match éliminatoire. Confirmer ?',
+          title: title,
+          body: body,
+          danger: hasImpact && 'impactConfirmDanger' in form.dataset,
           onConfirm: function() {
             form.dataset.resultConfirmed = '1';
             if (form.requestSubmit) form.requestSubmit();

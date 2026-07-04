@@ -30,7 +30,13 @@
   <div style="font-size:12px;color:var(--n600);margin-bottom:12px;">
     À compléter au fil du tournoi. Chaque enregistrement recalcule les points pré-tournoi de tous les participants.
   </div>
-  <form method="post" action="/admin/pre-tournoi/reponses" id="pt-answers-form" style="display:flex;flex-direction:column;gap:10px;">
+  <form method="post" action="/admin/pre-tournoi/reponses" id="pt-answers-form"
+        {% if submitted_count %}
+        data-confirm-title="Recalculer les points pré-tournoi ?"
+        data-confirm="Cet enregistrement recalculera les points pré-tournoi de {{ submitted_count }} participant(s) ayant soumis leurs réponses."
+        data-confirm-danger
+        {% endif %}
+        style="display:flex;flex-direction:column;gap:10px;">
     <div class="grid2">
       <div>
         <div class="lbl" style="margin-bottom:5px;">① Champion du Monde</div>

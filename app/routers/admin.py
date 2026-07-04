@@ -2060,8 +2060,9 @@ async def results_page(request: Request):
         pending = [dict(r) for r in await pending_rows.fetchall()]
         # Already encoded (last 10)
         done_rows = await db.execute(
-            """SELECT * FROM matches WHERE result IS NOT NULL
-               ORDER BY match_date DESC, kickoff_time DESC LIMIT 10"""
+            """SELECT m.*, (SELECT COUNT(*) FROM predictions p WHERE p.match_id = m.id) AS pred_count
+               FROM matches m WHERE m.result IS NOT NULL
+               ORDER BY m.match_date DESC, m.kickoff_time DESC LIMIT 10"""
         )
         done = [dict(r) for r in await done_rows.fetchall()]
     return templates.TemplateResponse(request, "admin/results.html", {
