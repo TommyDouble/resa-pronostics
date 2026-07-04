@@ -1899,8 +1899,24 @@ function initAdminPushTarget() {
     });
   }
 
-  allTarget.addEventListener('change', updateRecipients);
+  function updateConfirmText() {
+    if (allTarget.checked) {
+      form.dataset.confirm = 'Ce push de test sera envoyé à ' + recipients.length + ' destinataire(s).';
+      return;
+    }
+    var checkedCount = Array.prototype.filter.call(recipients, function(cb) { return cb.checked; }).length;
+    form.dataset.confirm = 'Ce push de test sera envoyé à ' + checkedCount + ' destinataire(s) sélectionné(s).';
+  }
+
+  allTarget.addEventListener('change', function() {
+    updateRecipients();
+    updateConfirmText();
+  });
+  recipients.forEach(function(cb) {
+    cb.addEventListener('change', updateConfirmText);
+  });
   updateRecipients();
+  updateConfirmText();
 }
 
 /* ---- Admin: rafraîchissement discret du tableau de bord ----

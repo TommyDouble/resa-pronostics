@@ -786,13 +786,13 @@ async def _build_deadline_preview(
 
 
 async def _communications_context(request: Request, db, *, deadline_preview: dict | None = None) -> dict:
-    ns_row = await db.execute(
+    pt_target_row = await db.execute(
         """SELECT COUNT(*) as cnt FROM participants p
-           WHERE p.is_confirmed=1 AND p.is_admin=0
+           WHERE p.is_confirmed=1 AND p.is_admin=0 AND p.email_opt_in=1
            AND NOT EXISTS (SELECT 1 FROM pre_tournament_predictions pt
                            WHERE pt.participant_id=p.id AND pt.submitted=1)"""
     )
-    no_pt = (await ns_row.fetchone())["cnt"]
+    pt_reminder_target_count = (await pt_target_row.fetchone())["cnt"]
     now = _now_utc()
     m_rows = await db.execute(
         """SELECT * FROM matches
@@ -817,7 +817,7 @@ async def _communications_context(request: Request, db, *, deadline_preview: dic
         "request": request,
         "active": "communications",
         "flashes": _get_flashes(request),
-        "no_pt": no_pt,
+        "pt_reminder_target_count": pt_reminder_target_count,
         "upcoming_matches": upcoming,
         "deadline_late_groups": deadline_data["late_groups"],
         "deadline_future_groups": deadline_data["future_groups"],
