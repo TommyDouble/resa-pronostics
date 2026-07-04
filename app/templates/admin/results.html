@@ -75,7 +75,12 @@
   </summary>
   <form method="post" action="/admin/resultats/{{ m.id }}/correct"
         class="result-form result-card-form"
-        data-phase="{{ m.phase }}">
+        data-phase="{{ m.phase }}"
+        {% if m.pred_count %}
+        data-impact-confirm-title="Corriger ce résultat ?"
+        data-impact-confirm="Cette correction recalculera les points de {{ m.pred_count }} participant(s) ayant pronostiqué ce match."
+        data-impact-confirm-danger
+        {% endif %}>
     <span class="result-score-group">
       <small>90'</small>
       <input class="score-input" type="number" name="score_team1" min="0" max="30"

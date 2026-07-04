@@ -21,6 +21,7 @@ _DONE_NUMBER = 5_000_002
 # (ORDER BY match_date DESC LIMIT 10) quelle que soit la pollution laissée par
 # d'autres tests dans la base de test partagée (scope="session").
 _DONE_DATE = "9999-12-31"
+_ZERO_ZERO_NUMBER = 5_000_003
 
 _INTERACTIVE_TAGS = {"input", "select", "textarea", "button"}
 _VOID_ELEMENTS = {
@@ -132,6 +133,23 @@ def _seed_done_knockout_match(number):
     return run(_create())
 
 
+def _seed_done_zero_zero_ko_match(number):
+    async def _create():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO matches (match_number, phase, match_date, kickoff_time,
+                                        team1_name, team2_name, weight,
+                                        score_team1, score_team2, result, qualifier_winner)
+                   VALUES (?, 'round_of_16', ?, '20:00', 'Argentine', 'Croatie', 2,
+                           0, 0, 'team1', 'team1')""",
+                (number, _DONE_DATE),
+            )
+            await db.commit()
+            return cursor.lastrowid
+
+    return run(_create())
+
+
 def _cleanup_matches(numbers):
     async def _clean():
         async with get_db() as db:
@@ -217,8 +235,106 @@ def test_results_page_html_contract(admin_client):
             f"trouvé {[n.tag for n in interactive_in_summary]}"
         )
 
-        # Le formulaire de correction doit être un enfant du <details> mais ne
-        # doit pas être à l'intérieur du <summary> lui-même.
-        assert correction_form not in summary_el.iter_descendants()
+        # ---- Aucun pronostic sur ce match : pas de confirmation enrichie ----
+        assert not correction_form.has_attr("data-impact-confirm"), (
+            "Le formulaire de correction ne doit pas porter data-impact-confirm quand "
+            "aucun pronostic n'existe pour ce match (pred_count = 0)"
+        )
+        # Le formulaire de correction est un .result-form : il ne doit jamais porter
+        # le data-confirm générique (initFormConfirm interceptrait le submit en plus
+        # du garde-fou KO 0-0 / impact géré par initResultForms -> double confirmation).
+        assert not correction_form.has_attr("data-confirm")
+        assert not correction_form.has_attr("data-confirm-title")
+        assert not correction_form.has_attr("data-confirm-danger")
     finally:
         _cleanup_matches([_PENDING_NUMBER, _DONE_NUMBER])
+
+
+def test_results_page_correction_confirm_with_predictions(admin_client, participant):
+    done_id = _seed_done_knockout_match(_DONE_NUMBER)
+    try:
+        async def _seed_prediction():
+            async with get_db() as db:
+                await db.execute(
+                    """INSERT INTO predictions (participant_id, match_id, prediction)
+                       VALUES (?, ?, 'team1')""",
+                    (participant["id"], done_id),
+                )
+                await db.commit()
+
+        run(_seed_prediction())
+
+        html = admin_client.get("/admin/resultats").text
+        root = _parse(html)
+
+        correct_action = f"/admin/resultats/{done_id}/correct"
+        correction_form = _find_one(
+            root,
+            lambda n: n.tag == "form" and n.attrs.get("action") == correct_action,
+            f'form de correction action="{correct_action}"',
+        )
+
+        assert correction_form.attrs.get("data-impact-confirm-title") == "Corriger ce résultat ?"
+        assert correction_form.attrs.get("data-impact-confirm") == (
+            "Cette correction recalculera les points de 1 participant(s) "
+            "ayant pronostiqué ce match."
+        )
+        assert correction_form.has_attr("data-impact-confirm-danger")
+        assert not correction_form.has_attr("data-confirm-strong"), (
+            "Pas de retype pour une correction de résultat (re-corrigible, pas irréversible)"
+        )
+        # Ne doit pas non plus porter le data-confirm générique (cf. bloquant
+        # KO 0-0 + impact : une seule confirmation, gérée par initResultForms()).
+        assert not correction_form.has_attr("data-confirm")
+        assert not correction_form.has_attr("data-confirm-title")
+        assert not correction_form.has_attr("data-confirm-danger")
+    finally:
+        _cleanup_matches([_PENDING_NUMBER, _DONE_NUMBER])
+
+
+def test_results_page_correction_form_zero_zero_ko_has_dedicated_impact_attrs(admin_client, participant):
+    # Cas bloquant identifié en review : correction d'un match KO à 0-0 avec des
+    # pronostics existants. Le formulaire porte à la fois le garde-fou KO 0-0
+    # (data-phase, géré par initResultForms) et l'impact chiffré. Les deux
+    # doivent être combinés en une seule confirmation JS, jamais via le
+    # data-confirm générique (qui serait intercepté séparément par initFormConfirm).
+    done_id = _seed_done_zero_zero_ko_match(_ZERO_ZERO_NUMBER)
+    try:
+        async def _seed_prediction():
+            async with get_db() as db:
+                await db.execute(
+                    """INSERT INTO predictions (participant_id, match_id, prediction)
+                       VALUES (?, ?, 'draw')""",
+                    (participant["id"], done_id),
+                )
+                await db.commit()
+
+        run(_seed_prediction())
+
+        html = admin_client.get("/admin/resultats").text
+        root = _parse(html)
+
+        correct_action = f"/admin/resultats/{done_id}/correct"
+        correction_form = _find_one(
+            root,
+            lambda n: n.tag == "form" and n.attrs.get("action") == correct_action,
+            f'form de correction action="{correct_action}"',
+        )
+
+        assert correction_form.attrs.get("data-phase") == "round_of_16"
+        assert correction_form.attrs.get("data-impact-confirm-title") == "Corriger ce résultat ?"
+        assert correction_form.attrs.get("data-impact-confirm") == (
+            "Cette correction recalculera les points de 1 participant(s) "
+            "ayant pronostiqué ce match."
+        )
+        assert correction_form.has_attr("data-impact-confirm-danger")
+
+        # Pas de data-confirm générique : sinon initFormConfirm() interceptrait
+        # aussi ce submit, en plus du garde-fou KO 0-0 d'initResultForms() ->
+        # deux confirmations pour un seul clic.
+        assert not correction_form.has_attr("data-confirm")
+        assert not correction_form.has_attr("data-confirm-title")
+        assert not correction_form.has_attr("data-confirm-danger")
+        assert not correction_form.has_attr("data-confirm-strong")
+    finally:
+        _cleanup_matches([_ZERO_ZERO_NUMBER])
