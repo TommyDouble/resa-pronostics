@@ -104,7 +104,9 @@ def test_round_of_16_drafts_seeded(client):
         "Paraguay, Maroc et Égypte sont passés aux tirs au but en seizièmes. "
         "Combien d'entre eux referont l'exploit en huitièmes ? On compte uniquement "
         "ces équipes si elles gagnent ensuite leur huitième, prolongation et tirs "
-        "au but inclus pour déterminer l'équipe qualifiée."
+        "au but inclus pour déterminer l'équipe qualifiée. Jusqu'à 10 points : "
+        "4 points si le total est exact, puis +2 / -2 par équipe sélectionnée. "
+        "Le bonus détail ne peut jamais descendre sous 0."
     )
 
     fastest = _fetch_question_by_text("Départ canon")

@@ -77,7 +77,9 @@ ROUND16_RESCAPED_TIEBREAK_HELP = (
     "Paraguay, Maroc et Égypte sont passés aux tirs au but en seizièmes. "
     "Combien d'entre eux referont l'exploit en huitièmes ? On compte uniquement "
     "ces équipes si elles gagnent ensuite leur huitième, prolongation et tirs "
-    "au but inclus pour déterminer l'équipe qualifiée."
+    "au but inclus pour déterminer l'équipe qualifiée. Jusqu'à 10 points : "
+    "4 points si le total est exact, puis +2 / -2 par équipe sélectionnée. "
+    "Le bonus détail ne peut jamais descendre sous 0."
 )
 ROUND16_FASTEST_GOAL_HELP = (
     "Indique la minute officielle du but le plus rapide. Un but noté 90+5 "
