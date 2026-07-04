@@ -70,6 +70,8 @@
       <input type="number" name="answer"
              {% if q.answer_min is not none %}min="{{ q.answer_min }}"{% else %}min="0"{% endif %}
              {% if q.answer_max is not none %}max="{{ q.answer_max }}"{% endif %}
+             step="{{ '1' if q.integer_only else 'any' }}"
+             data-integer-only="{{ '1' if q.integer_only else '0' }}"
              value="{{ q.answer or '' }}" placeholder="{{ q.answer_placeholder }}" inputmode="numeric">
     </div>
     {% elif q.answer_type == 'number_multi' and q.options %}

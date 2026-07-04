@@ -25,6 +25,15 @@ CONFIG = json.dumps({
     "max_points": 10,
 }, ensure_ascii=False)
 
+ROUND16_CONFIG = json.dumps({
+    "locked_teams": [],
+    "min_count": 0,
+    "max_count": 3,
+    "part1_points": 4,
+    "team_step": 2,
+    "max_points": 10,
+}, ensure_ascii=False)
+
 # total = 4 (Maroc + 3 in-race teams qualified)
 CORRECT = json.dumps(
     {"count": 4, "teams": ["Maroc", "Sénégal", "Égypte", "Côte d'Ivoire"]},
@@ -90,3 +99,44 @@ def test_parse_and_format():
         ["Maroc", "Côte d'Ivoire", "RD Congo", "Sénégal", "Algérie", "Égypte"],
     )
     assert out == "4 au total — Maroc, Côte d'Ivoire, Sénégal, Égypte"
+
+
+def test_round16_number_multi_accepts_zero_without_teams():
+    correct = json.dumps({"count": 0, "teams": []}, ensure_ascii=False)
+    answers = _answers({1: (0, [])})
+
+    assert number_multi_bonus_points(10, correct, answers, ROUND16_CONFIG) == {1: 4}
+
+
+def test_round16_number_multi_perfect_answers_for_0_to_3_teams():
+    scenarios = [
+        (0, [], 4),
+        (1, ["Canada"], 6),
+        (2, ["Canada", "Mexique"], 8),
+        (3, ["Canada", "Mexique", "États-Unis"], 10),
+    ]
+    for count, teams, expected in scenarios:
+        correct = json.dumps({"count": count, "teams": teams}, ensure_ascii=False)
+        answers = _answers({1: (count, teams)})
+        assert number_multi_bonus_points(10, correct, answers, ROUND16_CONFIG) == {1: expected}
+
+
+def test_round16_number_multi_exact_count_with_wrong_selection():
+    correct = json.dumps({"count": 2, "teams": ["Canada", "Mexique"]}, ensure_ascii=False)
+    answers = _answers({1: (2, ["Canada", "États-Unis"])})
+
+    assert number_multi_bonus_points(10, correct, answers, ROUND16_CONFIG) == {1: 4}
+
+
+def test_round16_number_multi_wrong_count_with_good_selection():
+    correct = json.dumps({"count": 2, "teams": ["Canada", "Mexique"]}, ensure_ascii=False)
+    answers = _answers({1: (3, ["Canada", "Mexique"])})
+
+    assert number_multi_bonus_points(10, correct, answers, ROUND16_CONFIG) == {1: 4}
+
+
+def test_round16_number_multi_detail_cannot_go_negative():
+    correct = json.dumps({"count": 2, "teams": ["Canada", "Mexique"]}, ensure_ascii=False)
+    answers = _answers({1: (3, ["États-Unis"])})
+
+    assert number_multi_bonus_points(10, correct, answers, ROUND16_CONFIG) == {1: 0}

@@ -25,6 +25,7 @@ from app.auth import (
 from app.config import settings
 from app.constants import DEPARTMENTS, MIN_PASSWORD_LENGTH
 from app.database import (
+    ROUND16_FASTEST_GOAL_TEXT,
     ROUND32_FAVORITE_CONCEDE_TEXT,
     ROUND32_TIEBREAK_COUNT_TEXT,
     get_db,
@@ -50,6 +51,7 @@ from app.prizes import get_prize_info
 from app.result_display import qualified_team_name, result_full_label
 from app.scoring import (
     actual_match_winner,
+    bonus_number_is_integer,
     format_number_multi,
     format_team_list,
     get_department_rankings,
@@ -2112,6 +2114,8 @@ def _bonus_answer_placeholder(q: dict) -> str:
         return "0, 1, 2..."
     if "Le Favori Qui Tremble" in text:
         return "0 à 6"
+    if text == ROUND16_FASTEST_GOAL_TEXT:
+        return "1 à 120"
     return "Ta réponse..."
 
 
@@ -2145,6 +2149,7 @@ async def _load_bonus_questions(db, participant_id: int, now: str, *, only_pendi
         q["question_title"], q["question_prompt"] = _bonus_title_prompt(q["question_text"])
         q["answer_min"] = None
         q["answer_max"] = None
+        q["integer_only"] = False
         q["number_multi_config"] = None
         closest_config = None
         try:
@@ -2186,6 +2191,7 @@ async def _load_bonus_questions(db, participant_id: int, now: str, *, only_pendi
                 q["points_label"] = f"{' / '.join(str(p) for p in visible_points)} pts"
                 q["answer_min"] = closest_config.get("min_value")
                 q["answer_max"] = closest_config.get("max_value")
+                q["integer_only"] = closest_config.get("integer_only", False)
             else:
                 q["points_label"] = f"{q['points_value']} pts"
         q["help_lead"] = _bonus_help_lead(q, closest_config)
@@ -2289,6 +2295,8 @@ async def submit_bonus(request: Request, token: str, question_id: int):
                     q["points_value"],
                     q["scoring_config"],
                 )
+                if closest_config.get("integer_only") and not bonus_number_is_integer(parsed_number):
+                    raise HTTPException(400, "Réponse entière requise")
                 min_value = closest_config.get("min_value")
                 max_value = closest_config.get("max_value")
                 if min_value is not None and parsed_number < min_value:

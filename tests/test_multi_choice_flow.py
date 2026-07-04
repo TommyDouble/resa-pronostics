@@ -6,6 +6,9 @@ import uuid
 import app.routers.pages as page_routes
 
 from app.database import (
+    ROUND16_FASTEST_GOAL_TEXT,
+    ROUND16_HOST_COUNTRIES_TEXT,
+    ROUND16_RESCAPED_TIEBREAK_TEXT,
     ROUND32_EXACT_POINTS,
     ROUND32_FAVORITE_CONCEDE_TEXT,
     ROUND32_TIEBREAK_COUNT_TEXT,
@@ -66,6 +69,64 @@ def test_round_of_32_drafts_seeded(client):
     assert tab_config["min_value"] == 0
     assert tab_config["max_value"] == 13
     assert "points de la question" in tab_count["help_text"]
+
+
+def test_round_of_16_drafts_seeded(client):
+    hosts = _fetch_question_by_text("À domicile, ça pousse")
+    assert hosts is not None
+    assert hosts["question_text"] == ROUND16_HOST_COUNTRIES_TEXT
+    assert hosts["phase"] == "round_of_16"
+    assert hosts["answer_type"] == "number_multi"
+    assert hosts["scoring_mode"] == "number_multi"
+    assert hosts["is_published"] == 0
+    assert json.loads(hosts["options"]) == ["Canada", "Mexique", "États-Unis"]
+    hosts_config = json.loads(hosts["scoring_config"])
+    assert hosts_config == {
+        "locked_teams": [],
+        "min_count": 0,
+        "max_count": 3,
+        "part1_points": 4,
+        "team_step": 2,
+        "max_points": 10,
+    }
+    assert "4 points si le total est exact" in hosts["help_text"]
+
+    rescaped = _fetch_question_by_text("Les rescapés ont-ils encore du jus")
+    assert rescaped is not None
+    assert rescaped["question_text"] == ROUND16_RESCAPED_TIEBREAK_TEXT
+    assert rescaped["phase"] == "round_of_16"
+    assert rescaped["answer_type"] == "number_multi"
+    assert rescaped["scoring_mode"] == "number_multi"
+    assert rescaped["is_published"] == 0
+    assert json.loads(rescaped["options"]) == ["Paraguay", "Maroc", "Égypte"]
+    assert json.loads(rescaped["scoring_config"]) == hosts_config
+    assert rescaped["help_text"] == (
+        "Paraguay, Maroc et Égypte sont passés aux tirs au but en seizièmes. "
+        "Combien d'entre eux referont l'exploit en huitièmes ? On compte uniquement "
+        "ces équipes si elles gagnent ensuite leur huitième, prolongation et tirs "
+        "au but inclus pour déterminer l'équipe qualifiée."
+    )
+
+    fastest = _fetch_question_by_text("Départ canon")
+    assert fastest is not None
+    assert fastest["question_text"] == ROUND16_FASTEST_GOAL_TEXT
+    assert fastest["phase"] == "round_of_16"
+    assert fastest["answer_type"] == "number"
+    assert fastest["scoring_mode"] == "closest_podium"
+    assert fastest["points_value"] == 5
+    assert fastest["is_published"] == 0
+    fastest_config = json.loads(fastest["scoring_config"])
+    assert fastest_config == {
+        "preset_key": "custom",
+        "award_mode": "podium_custom",
+        "tie_policy": "full_dense",
+        "rank_points": [5, 3, 1],
+        "min_value": 1,
+        "max_value": 120,
+        "integer_only": True,
+        "max_points": 5,
+    }
+    assert "90+5 compte comme 90" in fastest["help_text"]
 
 
 def test_multi_choice_end_to_end(client, admin_client, participant):
@@ -254,6 +315,40 @@ def test_number_multi_admin_rejects_invalid_correct_answer(admin_client):
         )
         assert resp.status_code == 303
         assert _fetch_question_by_text("Afrique Mode Patron")["correct_answer"] is None
+
+
+def test_round16_number_multi_allows_zero_answer_and_zero_correct_count(client, admin_client, participant):
+    q = _fetch_question_by_text("À domicile, ça pousse")
+    assert q is not None
+    _publish_question(q["id"], "2030-01-01T12:00:00")
+
+    resp = client.post(
+        f"/p/{participant['token']}/bonus/{q['id']}",
+        data={"count": "0"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    stored = json.loads(run(_stored_answer(participant["id"], q["id"])))
+    assert stored == {"count": 0, "teams": []}
+
+    resp = admin_client.post(
+        f"/admin/bonus/{q['id']}/update",
+        data={
+            "question_text": q["question_text"],
+            "phase": "round_of_16",
+            "answer_type": "number_multi",
+            "points_value": "10",
+            "deadline": "2030-01-01T12:00",
+            "options_text": "Canada\nMexique\nÉtats-Unis",
+            "correct_count": "0",
+            "is_published": "1",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    updated = _fetch_question_by_text("À domicile, ça pousse")
+    assert json.loads(updated["correct_answer"]) == {"count": 0, "teams": []}
+    assert run(_score(participant["id"], q["id"])) == 4
 
 
 def test_home_bonus_stack_and_ajax_submit(client, admin_client, participant, monkeypatch):
@@ -467,6 +562,115 @@ def test_bonus_number_rejects_out_of_bounds(client, participant):
     assert ok.status_code == 303
     stored = run(_stored_answer(participant["id"], q["id"]))
     assert stored == "3"
+
+
+def test_depart_canon_integer_only_and_bounds(client, participant):
+    q = _fetch_question_by_text("Départ canon")
+    assert q is not None and q["answer_type"] == "number"
+    _publish_question(q["id"], "2030-01-01T12:00:00")
+    base = f"/p/{participant['token']}/bonus/{q['id']}"
+
+    decimal = client.post(base, data={"answer": "7.5"}, follow_redirects=False)
+    assert decimal.status_code == 400
+
+    too_low = client.post(base, data={"answer": "0"}, follow_redirects=False)
+    assert too_low.status_code == 400
+
+    too_high = client.post(base, data={"answer": "121"}, follow_redirects=False)
+    assert too_high.status_code == 400
+
+    low_ok = client.post(base, data={"answer": "1"}, follow_redirects=False)
+    assert low_ok.status_code == 303
+    assert run(_stored_answer(participant["id"], q["id"])) == "1"
+
+    high_ok = client.post(base, data={"answer": "120"}, follow_redirects=False)
+    assert high_ok.status_code == 303
+    assert run(_stored_answer(participant["id"], q["id"])) == "120"
+
+
+def test_numeric_bonus_without_integer_only_still_accepts_decimals(client, admin_client, participant):
+    resp = admin_client.post(
+        "/admin/bonus/create",
+        data={
+            "question_text": "Question décimale tolérée",
+            "phase": "round_of_16",
+            "answer_type": "number",
+            "points_value": "6",
+            "deadline": "2030-01-01T12:00",
+            "is_published": "1",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    q = _fetch_question_by_text("Question décimale tolérée")
+
+    resp = client.post(
+        f"/p/{participant['token']}/bonus/{q['id']}",
+        data={"answer": "7.5"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert run(_stored_answer(participant["id"], q["id"])) == "7.5"
+
+
+def test_depart_canon_admin_correction_requires_integer(admin_client):
+    q = _fetch_question_by_text("Départ canon")
+    async def _clear_correct_answer():
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE bonus_questions SET correct_answer=NULL WHERE id=?",
+                (q["id"],),
+            )
+            await db.commit()
+
+    run(_clear_correct_answer())
+    base = {
+        "question_text": q["question_text"],
+        "phase": "round_of_16",
+        "answer_type": "number",
+        "points_value": "5",
+        "deadline": "2030-01-01T12:00",
+        "help_text": q["help_text"] or "",
+        "is_published": "1",
+        "closest_preset_key": "custom",
+        "closest_award_mode": "podium_custom",
+        "closest_tie_policy": "full_dense",
+        "closest_rank1_points": "5",
+        "closest_rank2_points": "3",
+        "closest_rank3_points": "1",
+    }
+
+    decimal = admin_client.post(
+        f"/admin/bonus/{q['id']}/update",
+        data={**base, "correct_answer": "7.5"},
+        follow_redirects=False,
+    )
+    assert decimal.status_code == 303
+    assert _fetch_question_by_text("Départ canon")["correct_answer"] is None
+
+    too_low = admin_client.post(
+        f"/admin/bonus/{q['id']}/update",
+        data={**base, "correct_answer": "0"},
+        follow_redirects=False,
+    )
+    assert too_low.status_code == 303
+    assert _fetch_question_by_text("Départ canon")["correct_answer"] is None
+
+    too_high = admin_client.post(
+        f"/admin/bonus/{q['id']}/update",
+        data={**base, "correct_answer": "121"},
+        follow_redirects=False,
+    )
+    assert too_high.status_code == 303
+    assert _fetch_question_by_text("Départ canon")["correct_answer"] is None
+
+    ok = admin_client.post(
+        f"/admin/bonus/{q['id']}/update",
+        data={**base, "correct_answer": "7"},
+        follow_redirects=False,
+    )
+    assert ok.status_code == 303
+    assert _fetch_question_by_text("Départ canon")["correct_answer"] == "7"
 
 
 def test_round32_numeric_bonus_only_exact_answers_score(client, admin_client):

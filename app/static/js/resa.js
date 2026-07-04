@@ -1110,9 +1110,14 @@ function initBonusForms() {
         return;
       }
       if (number && number.value.trim()) {
-        var numberValue = parseInt(number.value, 10);
+        var numberValue = Number(number.value.replace(',', '.'));
         var numberMin = number.getAttribute('min');
         var numberMax = number.getAttribute('max');
+        if (number.dataset.integerOnly === '1' && !Number.isInteger(numberValue)) {
+          e.preventDefault();
+          setError('Indique un nombre entier.');
+          return;
+        }
         if (numberMin !== '' && !isNaN(numberValue) && numberValue < parseInt(numberMin, 10)) {
           e.preventDefault();
           setError('Indique un nombre à partir de ' + numberMin + '.');

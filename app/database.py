@@ -35,6 +35,60 @@ ROUND32_FAVORITE_HELP = (
     "est trouvé, 0 sinon."
 )
 
+ROUND16_HOST_COUNTRIES_TEXT = (
+    "À domicile, ça pousse — Combien de pays hôtes seront en quarts de finale, "
+    "et lesquels ?"
+)
+ROUND16_RESCAPED_TIEBREAK_TEXT = (
+    "Les rescapés ont-ils encore du jus ? — Combien d'équipes qualifiées aux "
+    "tirs au but en seizièmes iront en quarts, et lesquelles ?"
+)
+ROUND16_FASTEST_GOAL_TEXT = (
+    "Départ canon — À quelle minute sera inscrit le but le plus rapide des "
+    "huitièmes de finale ?"
+)
+ROUND16_NUMBER_MULTI_CONFIG = {
+    "locked_teams": [],
+    "min_count": 0,
+    "max_count": 3,
+    "part1_points": 4,
+    "team_step": 2,
+    "max_points": 10,
+}
+ROUND16_FASTEST_GOAL_CONFIG = {
+    "preset_key": "custom",
+    "award_mode": "podium_custom",
+    "tie_policy": "full_dense",
+    "rank_points": [5, 3, 1],
+    "min_value": 1,
+    "max_value": 120,
+    "integer_only": True,
+    "max_points": 5,
+}
+ROUND16_HOST_COUNTRIES_HELP = (
+    "Les trois pays hôtes encore en lice sont Canada, Mexique et États-Unis. "
+    "Coche ceux que tu vois en quarts, puis indique leur nombre total. "
+    "On compte les pays hôtes qualifiés pour les quarts après leur huitième, "
+    "prolongation et tirs au but inclus. Jusqu'à 10 points : 4 points si le "
+    "total est exact, puis +2 / -2 par pays sélectionné. Le bonus détail ne "
+    "peut jamais descendre sous 0."
+)
+ROUND16_RESCAPED_TIEBREAK_HELP = (
+    "Paraguay, Maroc et Égypte sont passés aux tirs au but en seizièmes. "
+    "Combien d'entre eux referont l'exploit en huitièmes ? On compte uniquement "
+    "ces équipes si elles gagnent ensuite leur huitième, prolongation et tirs "
+    "au but inclus pour déterminer l'équipe qualifiée."
+)
+ROUND16_FASTEST_GOAL_HELP = (
+    "Indique la minute officielle du but le plus rapide. Un but noté 90+5 "
+    "compte comme 90. Un but noté 120+3 compte comme 120. Le temps réglementaire "
+    "et la prolongation sont inclus, les tirs au but sont exclus. On utilise la "
+    "minute officielle affichée par la source de référence, sans recalcul maison. "
+    "Si aucun but n'est inscrit sur l'ensemble des huitièmes, la question est "
+    "annulée. Barème : 5 points pour le ou les plus proches, 3 points pour le "
+    "deuxième écart distinct, 1 point pour le troisième écart distinct."
+)
+
 
 async def _normalize_existing_participant_names(db):
     rows = await db.execute("SELECT id, name, first_name, last_name FROM participants")
@@ -494,6 +548,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
 
         await ensure_bonus_question_drafts(db)
         await ensure_round_of_32_bonus_drafts(db)
+        await ensure_round_of_16_bonus_drafts(db)
 
         # Les anciens brouillons comptent désormais comme des réponses valides.
         await db.execute(
@@ -856,6 +911,92 @@ async def ensure_round_of_32_bonus_drafts(db):
             ROUND32_FAVORITE_CONCEDE_TEXT,
         ),
     )
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
+async def ensure_round_of_16_bonus_drafts(db):
+    """Prépare les bonus huitièmes en brouillon.
+
+    L'admin règle ensuite les deadlines, les réponses correctes, puis publie.
+    """
+    key = "bonus_drafts_round_of_16_2026_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    number_multi_config = json.dumps(
+        ROUND16_NUMBER_MULTI_CONFIG,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    fastest_goal_config = json.dumps(
+        ROUND16_FASTEST_GOAL_CONFIG,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    placeholder_deadline = "2026-07-04T16:59:00"
+    drafts = [
+        {
+            "question_text": ROUND16_HOST_COUNTRIES_TEXT,
+            "answer_type": "number_multi",
+            "options": json.dumps(["Canada", "Mexique", "États-Unis"], ensure_ascii=False),
+            "points_value": 10,
+            "scoring_mode": "number_multi",
+            "scoring_config": number_multi_config,
+            "help_text": ROUND16_HOST_COUNTRIES_HELP,
+        },
+        {
+            "question_text": ROUND16_RESCAPED_TIEBREAK_TEXT,
+            "answer_type": "number_multi",
+            "options": json.dumps(["Paraguay", "Maroc", "Égypte"], ensure_ascii=False),
+            "points_value": 10,
+            "scoring_mode": "number_multi",
+            "scoring_config": number_multi_config,
+            "help_text": ROUND16_RESCAPED_TIEBREAK_HELP,
+        },
+        {
+            "question_text": ROUND16_FASTEST_GOAL_TEXT,
+            "answer_type": "number",
+            "options": None,
+            "points_value": 5,
+            "scoring_mode": "closest_podium",
+            "scoring_config": fastest_goal_config,
+            "help_text": ROUND16_FASTEST_GOAL_HELP,
+        },
+    ]
+    for draft in drafts:
+        exists = await (await db.execute(
+            "SELECT 1 FROM bonus_questions WHERE question_text=?",
+            (draft["question_text"],),
+        )).fetchone()
+        if exists:
+            continue
+        await db.execute(
+            """INSERT INTO bonus_questions
+               (question_text, phase, answer_type, options, points_value,
+                correct_answer, scoring_mode, scoring_config, help_text,
+                is_published, deadline)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                draft["question_text"],
+                "round_of_16",
+                draft["answer_type"],
+                draft["options"],
+                draft["points_value"],
+                None,
+                draft["scoring_mode"],
+                draft["scoring_config"],
+                draft["help_text"],
+                0,
+                placeholder_deadline,
+            ),
+        )
+
     await db.execute(
         "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
         (key,),

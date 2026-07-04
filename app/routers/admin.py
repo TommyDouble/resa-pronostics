@@ -42,6 +42,7 @@ from app.pre_tournament import (
     get_pre_tournament_questions,
 )
 from app.scoring import (
+    bonus_number_is_integer,
     calculate_bonus_scores,
     closest_bonus_standings,
     format_number_multi,
@@ -331,10 +332,44 @@ def _preserve_closest_value_bounds(scoring_config: str | None, existing_config: 
         return scoring_config
     if not isinstance(new_config, dict) or not isinstance(old_config, dict):
         return scoring_config
-    for key in ("min_value", "max_value"):
+    for key in ("min_value", "max_value", "integer_only", "max_points"):
         if key in old_config and key not in new_config:
             new_config[key] = old_config[key]
     return json.dumps(new_config, ensure_ascii=False, separators=(",", ":"))
+
+
+def _number_config_error(value: str, scoring_config: str | None) -> str | None:
+    parsed = parse_bonus_number(value)
+    if parsed is None:
+        return "La réponse correcte doit être un nombre."
+    config = normalize_closest_config(0, scoring_config)
+    if config.get("integer_only"):
+        if not bonus_number_is_integer(parsed):
+            return "La réponse correcte doit être un nombre entier."
+        min_value = config.get("min_value")
+        max_value = config.get("max_value")
+        if min_value is not None and parsed < min_value:
+            return f"La réponse correcte doit être au moins {min_value}."
+        if max_value is not None and parsed > max_value:
+            return f"La réponse correcte doit être au maximum {max_value}."
+    return None
+
+
+def _participant_number_config_error(value: str, scoring_config: str | None) -> str | None:
+    parsed = parse_bonus_number(value)
+    if parsed is None:
+        return "Réponse invalide : indique un nombre."
+    config = normalize_closest_config(0, scoring_config)
+    if config.get("integer_only"):
+        if not bonus_number_is_integer(parsed):
+            return "Réponse invalide : indique un nombre entier."
+        min_value = config.get("min_value")
+        max_value = config.get("max_value")
+        if min_value is not None and parsed < min_value:
+            return f"Réponse invalide : minimum {min_value}."
+        if max_value is not None and parsed > max_value:
+            return f"Réponse invalide : maximum {max_value}."
+    return None
 
 
 def _number_multi_correct_from_form(form, options: list[str], scoring_config: str):
@@ -1567,9 +1602,11 @@ async def force_bonus_answer(request: Request,
                 _flash(request, f"Réponse invalide : choisis parmi {', '.join(options)}.", "err")
                 return redirect
             answer = matched
-        if question["answer_type"] == "number" and parse_bonus_number(answer) is None:
-            _flash(request, "Réponse invalide : indique un nombre.", "err")
-            return redirect
+        if question["answer_type"] == "number":
+            error = _participant_number_config_error(answer, question["scoring_config"])
+            if error:
+                _flash(request, error, "err")
+                return redirect
         old_row = await db.execute(
             "SELECT answer FROM bonus_answers WHERE participant_id=? AND question_id=?",
             (participant_id, question_id),
@@ -2157,6 +2194,9 @@ async def bonus_admin(request: Request):
             question["closest_award_mode"] = closest_config["award_mode"]
             question["closest_tie_policy"] = closest_config["tie_policy"]
             question["closest_rank_points"] = closest_config["rank_points"]
+            question["integer_only"] = closest_config.get("integer_only", False)
+            question["answer_min"] = closest_config.get("min_value")
+            question["answer_max"] = closest_config.get("max_value")
             question["preview_can_edit"] = question["deadline"] > now
             question["participant_total"] = confirmed_count
             if not question["is_published"]:
@@ -2355,8 +2395,9 @@ async def create_bonus(request: Request,
         _flash(request, "Ajoute au moins deux options de réponse.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
     if answer_type == "number" and correct_answer.strip():
-        if parse_bonus_number(correct_answer) is None:
-            _flash(request, "La réponse correcte doit être un nombre.", "err")
+        error = _number_config_error(correct_answer, scoring_config)
+        if error:
+            _flash(request, error, "err")
             return RedirectResponse("/admin/bonus", status_code=303)
     async with get_db() as db:
         cursor = await db.execute(
@@ -2495,8 +2536,9 @@ async def update_bonus_question(
                 _flash(request, error, "err")
                 return RedirectResponse("/admin/bonus", status_code=303)
         if answer_type == "number" and correct_answer.strip():
-            if parse_bonus_number(correct_answer) is None:
-                _flash(request, "La réponse correcte doit être un nombre.", "err")
+            error = _number_config_error(correct_answer, scoring_config)
+            if error:
+                _flash(request, error, "err")
                 return RedirectResponse("/admin/bonus", status_code=303)
         await db.execute(
             """UPDATE bonus_questions
@@ -2553,9 +2595,11 @@ async def set_bonus_answer(request: Request, question_id: int,
             if error:
                 _flash(request, error, "err")
                 return RedirectResponse("/admin/bonus", status_code=303)
-        if question["answer_type"] == "number" and parse_bonus_number(correct_answer) is None:
-            _flash(request, "La réponse correcte doit être un nombre.", "err")
-            return RedirectResponse("/admin/bonus", status_code=303)
+        if question["answer_type"] == "number":
+            error = _number_config_error(correct_answer, question["scoring_config"])
+            if error:
+                _flash(request, error, "err")
+                return RedirectResponse("/admin/bonus", status_code=303)
         await db.execute(
             "UPDATE bonus_questions SET correct_answer=? WHERE id=?",
             (correct_answer.strip() or None, question_id)
