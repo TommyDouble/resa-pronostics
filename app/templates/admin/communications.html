@@ -176,7 +176,10 @@
     </table>
   </div>
 
-  <form method="post" action="/admin/communications/deadline-reminders/send">
+  <form method="post" action="/admin/communications/deadline-reminders/send"
+        data-confirm-title="Envoyer le rappel groupé ?"
+        data-confirm="Ce rappel ciblera {{ deadline_preview.participant_count }} participant(s) concerné(s) par les deadlines sélectionnées.{% if deadline_preview.force_email %} L'option email forcé est active : un email pourra aussi être envoyé aux participants concernés disposant d'une adresse email.{% endif %}"
+        data-confirm-danger>
     {% for key in deadline_preview.selected_deadline_keys %}
     <input type="hidden" name="deadline_keys" value="{{ key }}">
     {% endfor %}
@@ -202,10 +205,14 @@
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
     <div style="flex:1;">
       <b style="font-size:13px;">Rappel pré-tournoi</b>
-      <div class="muted" style="font-size:11px;margin-top:2px;">→ {{ no_pt }} participant(s) n'ont pas encore soumis</div>
+      <div class="muted" style="font-size:11px;margin-top:2px;">→ {{ pt_reminder_target_count }} participant(s) n'ont pas encore soumis</div>
     </div>
-    <form method="post" action="/admin/communications/send-pt-reminder">
-      <button type="submit" class="btn sm" {% if no_pt == 0 %}disabled{% endif %}>Envoyer</button>
+    <form method="post" action="/admin/communications/send-pt-reminder"
+          {% if pt_reminder_target_count %}
+          data-confirm-title="Envoyer le rappel pré-tournoi ?"
+          data-confirm="Ce rappel sera envoyé par email à {{ pt_reminder_target_count }} participant(s) n'ayant pas encore soumis leurs réponses pré-tournoi."
+          {% endif %}>
+      <button type="submit" class="btn sm" {% if pt_reminder_target_count == 0 %}disabled{% endif %}>Envoyer</button>
     </form>
   </div>
 </div>
@@ -216,7 +223,11 @@
       <b style="font-size:13px;">Rappel avant un match (24h)</b>
       <div class="muted" style="font-size:11px;margin-top:2px;">Aux participants n'ayant pas pronostiqué ce match</div>
     </div>
-    <form method="post" action="/admin/communications/send-match-reminder" style="display:flex;gap:8px;align-items:center;">
+    <form method="post" action="/admin/communications/send-match-reminder" style="display:flex;gap:8px;align-items:center;"
+          {% if upcoming_matches %}
+          data-confirm-title="Envoyer le rappel de match ?"
+          data-confirm="Ce rappel sera envoyé par email aux participants n'ayant pas encore pronostiqué ce match."
+          {% endif %}>
       <div class="field" style="width:220px;">
         <select name="match_id" style="flex:1;">
           {% for m in upcoming_matches %}
@@ -248,7 +259,11 @@
   </div>
   {% endif %}
 
-  <form method="post" action="/admin/communications/send-push-test" data-push-test-form style="display:flex;flex-direction:column;gap:10px;">
+  <form method="post" action="/admin/communications/send-push-test" data-push-test-form
+        data-confirm-title="Envoyer cette notification push ?"
+        data-confirm="Ce push de test sera envoyé à 0 destinataire(s) sélectionné(s)."
+        data-confirm-danger
+        style="display:flex;flex-direction:column;gap:10px;">
     <div class="grid2">
       <div>
         <div class="muted" style="font-size:11px;margin-bottom:5px;">Titre</div>
