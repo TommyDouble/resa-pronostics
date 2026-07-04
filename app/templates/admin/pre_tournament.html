@@ -4,7 +4,7 @@
 
 <h1>Pré-tournoi</h1>
 
-<div class="kpis">
+<div class="kpis kpis-2">
   <div class="kpi">
     <div class="big">{{ submitted_count }}/{{ total_count }}</div>
     <div class="cap">Soumissions</div>
@@ -37,7 +37,7 @@
         data-confirm-danger
         {% endif %}
         style="display:flex;flex-direction:column;gap:10px;">
-    <div class="grid2">
+    <div class="grid2 stack-sm">
       <div>
         <div class="lbl" style="margin-bottom:5px;">① Champion du Monde</div>
         <div class="field">
@@ -66,7 +66,7 @@
         {% if hits.finalist %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.finalist.winners }}/{{ hits.finalist.scored }} participants ont au moins un finaliste correct.</div>{% endif %}
       </div>
     </div>
-    <div class="grid2">
+    <div class="grid2 stack-sm">
       <div>
         <div class="lbl" style="margin-bottom:5px;">③ Meilleur buteur <span class="muted" style="font-weight:400;">(+8 pts)</span></div>
         <div class="autocomplete-wrap" data-scorer-combo>
@@ -112,7 +112,7 @@
 </div>
 
 {% for q in questions %}
-<div class="card">
+<div class="card pt-question{{ '' if q.is_enabled else ' is-off' }}">
   <form method="post" action="/admin/pre-tournoi/questions/{{ q.key }}" style="display:flex;flex-direction:column;gap:10px;">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span class="chip {{ 'ok' if q.is_enabled else 'gr' }}">#{{ q.sort_order }}</span>
@@ -122,7 +122,7 @@
         Active
       </label>
     </div>
-    <div class="grid2">
+    <div class="grid2 stack-sm">
       <div>
         <div class="lbl" style="margin-bottom:5px;">Intitulé</div>
         <div class="field"><input type="text" name="label" value="{{ q.label }}" required></div>

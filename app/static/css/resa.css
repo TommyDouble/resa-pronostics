@@ -1657,6 +1657,51 @@ img.av { object-fit: cover; display: block; }
 .tbl th[data-sort]::after { content: "↕"; margin-left: 4px; color: var(--n300); font-size: 9px; }
 .tbl th.sort-asc::after { content: "↑"; color: var(--primary); }
 .tbl th.sort-desc::after { content: "↓"; color: var(--primary); }
+
+/* ---- Participants: table -> cartes empilées sur mobile (scoped .tbl-cards) ---- */
+.tbl-cards td.tbl-strong { font-weight: 600; }
+.tbl-cards .chip-toggle {
+  cursor: pointer;
+  border: none;
+  padding: 4px 9px;
+  font-size: 11px;
+}
+.tbl-cards .btn.compact { font-size: 11px; padding: 4px 8px; }
+@media (max-width: 640px) {
+  .tbl-cards thead { display: none; }
+  .tbl-cards, .tbl-cards tbody, .tbl-cards tr, .tbl-cards td { display: block; width: 100%; }
+  .tbl-cards tr {
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    margin-bottom: 10px;
+    padding: 6px 12px;
+  }
+  .tbl-cards tr:last-child { margin-bottom: 0; }
+  .tbl-cards td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .tbl-cards td:last-child { border-bottom: none; }
+  .tbl-cards td[data-label]::before {
+    content: attr(data-label);
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--n400);
+    flex: none;
+  }
+  .tbl-cards td.tbl-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    padding-top: 10px;
+  }
+  .tbl-cards td[data-empty-cell] { justify-content: center; }
+}
 .admin-table-tools {
   display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
   margin-bottom: 8px;
@@ -1754,6 +1799,28 @@ img.av { object-fit: cover; display: block; }
   border-top: 1px solid var(--line);
   padding: 14px;
 }
+/* ---- Admin bonus: sections numérotées du formulaire (create/update + aperçu) ---- */
+.bonus-step {
+  border: 1.5px solid var(--n300);
+  border-radius: var(--r-sm);
+  padding: 12px;
+  background: #fff;
+}
+.bonus-step-alt {
+  border: 1.5px solid var(--n300);
+  border-radius: var(--r-sm);
+  padding: 12px;
+  background: var(--n50);
+}
+details.bonus-step { padding: 0; }
+details.bonus-step > summary {
+  padding: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+details.bonus-step > summary::-webkit-details-marker { display: none; }
+details.bonus-step[open] > summary { border-bottom: 1px solid var(--line); }
+details.bonus-step > div { padding: 12px; }
 .admin-deadlines .dash-card-head { align-items: flex-start; }
 .admin-deadline-section {
   border-top: 1px solid var(--line);
@@ -2848,6 +2915,14 @@ body.admin-confirm-open { overflow: hidden; }
 .kpi { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--sh); padding: 14px; }
 .kpi .big { font-family: var(--display); font-weight: 800; font-size: 28px; color: var(--primary); line-height: .9; }
 .kpi .cap { font-size: 11px; color: var(--n600); margin-top: 4px; }
+/* Modificateur scoped (pré-tournoi : 2 KPI seulement) : gagne sur les media queries
+   existantes de .kpis par spécificité, sans les modifier (utilisées aussi par le
+   dashboard, hors périmètre). */
+.kpis.kpis-2 { grid-template-columns: 1fr 1fr; }
+
+/* ---- Pré-tournoi : accent visuel actif / inactif sur les cartes questions ---- */
+.pt-question { border-left: 3px solid var(--primary); }
+.pt-question.is-off { border-left: 3px solid var(--n300); opacity: .7; }
 
 .toolbar2 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .input-search {
@@ -2995,6 +3070,15 @@ body.admin-confirm-open { overflow: hidden; }
 .row2 { display: flex; gap: 8px; }
 .row2 > * { flex: 1; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+/* Modificateur scoped (opt-in) : évite de changer .grid2/.grid3 pour toutes les pages
+   qui les utilisent (register.html, profile_edit.html, admin/communications.html, ...).
+   !important nécessaire : appliqué aussi sur des grilles ponctuelles de bonus.html qui
+   gardent un grid-template-columns en style inline (ex: minmax(220px,.5fr)). */
+@media (max-width: 640px) {
+  .stack-sm { grid-template-columns: 1fr !important; }
+}
+.field-sm { max-width: 220px; }
 .mt-2 { margin-top: 8px; }
 .mt-3 { margin-top: 12px; }
 .text-center { text-align: center; }

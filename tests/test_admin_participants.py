@@ -57,6 +57,35 @@ def _participant_by_email(email):
     return run(_q())
 
 
+def test_participants_table_has_mobile_card_contract(admin_client, participant):
+    """La table participants doit rester triable/filtrable (data-admin-table) tout en
+    exposant le contrat CSS des cartes mobiles (tbl-cards + data-label par colonne),
+    sans perdre les hooks JS/confirmation critiques sur la ligne du participant."""
+    html = admin_client.get("/admin/participants").text
+
+    assert 'class="tbl tbl-cards"' in html
+    assert "data-admin-table" in html
+    assert 'data-admin-search="participant-search"' in html
+
+    for label in ("Nom", "Email", "Département", "Statut", "Payé", "Favori", "Pré-t.", "≥1 prono"):
+        assert f'data-label="{label}"' in html
+
+    assert f'data-toggle-paid="{participant["id"]}"' in html
+    assert f'data-toggle-favorite="{participant["id"]}"' in html
+    assert "data-copy-token=" in html
+
+    action = f'action="/admin/participants/{participant["id"]}/delete"'
+    assert action in html
+    form_start = html.rindex("<form", 0, html.index(action))
+    form_end = html.index("</form>", html.index(action))
+    delete_form_html = html[form_start:form_end]
+
+    # Confirmation simple (data-confirm) ET confirmation renforcée (data-confirm-strong)
+    # doivent toutes les deux être présentes sur le formulaire de suppression.
+    assert 'data-confirm="' in delete_form_html
+    assert 'data-confirm-strong="SUPPRIMER"' in delete_form_html
+
+
 def test_delete_participant_removes_them_and_cascades(admin_client):
     pid = _participant_with_data()
     assert _counts(pid) == (1, 1, 1)
