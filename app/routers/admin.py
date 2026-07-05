@@ -94,6 +94,8 @@ BONUS_PHASES = {
     "quarter", "semi", "third_place", "final",
 }
 
+PREDICTIONS_PAGE_SIZE = 100
+
 PUSH_TEST_DESTINATIONS = {
     "home": ("Accueil", ""),
     "pronos": ("Pronos", "/pronos"),
@@ -1222,22 +1224,28 @@ async def import_csv(request: Request, csv_file: UploadFile = File(...)):
 
     errors = []
     valid = []
+    seen_emails = {}
     for i, row in enumerate(rows, 1):
         first_name, last_name = split_full_name(row.get("nom", row.get("name", "")))
         name = f"{first_name} {last_name}".strip()
         email = row.get("email", "").strip().lower()
         if not name or not email or "@" not in email:
             errors.append(f"Ligne {i}: nom ou email invalide")
-        else:
-            valid.append((name, email))
+            continue
+        if email in seen_emails:
+            errors.append(f"Ligne {i}: email en doublon avec la ligne {seen_emails[email]} ({email})")
+            continue
+        seen_emails[email] = i
+        valid.append((i, name, email))
 
     if errors:
         _flash(request, f"Erreurs CSV: {'; '.join(errors[:3])}", "err")
         return RedirectResponse("/admin/participants", status_code=303)
 
     imported_participants = []
+    db_error_line = None
     async with get_db() as db:
-        for name, email in valid:
+        for i, name, email in valid:
             first_name, last_name = split_full_name(name)
             token = str(uuid.uuid4())
             try:
@@ -1250,8 +1258,23 @@ async def import_csv(request: Request, csv_file: UploadFile = File(...)):
                 if cursor.rowcount:
                     imported_participants.append({"name": name, "email": email, "token": token})
             except Exception:
-                pass
-        await db.commit()
+                logging.exception("Import CSV: échec d'insertion ligne %d (%s)", i, email)
+                db_error_line = i
+                break
+        if db_error_line is not None:
+            await db.rollback()
+        else:
+            await db.commit()
+
+    if db_error_line is not None:
+        _flash(
+            request,
+            f"Import annulé : erreur technique lors de l'insertion (ligne {db_error_line}). "
+            "Aucun participant n'a été importé, réessayez.",
+            "err",
+        )
+        return RedirectResponse("/admin/participants", status_code=303)
+
     sent_count = 0
     for participant in imported_participants:
         if await send_invitation(participant):
@@ -1271,6 +1294,7 @@ async def predictions_admin(
     view: str = Query(default="matches"),
     participant_id: int = Query(default=0),
     phase: str = Query(default="all"),
+    page: int = Query(default=1, ge=1),
 ):
     await require_admin(request)
     if view not in ("matches", "pre_tournament", "bonus"):
@@ -1296,6 +1320,7 @@ async def predictions_admin(
             )
             all_matches = [dict(r) for r in await m_rows.fetchall()]
 
+        has_next_page = False
         if view == "matches":
             where = ["p.is_admin=0"]
             params = []
@@ -1305,6 +1330,7 @@ async def predictions_admin(
             if phase != "all":
                 where.append("m.phase=?")
                 params.append(phase)
+            offset = (page - 1) * PREDICTIONS_PAGE_SIZE
             rows = await db.execute(
                 f"""SELECT
                       p.id as participant_id,
@@ -1323,10 +1349,13 @@ async def predictions_admin(
                     LEFT JOIN scores s ON s.match_id = pr.match_id
                       AND s.participant_id = pr.participant_id
                     WHERE {' AND '.join(where)}
-                    ORDER BY pr.submitted_at DESC, m.match_number""",
-                params,
+                    ORDER BY pr.submitted_at DESC, m.match_number, pr.id DESC
+                    LIMIT ? OFFSET ?""",
+                params + [PREDICTIONS_PAGE_SIZE + 1, offset],
             )
-            match_predictions = [dict(r) for r in await rows.fetchall()]
+            fetched = [dict(r) for r in await rows.fetchall()]
+            has_next_page = len(fetched) > PREDICTIONS_PAGE_SIZE
+            match_predictions = fetched[:PREDICTIONS_PAGE_SIZE]
 
         if view == "pre_tournament":
             where = ["p.is_admin=0"]
@@ -1392,6 +1421,8 @@ async def predictions_admin(
         "view": view,
         "participant_id": participant_id,
         "phase": phase,
+        "page": page,
+        "has_next_page": has_next_page if view == "matches" else False,
         "participants": participants,
         "phase_labels": PHASE_LABELS,
         "match_predictions": match_predictions,

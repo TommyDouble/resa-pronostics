@@ -2,6 +2,8 @@
 import io
 import uuid
 
+import aiosqlite
+
 import app.routers.admin as admin_routes
 from app.database import get_db
 from tests.conftest import run
@@ -55,6 +57,22 @@ def _participant_by_email(email):
             return dict(result) if result else None
 
     return run(_q())
+
+
+def _drain_flashes(admin_client):
+    """Consomme les flashes déjà présents en session avant le test.
+
+    `admin_client` est un TestClient partagé (session-scope) entre tous les tests ; si un
+    test précédent a posté sans jamais recharger de page admin ensuite (follow_redirects=False),
+    son flash reste en session. Le prochain `_flash()` de app/routers/admin.py fait alors
+    `session.setdefault("flashes", []).append(...)` sur une liste déjà existante : Starlette
+    ne marque la session modifiée que si la clé n'existait pas encore (voir
+    `Session.setdefault` dans starlette/middleware/sessions.py), donc cet append n'est jamais
+    persisté et le nouveau message est silencieusement perdu. Ceci est un comportement
+    préexistant du framework/de `_flash()`, sans impact réel en navigateur (chaque redirection
+    y est toujours suivie d'un vrai chargement de page qui vide les flashes) — on s'en protège
+    ici pour ne pas dépendre de l'ordre d'exécution des tests."""
+    admin_client.get("/admin/participants")
 
 
 def test_participants_table_has_mobile_card_contract(admin_client, participant):
@@ -144,3 +162,99 @@ def test_import_csv_normalizes_name_casing(admin_client, monkeypatch):
     assert participant["name"] == "Anne-Sophie D'Angelo"
     assert participant["first_name"] == "Anne-Sophie"
     assert participant["last_name"] == "D'Angelo"
+
+
+def test_import_csv_rejects_duplicate_email_within_file(admin_client, monkeypatch):
+    async def fake_invitation(participant):
+        return True
+
+    monkeypatch.setattr(admin_routes, "send_invitation", fake_invitation)
+    _drain_flashes(admin_client)
+    email = f"{uuid.uuid4().hex}@test.local"
+    # Même email en doublon, casse différente : la comparaison doit être insensible à la casse.
+    csv_content = f"nom,email\nJean Un,{email}\nJean Deux,{email.upper()}\n".encode()
+
+    response = admin_client.post(
+        "/admin/participants/import",
+        files={"csv_file": ("participants.csv", io.BytesIO(csv_content), "text/csv")},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "doublon" in response.text
+    assert _participant_by_email(email) is None
+
+
+def test_import_csv_multiple_valid_lines_all_imported(admin_client, monkeypatch):
+    async def fake_invitation(participant):
+        return True
+
+    monkeypatch.setattr(admin_routes, "send_invitation", fake_invitation)
+    _drain_flashes(admin_client)
+    emails = [f"{uuid.uuid4().hex}@test.local" for _ in range(3)]
+    csv_content = (
+        "nom,email\n"
+        + "".join(f"Participant {i},{email}\n" for i, email in enumerate(emails, 1))
+    ).encode()
+
+    response = admin_client.post(
+        "/admin/participants/import",
+        files={"csv_file": ("participants.csv", io.BytesIO(csv_content), "text/csv")},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "3 participant(s) importé(s), 3 invitation(s) envoyée(s)." in response.text
+    for email in emails:
+        assert _participant_by_email(email) is not None
+
+
+def test_import_csv_db_error_rolls_back_everything(admin_client, monkeypatch):
+    """Une erreur DB inattendue en cours de boucle doit annuler tout le lot :
+    aucune insertion persistée (y compris celles déjà exécutées avant l'échec),
+    et aucun email envoyé. On simule un vrai échec d'insertion (pas un mock de
+    la fonction d'insertion entière) en faisant échouer l'INSERT SQL réel pour
+    la 2e ligne, après que la 1re ligne a été réellement insérée (non committée)."""
+    sent_to = []
+
+    async def tracking_invitation(participant):
+        sent_to.append(participant["email"])
+        return True
+
+    monkeypatch.setattr(admin_routes, "send_invitation", tracking_invitation)
+    _drain_flashes(admin_client)
+
+    email1 = f"{uuid.uuid4().hex}@test.local"
+    email2 = f"{uuid.uuid4().hex}@test.local"
+    email3 = f"{uuid.uuid4().hex}@test.local"
+    csv_content = (
+        f"nom,email\nRow One,{email1}\nRow Two,{email2}\nRow Three,{email3}\n"
+    ).encode()
+
+    original_execute = aiosqlite.Connection.execute
+
+    async def failing_execute(self, sql, parameters=None):
+        if (
+            parameters
+            and email2 in tuple(parameters)
+            and "INSERT OR IGNORE INTO participants" in sql
+        ):
+            raise RuntimeError("simulated DB failure")
+        return await original_execute(self, sql, parameters)
+
+    monkeypatch.setattr(aiosqlite.Connection, "execute", failing_execute)
+
+    response = admin_client.post(
+        "/admin/participants/import",
+        files={"csv_file": ("participants.csv", io.BytesIO(csv_content), "text/csv")},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Import annulé" in response.text
+    # La 1re ligne avait été réellement insérée (non committée) avant l'échec :
+    # le rollback doit l'annuler exactement comme les lignes non tentées.
+    assert _participant_by_email(email1) is None
+    assert _participant_by_email(email2) is None
+    assert _participant_by_email(email3) is None
+    assert sent_to == []

@@ -1,6 +1,7 @@
 """Tableau de bord admin v2 : sections, encodage inline, redirection."""
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from app.database import get_db
 from tests.conftest import run
@@ -191,3 +192,19 @@ def test_encode_without_redirect_keeps_results_page(admin_client):
     )
     assert resp.status_code == 303
     assert resp.headers["location"] == "/admin/resultats"
+
+
+def test_dashboard_refresh_rechecks_busy_before_dom_swap():
+    """Anti-régression structurelle : initDashboardRefresh() doit revérifier busy()
+    juste avant l'injection du HTML reçu (pas seulement avant le fetch), pour éviter
+    d'écraser une saisie démarrée pendant que la requête est en vol. Pas de framework
+    de test JS dans ce projet : on vérifie seulement la présence du garde-fou dans le
+    code source, pas son comportement runtime (à vérifier manuellement en complément)."""
+    js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "resa.js"
+    js = js_path.read_text()
+    start = js.index("function initDashboardRefresh")
+    # Bornée par la prochaine déclaration de fonction top-level (colonne 0), pas par un
+    # matching d'accolades sensible à l'indentation interne de la fonction.
+    end = js.index("\nfunction ", start + 1)
+    fn_source = js[start:end]
+    assert fn_source.count("busy()") >= 2
