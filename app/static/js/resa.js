@@ -1941,6 +1941,7 @@ function initDashboardRefresh(seconds) {
         return r.text();
       })
       .then(function(html) {
+        if (busy()) return;
         var doc = new DOMParser().parseFromString(html, 'text/html');
         document.querySelectorAll('[data-dash-swap]').forEach(function(section) {
           var fresh = doc.querySelector('[data-dash-swap="' + section.dataset.dashSwap + '"]');

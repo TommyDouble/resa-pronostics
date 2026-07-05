@@ -149,6 +149,17 @@
       {% endfor %}
     </tbody>
   </table>
+  {% if page > 1 or has_next_page %}
+  <div class="toolbar2" style="justify-content:space-between;margin-top:10px;">
+    {% if page > 1 %}
+    <a class="btn sm" href="/admin/pronostics?view=matches&participant_id={{ participant_id }}&phase={{ phase }}&page={{ page - 1 }}">← Page précédente</a>
+    {% else %}<span></span>{% endif %}
+    <span class="muted" style="font-size:12px;">Page {{ page }}</span>
+    {% if has_next_page %}
+    <a class="btn sm" href="/admin/pronostics?view=matches&participant_id={{ participant_id }}&phase={{ phase }}&page={{ page + 1 }}">Page suivante →</a>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
