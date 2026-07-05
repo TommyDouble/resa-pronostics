@@ -16,6 +16,9 @@ function initPredictionScores() {
     var errorBox = card.querySelector('.prediction-error');
     var saveIndicator = card.querySelector('.save-badge');
     var saveTimer = null;
+    // Numéro de la dernière sauvegarde partie : une réponse (succès ou échec)
+    // d'une requête plus ancienne ne doit jamais écraser l'état affiché.
+    var saveSeq = 0;
     var isKnockout = card.dataset.knockout === '1';
 
     function scoreValue(inp) {
@@ -170,6 +173,9 @@ function initPredictionScores() {
         body.qualifier_prediction = qualifier;
       }
 
+      // Annule un envoi différé encore en attente : cette sauvegarde le remplace.
+      clearTimeout(saveTimer);
+      var seq = ++saveSeq;
       fetch('/api/predictions?token=' + encodeURIComponent(token), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -180,8 +186,10 @@ function initPredictionScores() {
           return data;
         });
       }).then(function(data) {
+        if (seq !== saveSeq) return;
         if (data.success) markSaved(data);
       }).catch(function(err) {
+        if (seq !== saveSeq) return;
         setError((err && err.detail) || 'Enregistrement impossible, réessaie.');
       });
     }
