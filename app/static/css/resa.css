@@ -488,6 +488,27 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
 .nm-badge.is-disabled { opacity: .4; cursor: not-allowed; }
 .nm-badge:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
 
+/* ---- Bonus hub (statuts + étapes) ---- */
+.bonus-hub-open, .bonus-hub-body { display: flex; flex-direction: column; gap: 14px; }
+.bonus-hub-body { margin-top: 10px; }
+.bonus-hub-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  padding: 4px 2px;
+}
+.bonus-hub-summary::-webkit-details-marker { display: none; }
+.bonus-hub-summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.bonus-hub-summary .department-chevron { margin-left: auto; }
+.bonus-hub-section[open] > .bonus-hub-summary .department-chevron {
+  color: var(--primary);
+  transform: rotate(180deg);
+}
+.bonus-hub-phase { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.bonus-pt-card { padding: 14px; }
+
 /* ---- Bonus question cards ---- */
 .bonus-question-card {
   padding: 14px;

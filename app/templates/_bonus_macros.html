@@ -165,3 +165,34 @@
   {% endif %}
 </div>
 {%- endmacro %}
+
+{# Carte-catégorie pré-tournoi du hub /bonus. Attention : ne jamais y introduire
+   le marqueur HTML utilisé par les tests B3. #}
+{% macro bonus_pt_card(item, token) -%}
+<div class="card bonus-pt-card" data-bonus-pt-card>
+  <div class="bonus-q-meta">
+    <span class="chip acc">Pré-tournoi · {{ item.question_count }} question{{ 's' if item.question_count != 1 else '' }}</span>
+    {% if item.is_open %}
+      {% if item.complete %}
+        <span class="chip ok">Complet · modifiable</span>
+      {% else %}
+        <span class="chip warn">À répondre · {{ item.filled_count }}/{{ item.question_count }}</span>
+      {% endif %}
+    {% elif item.has_score %}
+      <span class="chip {{ 'ok' if item.points > 0 else 'lock' }}">{{ item.points }} pt{{ 's' if item.points != 1 else '' }}</span>
+    {% else %}
+      <span class="chip gr">Verrouillée</span>
+    {% endif %}
+    <span class="muted bonus-q-deadline">
+      Deadline · <span data-local-utc="{{ item.deadline|utc_iso }}">{{ item.deadline|local_datetime }}</span>
+    </span>
+  </div>
+  <div class="bonus-q-copy">
+    <div class="bonus-q-title">🏆 Pré-tournoi</div>
+    <p class="bonus-q-prompt">Champion · Finalistes · Buteur · Révélation · Buts</p>
+  </div>
+  <a href="/p/{{ token }}/pre-tournoi" class="btn ghost" style="font-size:12px;">
+    {%- if item.is_open and not item.complete %}Compléter mes réponses{% else %}Voir mes réponses{% endif -%}
+  </a>
+</div>
+{%- endmacro %}
