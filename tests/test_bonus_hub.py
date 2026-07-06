@@ -412,12 +412,69 @@ def test_pt_card_open_hides_accidental_score_and_correct_answer(client, particip
         open_html = _section_html(html, "open")
         assert 'data-bonus-pt-key="winner"' in open_html
         assert "secret-champion-b5" not in html
-        assert "Réponse correcte" not in open_html
-        assert "3 pt" not in open_html
+        assert "Réponse correcte" not in html
+        assert "3 pt" not in html
+        assert "Pré-tournoi : 3 pts" not in html
+        assert "Total bonus : 3 pts" not in html
+        assert "Pré-tournoi : 0 pt" in html
+        assert "Total bonus : 0 pt" in html
         if 'data-bonus-section="resolved"' in html:
             assert 'data-bonus-pt-key="winner"' not in _section_html(html, "resolved")
     finally:
         _set_pt_correct_answer("winner", old_answer)
+        _set_pt_deadline(old_deadline)
+        _cleanup(pt_scores_participant=participant["id"])
+
+
+def test_pre_tournament_page_hides_accidental_score_when_open(client, participant):
+    old_deadline = _set_pt_deadline(_FUTURE)
+    _seed_pt_score(participant["id"], "winner", 3)
+    try:
+        html = client.get(f"/p/{participant['token']}/pre-tournoi").text
+        assert "Tes points pré-tournoi" not in html
+        assert "3 pt" not in html
+        assert "Verrouillé" not in html
+        assert "Enregistrer mes pronos" in html
+        assert 'name="winner"' in html
+        start = html.index('id="pt-winner"')
+        end = html.index('id="pt-finalist"', start)
+        assert "disabled" not in html[start:end]
+    finally:
+        _set_pt_deadline(old_deadline)
+        _cleanup(pt_scores_participant=participant["id"])
+
+
+def test_pt_scores_visible_after_deadline_on_bonus_and_pre_tournament(client, participant):
+    old_deadline = _set_pt_deadline(_PAST)
+    _seed_pt_score(participant["id"], "winner", 3)
+    try:
+        bonus_html = client.get(f"/p/{participant['token']}/bonus").text
+        pre_tournament_html = client.get(f"/p/{participant['token']}/pre-tournoi").text
+
+        resolved_html = _section_html(bonus_html, "resolved")
+        assert 'data-bonus-pt-key="winner"' in resolved_html
+        assert "3 pts" in resolved_html
+        assert "Pré-tournoi : 3 pts" in bonus_html
+        assert "Total bonus : 3 pts" in bonus_html
+
+        assert "Tes points pré-tournoi" in pre_tournament_html
+        assert "Champion du Monde · 3 pts" in pre_tournament_html
+        assert "Total · 3 pts" in pre_tournament_html
+        assert "Verrouillé" in pre_tournament_html
+    finally:
+        _set_pt_deadline(old_deadline)
+        _cleanup(pt_scores_participant=participant["id"])
+
+
+def test_pre_tournament_page_shows_zero_score_after_deadline(client, participant):
+    old_deadline = _set_pt_deadline(_PAST)
+    _seed_pt_score(participant["id"], "winner", 0)
+    try:
+        html = client.get(f"/p/{participant['token']}/pre-tournoi").text
+        assert "Tes points pré-tournoi" in html
+        assert "Champion du Monde · 0 pt" in html
+        assert "Total · 0 pts" in html
+    finally:
         _set_pt_deadline(old_deadline)
         _cleanup(pt_scores_participant=participant["id"])
 

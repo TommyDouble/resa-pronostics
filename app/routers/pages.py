@@ -1185,12 +1185,15 @@ async def pre_tournament_page(request: Request, token: str, error: str = "", sav
         pt_dict = pt_status["pt"]
         if pt_dict.get("top_scorer"):
             pt_dict["top_scorer"] = normalize_scorer(pt_dict["top_scorer"])
-        # Results once correct answers are encoded (after deadline)
+        # Results are visible only after the pre-tournament deadline.
         score_rows = await db.execute(
             "SELECT question_key, points FROM pre_tournament_scores WHERE participant_id=?",
             (p["id"],),
         )
-        pt_scores = {r["question_key"]: r["points"] for r in await score_rows.fetchall()}
+        raw_pt_scores = {
+            r["question_key"]: r["points"] for r in await score_rows.fetchall()
+        }
+        pt_scores = {} if pt_status["open"] else raw_pt_scores
         ctx.update({
             "pt": pt_dict,
             "pt_questions": pt_questions,
@@ -2476,25 +2479,30 @@ async def bonus_page(request: Request, token: str):
         for q in bonus_questions:
             if not q["is_open"]:
                 q["peer_answers"] = peer_answers.get(q["id"], [])
-        pt_score_row = await db.execute(
-            "SELECT COALESCE(SUM(points), 0) as total FROM pre_tournament_scores WHERE participant_id=?",
-            (p["id"],),
-        )
-        pt_points = (await pt_score_row.fetchone())["total"]
+        pt_status = await _pt_status(db, p["id"])
         pt_score_rows = await db.execute(
             """SELECT question_key, points, calculated_at
                FROM pre_tournament_scores WHERE participant_id=?""",
             (p["id"],),
         )
-        pt_scores = {r["question_key"]: dict(r) for r in await pt_score_rows.fetchall()}
-        pt_scored = bool(pt_scores)
+        raw_pt_scores = {
+            r["question_key"]: dict(r) for r in await pt_score_rows.fetchall()
+        }
+        raw_pt_points = sum(score["points"] or 0 for score in raw_pt_scores.values())
+        if pt_status["open"]:
+            visible_pt_scores = {}
+            visible_pt_points = 0
+            visible_pt_scored = False
+        else:
+            visible_pt_scores = raw_pt_scores
+            visible_pt_points = raw_pt_points
+            visible_pt_scored = bool(raw_pt_scores)
         bq_score_row = await db.execute(
             """SELECT COALESCE(SUM(points), 0) as total FROM scores
                WHERE participant_id=? AND bonus_question_id IS NOT NULL""",
             (p["id"],),
         )
         bonus_questions_points = (await bq_score_row.fetchone())["total"]
-        pt_status = await _pt_status(db, p["id"])
         pt_cards = []
         if pt_status["question_count"] > 0:
             pt_questions = await get_pre_tournament_questions(db)
@@ -2502,17 +2510,17 @@ async def bonus_page(request: Request, token: str):
                 token,
                 pt_status,
                 pt_questions,
-                pt_scores,
+                visible_pt_scores,
             )
         ctx.update({
             "bonus_questions": bonus_questions,
             "pending_bonus_questions": pending_count,
             "now": now,
             "phase_labels": {"pre_tournament": "Pré-tournoi", **PHASE_LABELS},
-            "pt_points": pt_points,
-            "pt_scored": pt_scored,
+            "pt_points": visible_pt_points,
+            "pt_scored": visible_pt_scored,
             "bonus_questions_points": bonus_questions_points,
-            "total_bonus_points": bonus_questions_points + pt_points,
+            "total_bonus_points": bonus_questions_points + visible_pt_points,
             "hub": _build_bonus_hub(bonus_questions, pt_cards),
         })
     return templates.TemplateResponse(request, "bonus.html", {"request": request, **ctx})
