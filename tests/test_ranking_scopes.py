@@ -262,7 +262,7 @@ def test_individual_ranking_uses_secondary_filters_and_keeps_legacy_views(client
         assert response.status_code == 200
         assert 'class="ranking-mode-tabs"' in response.text
         assert 'data-ranking-filters' in response.text
-        assert "Bonus uniquement" in response.text
+        assert ">Bonus</a>" in response.text
         assert f'href="/p/{participant["token"]}/classement?view={view}"' in response.text
 
 

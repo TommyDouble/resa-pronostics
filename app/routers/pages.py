@@ -1281,7 +1281,7 @@ RANKING_INDIVIDUAL_VIEWS = {
     "general": "Général",
     "groups": "Groupes",
     "knockout": "Phase finale",
-    "bonus": "Bonus uniquement",
+    "bonus": "Bonus",
     "remontada": "Remontada",
 }
 
@@ -2221,6 +2221,12 @@ async def bonus_page(request: Request, token: str):
             (p["id"],),
         )
         pt_scored = (await pt_scored_row.fetchone())["cnt"] > 0
+        bq_score_row = await db.execute(
+            """SELECT COALESCE(SUM(points), 0) as total FROM scores
+               WHERE participant_id=? AND bonus_question_id IS NOT NULL""",
+            (p["id"],),
+        )
+        bonus_questions_points = (await bq_score_row.fetchone())["total"]
         ctx.update({
             "bonus_questions": bonus_questions,
             "pending_bonus_questions": pending_count,
@@ -2228,6 +2234,8 @@ async def bonus_page(request: Request, token: str):
             "phase_labels": {"pre_tournament": "Pré-tournoi", **PHASE_LABELS},
             "pt_points": pt_points,
             "pt_scored": pt_scored,
+            "bonus_questions_points": bonus_questions_points,
+            "total_bonus_points": bonus_questions_points + pt_points,
         })
     return templates.TemplateResponse(request, "bonus.html", {"request": request, **ctx})
 
