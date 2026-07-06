@@ -2204,6 +2204,77 @@ async def _load_bonus_questions(db, participant_id: int, now: str, *, only_pendi
     return bonus_questions, pending_count
 
 
+def _bonus_options_list(raw):
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return raw
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+async def _load_bonus_peer_answers(db, questions, participant_id: int):
+    """Réponses de tous les participants, groupées par réponse identique.
+
+    Ne requête que les questions verrouillées : une question ouverte ne peut
+    jamais voir ses réponses tierces chargées ni exposées au template.
+    """
+    locked = {q["id"]: q for q in questions if not q["is_open"]}
+    if not locked:
+        return {}
+    placeholders = ",".join("?" for _ in locked)
+    rows = await db.execute(
+        f"""SELECT ba.question_id, ba.participant_id,
+                   COALESCE(NULLIF(p.nickname, ''), p.name) as name,
+                   ba.answer
+            FROM bonus_answers ba
+            JOIN participants p ON p.id = ba.participant_id
+            WHERE ba.question_id IN ({placeholders})
+              AND p.is_confirmed = 1 AND p.is_admin = 0
+            ORDER BY name COLLATE NOCASE ASC""",
+        tuple(locked),
+    )
+    by_question = {qid: {} for qid in locked}
+    for row in await rows.fetchall():
+        q = locked[row["question_id"]]
+        if q["answer_type"] == "multi_choice":
+            display = format_team_list(row["answer"])
+        elif q["answer_type"] == "number_multi":
+            display = format_number_multi(row["answer"], _bonus_options_list(q["options"]))
+        else:
+            display = row["answer"]
+        group = by_question[row["question_id"]].setdefault(
+            display, {"display": display, "names": [], "has_me": False}
+        )
+        is_me = row["participant_id"] == participant_id
+        group["names"].append(
+            {"name": row["name"], "participant_id": row["participant_id"], "is_me": is_me}
+        )
+        group["has_me"] = group["has_me"] or is_me
+
+    def _group_sort_key(question):
+        numeric = question["answer_type"] == "number"
+
+        def _key(group):
+            display = group["display"] or ""
+            if numeric:
+                try:
+                    return (-len(group["names"]), 0, float(display), "")
+                except (TypeError, ValueError):
+                    pass
+            return (-len(group["names"]), 1, 0.0, display)
+
+        return _key
+
+    return {
+        qid: sorted(groups.values(), key=_group_sort_key(locked[qid]))
+        for qid, groups in by_question.items()
+    }
+
+
 @router.get("/p/{token}/bonus", response_class=HTMLResponse)
 async def bonus_page(request: Request, token: str):
     async with get_db() as db:
@@ -2211,6 +2282,10 @@ async def bonus_page(request: Request, token: str):
         p = ctx["participant"]
         now = _now_utc()
         bonus_questions, pending_count = await _load_bonus_questions(db, p["id"], now)
+        peer_answers = await _load_bonus_peer_answers(db, bonus_questions, p["id"])
+        for q in bonus_questions:
+            if not q["is_open"]:
+                q["peer_answers"] = peer_answers.get(q["id"], [])
         pt_score_row = await db.execute(
             "SELECT COALESCE(SUM(points), 0) as total FROM pre_tournament_scores WHERE participant_id=?",
             (p["id"],),
