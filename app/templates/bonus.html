@@ -19,14 +19,33 @@
 
 <div class="page-content">
 
-  <!-- Réconciliation du total bonus -->
-  <div class="card flat" style="padding:14px;">
-    <div style="font-weight:700;font-size:13px;">Total bonus : {{ total_bonus_points }} pt{{ 's' if total_bonus_points > 1 else '' }}</div>
-    <div class="muted" style="font-size:12px;margin-top:2px;">
-      Questions bonus : {{ bonus_questions_points }} pt{{ 's' if bonus_questions_points > 1 else '' }} + Pré-tournoi : {{ pt_points }} pt{{ 's' if pt_points > 1 else '' }}
+  <!-- Ma situation Bonus -->
+  <div class="card flat" style="padding:14px;" data-bonus-situation>
+    <div class="lbl">Ma situation Bonus</div>
+    <div style="font-weight:700;font-size:13px;margin-top:4px;">Total bonus : {{ situation.total_points }} pt{{ 's' if situation.total_points > 1 else '' }}</div>
+
+    <div class="muted" style="font-size:12px;margin-top:6px;" data-bonus-phase-breakdown>
+      {% if situation.phase_breakdown %}
+        {% for row in situation.phase_breakdown %}
+        <div data-bonus-phase-row="{{ row.phase }}">{{ row.label }} : {{ row.points }} pt{{ 's' if row.points != 1 else '' }}</div>
+        {% endfor %}
+      {% else %}
+        Aucun point bonus calculé pour l'instant.
+      {% endif %}
     </div>
-    <div class="muted" style="font-size:12px;margin-top:2px;" data-bonus-counters>
-      {{ hub.counts.open }} à répondre · {{ hub.counts.waiting }} en attente · {{ hub.counts.resolved }} résolue{{ 's' if hub.counts.resolved != 1 else '' }}
+
+    <div class="muted" style="font-size:12px;margin-top:6px;" data-bonus-counters>
+      {{ situation.todo_count }} à répondre · {{ situation.counts.waiting }} en attente · {{ situation.counts.resolved }} résolue{{ 's' if situation.counts.resolved != 1 else '' }}
+    </div>
+
+    <div class="home-cta {{ 'home-cta-bonus' if situation.next_action.state != 'todo' else '' }}" style="margin-top:10px;" data-bonus-next-action="{{ situation.next_action.state }}">
+      <div>
+        <div class="lbl">Prochaine action</div>
+        <p>{{ situation.next_action.text }}</p>
+      </div>
+      {% if situation.next_action.href %}
+      <a href="{{ situation.next_action.href }}" class="btn sm">Voir</a>
+      {% endif %}
     </div>
   </div>
 
@@ -37,7 +56,7 @@
   {% else %}
 
   <!-- À répondre : toujours visible, tri deadline la plus proche d'abord -->
-  <section class="bonus-hub-open" data-bonus-section="open">
+  <section class="bonus-hub-open" data-bonus-section="open" id="bonus-hub-open">
     <div class="lbl">À répondre</div>
     {% for item in hub.open %}
       {% if item.is_pre_tournament %}

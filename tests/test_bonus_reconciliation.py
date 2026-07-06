@@ -39,7 +39,10 @@ def test_bonus_page_shows_total_reconciliation(client, participant):
     html = response.text
 
     assert "Total bonus : 10 pts" in html
-    assert "Questions bonus : 6 pts" in html
+    # Le résumé (PR B6) n'affiche plus le split "Questions bonus / Pré-tournoi" :
+    # le pré-tournoi est une phase bonus parmi d'autres dans le détail par phase.
+    assert "Questions bonus : 6 pts" not in html
+    assert "Phase de groupes : 6 pts" in html
     assert "Pré-tournoi : 4 pts" in html
 
     # Le total affiché doit rester cohérent avec le périmètre "bonus" du classement
@@ -57,8 +60,9 @@ def test_bonus_page_reconciliation_handles_zero_points(client, participant):
     html = response.text
 
     assert "Total bonus : 0 pt" in html
-    assert "Questions bonus : 0 pt" in html
-    assert "Pré-tournoi : 0 pt" in html
+    assert "Questions bonus : 0 pt" not in html
+    # Rien de résolu encore : aucun détail par phase, message d'attente générique.
+    assert "Aucun point bonus calculé pour l'instant." in html
 
 
 def test_bonus_ranking_tab_does_not_imply_bonus_only(client, participant):

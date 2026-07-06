@@ -2468,6 +2468,52 @@ def _build_bonus_hub(bonus_questions: list, pt_cards=None) -> dict:
     }
 
 
+def _bonus_item_needs_answer(item: dict) -> bool:
+    """Un item "ouvert" (hub["open"]) reste modifiable jusqu'à sa deadline mais
+    peut déjà avoir été répondu (B5 : les 5 cartes pré-tournoi restent ouvertes
+    jusqu'à leur deadline même une fois remplies) — seule l'absence de réponse
+    justifie une "action à faire". Question bonus classique (_load_bonus_questions)
+    et carte pré-tournoi (_build_pre_tournament_bonus_cards / _pt_has_answer, qui
+    exige winner ET finalist remplis pour la carte "Finalistes") exposent toutes
+    deux le même champ `has_answer`, pas de traitement séparé nécessaire."""
+    return not item["has_answer"]
+
+
+def _build_bonus_situation(hub: dict, total_bonus_points: int, phase_labels: dict) -> dict:
+    """View-model du bloc "Ma situation Bonus" : dérivé uniquement du hub déjà
+    sanitizé (points visibles), aucun accès DB ni recalcul de scoring. Le détail
+    par phase reprend tel quel hub["resolved"]["groups"] : une carte pré-tournoi
+    n'y entre jamais tant que sa deadline est ouverte (cf. _build_bonus_hub /
+    sanitisation B5), donc pas de fuite possible via ce détail."""
+    phase_breakdown = [
+        {
+            "phase": g["phase"],
+            "label": phase_labels.get(g["phase"], g["phase"]),
+            "points": g["points"],
+        }
+        for g in hub["resolved"]["groups"]
+    ]
+    counts = hub["counts"]
+    todo_count = sum(1 for item in hub["open"] if _bonus_item_needs_answer(item))
+    if todo_count > 0:
+        next_action = {
+            "state": "todo",
+            "text": f"{todo_count} question{'s' if todo_count > 1 else ''} à répondre",
+            "href": "#bonus-hub-open",
+        }
+    elif counts["waiting"] > 0:
+        next_action = {"state": "waiting", "text": "À jour — résultats en attente", "href": None}
+    else:
+        next_action = {"state": "done", "text": "À jour", "href": None}
+    return {
+        "total_points": total_bonus_points,
+        "phase_breakdown": phase_breakdown,
+        "counts": counts,
+        "todo_count": todo_count,
+        "next_action": next_action,
+    }
+
+
 @router.get("/p/{token}/bonus", response_class=HTMLResponse)
 async def bonus_page(request: Request, token: str):
     async with get_db() as db:
@@ -2512,16 +2558,20 @@ async def bonus_page(request: Request, token: str):
                 pt_questions,
                 visible_pt_scores,
             )
+        phase_labels = {"pre_tournament": "Pré-tournoi", **PHASE_LABELS}
+        total_bonus_points = bonus_questions_points + visible_pt_points
+        hub = _build_bonus_hub(bonus_questions, pt_cards)
         ctx.update({
             "bonus_questions": bonus_questions,
             "pending_bonus_questions": pending_count,
             "now": now,
-            "phase_labels": {"pre_tournament": "Pré-tournoi", **PHASE_LABELS},
+            "phase_labels": phase_labels,
             "pt_points": visible_pt_points,
             "pt_scored": visible_pt_scored,
             "bonus_questions_points": bonus_questions_points,
-            "total_bonus_points": bonus_questions_points + visible_pt_points,
-            "hub": _build_bonus_hub(bonus_questions, pt_cards),
+            "total_bonus_points": total_bonus_points,
+            "hub": hub,
+            "situation": _build_bonus_situation(hub, total_bonus_points, phase_labels),
         })
     return templates.TemplateResponse(request, "bonus.html", {"request": request, **ctx})
 

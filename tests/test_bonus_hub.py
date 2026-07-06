@@ -9,7 +9,11 @@ répondre », jamais présentée comme résolue, même si un score existe déjà
 import uuid
 
 from app.database import get_db
-from app.routers.pages import _build_bonus_hub
+from app.routers.pages import (
+    _bonus_item_needs_answer,
+    _build_bonus_hub,
+    _build_bonus_situation,
+)
 from tests.conftest import run
 
 _PAST = "2020-01-01T12:00:00"
@@ -416,8 +420,11 @@ def test_pt_card_open_hides_accidental_score_and_correct_answer(client, particip
         assert "3 pt" not in html
         assert "Pré-tournoi : 3 pts" not in html
         assert "Total bonus : 3 pts" not in html
-        assert "Pré-tournoi : 0 pt" in html
         assert "Total bonus : 0 pt" in html
+        # Le détail par phase ne doit jamais lister le pré-tournoi tant qu'aucun
+        # point n'est visible (score accidentel en base non pris en compte).
+        assert 'data-bonus-phase-row="pre_tournament"' not in html
+        assert "Aucun point bonus calculé pour l'instant." in html
         if 'data-bonus-section="resolved"' in html:
             assert 'data-bonus-pt-key="winner"' not in _section_html(html, "resolved")
     finally:
@@ -519,10 +526,12 @@ def test_summary_counters_and_locked_labels(client, participant):
     html = client.get(f"/p/{participant['token']}/bonus").text
     assert "data-bonus-counters" in html
     assert "à répondre ·" in html
-    # Libellés de la réconciliation (PR #61) inchangés.
+    # Le résumé (PR B6) n'affiche plus le split Questions bonus / Pré-tournoi,
+    # seulement le total unique + le détail par phase (vide ici, rien résolu).
     assert "Total bonus :" in html
-    assert "Questions bonus :" in html
-    assert "Pré-tournoi :" in html
+    assert "Questions bonus :" not in html
+    assert "data-bonus-situation" in html
+    assert "Aucun point bonus calculé pour l'instant." in html
 
 
 def test_open_scored_question_stays_private(client, participant):
@@ -672,3 +681,264 @@ def test_build_bonus_hub_pt_card_placement():
     hub = _build_bonus_hub([q_open], pt_open)
     assert hub["open"][0] is pt_open
     assert hub["open"][1] is q_open
+
+
+# ---------------------------------------------------------------------------
+# Ma situation Bonus (PR B6) : view-model _build_bonus_situation (fonction pure)
+# ---------------------------------------------------------------------------
+
+_PHASE_LABELS_FOR_TEST = {"pre_tournament": "Pré-tournoi", "group": "Phase de groupes",
+                          "final": "Finale"}
+
+
+def test_build_bonus_situation_empty_hub_is_done_with_no_breakdown():
+    hub = _build_bonus_hub([], None)
+    situation = _build_bonus_situation(hub, 0, _PHASE_LABELS_FOR_TEST)
+    assert situation["total_points"] == 0
+    assert situation["phase_breakdown"] == []
+    assert situation["counts"] == {"open": 0, "waiting": 0, "resolved": 0}
+    assert situation["next_action"] == {"state": "done", "text": "À jour", "href": None}
+
+
+def test_build_bonus_situation_open_items_point_to_open_section():
+    q_open = {"is_open": True, "has_score": False, "phase": "final",
+              "deadline": _FUTURE, "has_answer": False}
+    hub = _build_bonus_hub([q_open])
+    situation = _build_bonus_situation(hub, 0, _PHASE_LABELS_FOR_TEST)
+    assert situation["next_action"] == {
+        "state": "todo", "text": "1 question à répondre", "href": "#bonus-hub-open",
+    }
+
+
+def test_build_bonus_situation_open_but_already_answered_is_not_todo():
+    """Une carte "ouverte" (encore modifiable) mais déjà répondue ne doit pas
+    compter comme une action à faire (B5 : cartes pré-tournoi toujours
+    ouvertes jusqu'à leur deadline, réponse ou non)."""
+    pt_answered = {"is_pre_tournament": True, "phase": "pre_tournament",
+                   "is_open": True, "has_score": False, "points": 0,
+                   "has_answer": True}
+    hub = _build_bonus_hub([], pt_answered)
+    situation = _build_bonus_situation(hub, 0, _PHASE_LABELS_FOR_TEST)
+    assert situation["counts"]["open"] == 1  # toujours "ouvert" au sens hub
+    assert situation["todo_count"] == 0  # mais rien à répondre
+    assert situation["next_action"] == {"state": "done", "text": "À jour", "href": None}
+
+
+def test_build_bonus_situation_todo_count_ignores_answered_open_items():
+    """5 cartes pré-tournoi ouvertes mais répondues + 1 question bonus classique
+    ouverte sans réponse : todo_count ne doit compter que cette dernière."""
+    pt_cards = [
+        {"is_pre_tournament": True, "phase": "pre_tournament", "is_open": True,
+         "has_score": False, "points": 0, "has_answer": True, "key": key}
+        for key in _PT_KEYS
+    ]
+    q_open_unanswered = {"is_open": True, "has_score": False, "phase": "final",
+                          "deadline": _FUTURE, "has_answer": False}
+    hub = _build_bonus_hub([q_open_unanswered], pt_cards)
+    situation = _build_bonus_situation(hub, 0, _PHASE_LABELS_FOR_TEST)
+    assert situation["counts"]["open"] == 6
+    assert situation["todo_count"] == 1
+    assert situation["next_action"] == {
+        "state": "todo", "text": "1 question à répondre", "href": "#bonus-hub-open",
+    }
+
+
+def test_bonus_item_needs_answer_finalist_requires_both_picks():
+    """Carte Finalistes : winner rempli mais finalist vide → toujours à répondre
+    (cf. _pt_has_answer, qui exige les deux pour cette carte spécifique)."""
+    assert _bonus_item_needs_answer({"has_answer": False}) is True
+    assert _bonus_item_needs_answer({"has_answer": True}) is False
+
+
+def test_build_bonus_situation_waiting_only_is_up_to_date_waiting():
+    q_wait = {"is_open": False, "has_score": False, "phase": "final", "deadline": _PAST}
+    hub = _build_bonus_hub([q_wait])
+    situation = _build_bonus_situation(hub, 0, _PHASE_LABELS_FOR_TEST)
+    assert situation["next_action"] == {
+        "state": "waiting", "text": "À jour — résultats en attente", "href": None,
+    }
+
+
+def test_build_bonus_situation_resolved_only_is_up_to_date():
+    q_done = {"is_open": False, "has_score": True, "phase": "final",
+              "points": 3, "deadline": _PAST}
+    hub = _build_bonus_hub([q_done])
+    situation = _build_bonus_situation(hub, 3, _PHASE_LABELS_FOR_TEST)
+    assert situation["next_action"] == {"state": "done", "text": "À jour", "href": None}
+    assert situation["phase_breakdown"] == [
+        {"phase": "final", "label": "Finale", "points": 3},
+    ]
+
+
+def test_build_bonus_situation_phase_breakdown_mirrors_resolved_groups():
+    """Le détail par phase reprend le hub déjà sanitizé : le pré-tournoi n'y
+    apparaît que si sa carte est bien "resolved" (jamais tant que sa deadline
+    reste ouverte), donc aucune fuite indirecte possible via ce détail."""
+    q_group = {"is_open": False, "has_score": True, "phase": "group",
+               "points": 2, "deadline": _PAST}
+    pt_open = {"is_pre_tournament": True, "phase": "pre_tournament",
+               "is_open": True, "has_score": False, "points": 0,
+               "has_answer": False}
+    hub = _build_bonus_hub([q_group], pt_open)
+    situation = _build_bonus_situation(hub, 2, _PHASE_LABELS_FOR_TEST)
+    assert situation["phase_breakdown"] == [
+        {"phase": "group", "label": "Phase de groupes", "points": 2},
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Ma situation Bonus (PR B6) : intégration HTTP sur /bonus
+# ---------------------------------------------------------------------------
+
+def _quarantine_foreign_bonus_questions():
+    """Dépublie temporairement toute question bonus déjà publiée par un autre
+    fichier de test (DB de test partagée entre modules, plusieurs fichiers
+    admin ne nettoient pas leurs fixtures) — pollution préexistante, sans
+    rapport avec B6. Restaurer via _restore_bonus_question_publication. Ne
+    touche jamais aux questions créées par le test lui-même : celui-ci doit
+    appeler cette fonction *avant* de seeder ses propres questions."""
+    async def _quarantine():
+        async with get_db() as db:
+            rows = await db.execute(
+                "SELECT id FROM bonus_questions WHERE is_published=1"
+            )
+            saved_ids = [r["id"] for r in await rows.fetchall()]
+            if saved_ids:
+                marks = ",".join("?" for _ in saved_ids)
+                await db.execute(
+                    f"UPDATE bonus_questions SET is_published=0 WHERE id IN ({marks})",
+                    saved_ids,
+                )
+                await db.commit()
+            return saved_ids
+
+    return run(_quarantine())
+
+
+def _restore_bonus_question_publication(saved_ids):
+    if not saved_ids:
+        return
+
+    async def _restore():
+        async with get_db() as db:
+            marks = ",".join("?" for _ in saved_ids)
+            await db.execute(
+                f"UPDATE bonus_questions SET is_published=1 WHERE id IN ({marks})",
+                saved_ids,
+            )
+            await db.commit()
+
+    run(_restore())
+
+
+def test_situation_next_action_todo_links_to_open_section(client, participant):
+    saved = _quarantine_foreign_bonus_questions()
+    q_open = _seed_question("Question situation ouverte (hub-test) ?", deadline=_FUTURE)
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        assert 'id="bonus-hub-open"' in html
+        assert 'data-bonus-next-action="todo"' in html
+        assert "1 question à répondre" in html
+        assert 'href="#bonus-hub-open"' in html
+    finally:
+        _cleanup([q_open])
+        _restore_bonus_question_publication(saved)
+
+
+def test_situation_next_action_waiting_when_nothing_left_to_answer(client, participant):
+    saved = _quarantine_foreign_bonus_questions()
+    q_wait = _seed_question("Question situation attente (hub-test) ?", deadline=_PAST)
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        assert 'data-bonus-next-action="waiting"' in html
+        assert "À jour — résultats en attente" in html
+    finally:
+        _cleanup([q_wait])
+        _restore_bonus_question_publication(saved)
+
+
+def test_situation_next_action_done_when_all_resolved(client, participant):
+    """Par défaut les 5 cartes PT sont « en attente » (deadline passée, non
+    scorées) : pour atteindre l'état "done", il faut aussi les résoudre."""
+    saved = _quarantine_foreign_bonus_questions()
+    q_done = _seed_question("Question situation résolue (hub-test) ?", deadline=_PAST)
+    _seed_score(q_done, participant["id"], 5)
+    for key in _PT_KEYS:
+        _seed_pt_score(participant["id"], key, 1)
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        assert 'data-bonus-next-action="done"' in html
+        assert "À jour" in html
+        assert "résultats en attente" not in html
+    finally:
+        _cleanup([q_done])
+        _cleanup(pt_scores_participant=participant["id"])
+        _restore_bonus_question_publication(saved)
+
+
+def test_situation_next_action_ignores_answered_pt_cards_when_deadline_open(client, participant):
+    """B5 : les 5 cartes pré-tournoi restent « ouvertes » tant que la deadline
+    n'est pas passée, même une fois répondues — ça ne doit pas gonfler la
+    prochaine action ni le compteur « à répondre » à tort (régression signalée
+    par le PO avant commit : le compteur affichait encore hub.counts.open)."""
+    saved = _quarantine_foreign_bonus_questions()
+    old_deadline = _set_pt_deadline(_FUTURE)
+    _seed_pt_prediction(participant["id"])  # 5/5 réponses par défaut
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        assert "question à répondre" not in html
+        assert "questions à répondre" not in html
+        assert "5 à répondre" not in html
+        assert "0 à répondre" in html
+        assert 'data-bonus-next-action="done"' in html
+        assert "À jour" in html
+    finally:
+        _set_pt_deadline(old_deadline)
+        _cleanup(pt_prediction_participant=participant["id"])
+        _restore_bonus_question_publication(saved)
+
+
+def test_situation_next_action_counts_only_real_open_bonus_question(client, participant):
+    """Cartes pré-tournoi déjà répondues + une vraie question bonus ouverte
+    sans réponse : seule cette dernière doit compter."""
+    saved = _quarantine_foreign_bonus_questions()
+    old_deadline = _set_pt_deadline(_FUTURE)
+    _seed_pt_prediction(participant["id"])
+    q_open = _seed_question("Question situation vraie ouverte (hub-test) ?", deadline=_FUTURE)
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        assert "1 question à répondre" in html
+        assert 'data-bonus-next-action="todo"' in html
+    finally:
+        _cleanup([q_open])
+        _set_pt_deadline(old_deadline)
+        _cleanup(pt_prediction_participant=participant["id"])
+        _restore_bonus_question_publication(saved)
+
+
+def test_situation_next_action_counts_partial_finalist_card_as_todo(client, participant):
+    """Carte Finalistes : winner rempli mais finalist vide doit compter comme
+    à répondre (_pt_has_answer exige les deux), les 4 autres cartes complètes
+    ne doivent pas s'ajouter au compte."""
+    saved = _quarantine_foreign_bonus_questions()
+    old_deadline = _set_pt_deadline(_FUTURE)
+    _seed_pt_prediction(participant["id"], finalist="")
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        assert "1 question à répondre" in html
+        assert 'data-bonus-next-action="todo"' in html
+    finally:
+        _set_pt_deadline(old_deadline)
+        _cleanup(pt_prediction_participant=participant["id"])
+        _restore_bonus_question_publication(saved)
+
+
+def test_situation_phase_breakdown_shows_regular_phase(client, participant):
+    q_group = _seed_question("Question situation groupe (hub-test) ?", deadline=_PAST)
+    _seed_score(q_group, participant["id"], 6)
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        assert 'data-bonus-phase-row="group"' in html
+        assert "Phase de groupes : 6 pts" in html
+    finally:
+        _cleanup([q_group])
