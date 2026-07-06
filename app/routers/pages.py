@@ -146,6 +146,14 @@ BONUS_HUB_PHASE_ORDER = [
     "pre_tournament",
 ]
 
+PRE_TOURNAMENT_BONUS_CARD_LABELS = {
+    "winner": "Champion",
+    "finalist": "Finalistes",
+    "top_scorer": "Buteur",
+    "revelation": "Révélation",
+    "total_goals": "Buts",
+}
+
 def _now_utc() -> str:
     return now_utc_iso()
 
@@ -1177,12 +1185,15 @@ async def pre_tournament_page(request: Request, token: str, error: str = "", sav
         pt_dict = pt_status["pt"]
         if pt_dict.get("top_scorer"):
             pt_dict["top_scorer"] = normalize_scorer(pt_dict["top_scorer"])
-        # Results once correct answers are encoded (after deadline)
+        # Results are visible only after the pre-tournament deadline.
         score_rows = await db.execute(
             "SELECT question_key, points FROM pre_tournament_scores WHERE participant_id=?",
             (p["id"],),
         )
-        pt_scores = {r["question_key"]: r["points"] for r in await score_rows.fetchall()}
+        raw_pt_scores = {
+            r["question_key"]: r["points"] for r in await score_rows.fetchall()
+        }
+        pt_scores = {} if pt_status["open"] else raw_pt_scores
         ctx.update({
             "pt": pt_dict,
             "pt_questions": pt_questions,
@@ -2318,22 +2329,109 @@ def _sanitize_open_bonus_item(item: dict) -> dict:
     return safe
 
 
-def _build_bonus_hub(bonus_questions: list, pt_card: dict | None = None) -> dict:
-    """Regroupe les questions bonus (+ carte pré-tournoi) par statut pour /bonus.
+def _pt_value_filled(key: str, value) -> bool:
+    if key == "total_goals":
+        return bool(value)
+    return bool(str(value or "").strip())
+
+
+def _pt_has_answer(key: str, pt: dict) -> bool:
+    if key == "finalist":
+        return (
+            bool(str(pt.get("winner") or "").strip())
+            and bool(str(pt.get("finalist") or "").strip())
+        )
+    return _pt_value_filled(key, pt.get(key))
+
+
+def _pt_pair_display(first, second) -> str:
+    values = [str(v or "").strip() for v in (first, second)]
+    return " + ".join(v for v in values if v)
+
+
+def _pt_answer_display(key: str, pt: dict) -> str:
+    if key == "finalist":
+        return _pt_pair_display(pt.get("winner"), pt.get("finalist"))
+    if key == "top_scorer" and pt.get("top_scorer"):
+        return normalize_scorer(pt.get("top_scorer"))
+    value = pt.get(key)
+    if key == "total_goals" and value:
+        return str(value)
+    return str(value or "").strip()
+
+
+def _pt_correct_answer_display(key: str, question_map: dict) -> str:
+    question = question_map.get(key) or {}
+    if key == "finalist":
+        return _pt_pair_display(
+            (question_map.get("winner") or {}).get("correct_answer"),
+            question.get("correct_answer"),
+        )
+    if key == "revelation":
+        return format_team_list(question.get("correct_answer"))
+    return str(question.get("correct_answer") or "").strip()
+
+
+def _build_pre_tournament_bonus_cards(
+    token: str,
+    pt_status: dict,
+    questions: list,
+    score_by_key: dict,
+) -> list:
+    """Build one display card per enabled pre-tournament question for /bonus."""
+    pt = pt_status.get("pt") or {}
+    question_map = {q["key"]: q for q in questions}
+    cards = []
+    for q in questions:
+        key = q["key"]
+        score = score_by_key.get(key)
+        answer_display = _pt_answer_display(key, pt)
+        cards.append({
+            "is_pre_tournament": True,
+            "key": key,
+            "label": PRE_TOURNAMENT_BONUS_CARD_LABELS.get(key, q["label"]),
+            "question_label": q["label"],
+            "phase": "pre_tournament",
+            "points_label": q.get("points_label") or f"{q.get('points_value') or 0} pts",
+            "answer_display": answer_display,
+            "correct_answer": q.get("correct_answer"),
+            "correct_answer_display": _pt_correct_answer_display(key, question_map),
+            "points": score["points"] if score else None,
+            "has_score": score is not None,
+            "scored_at": score["calculated_at"] if score else None,
+            "has_answer": _pt_has_answer(key, pt),
+            "is_open": pt_status["open"],
+            "complete": pt_status["complete"],
+            "deadline": pt_status["deadline"],
+            "href": f"/p/{token}/pre-tournoi#pt-{key}",
+        })
+    return cards
+
+
+def _as_pt_cards(pt_cards) -> list:
+    if pt_cards is None:
+        return []
+    if isinstance(pt_cards, dict):
+        return [pt_cards]
+    return list(pt_cards)
+
+
+def _build_bonus_hub(bonus_questions: list, pt_cards=None) -> dict:
+    """Regroupe les questions bonus (+ cartes pré-tournoi) par statut pour /bonus.
 
     Pur view-model : aucun recalcul — les points sont ceux déjà chargés par
     _load_bonus_questions et pre_tournament_scores. Les archives (en attente,
     résolues) sont sous-groupées par étape, du plus récent au plus ancien.
     """
     buckets = {"open": [], "waiting": [], "resolved": []}
+    for pt_card in _as_pt_cards(pt_cards):
+        status = _bonus_hub_status(pt_card)
+        buckets[status].append(
+            _sanitize_open_bonus_item(pt_card) if status == "open" else pt_card
+        )
     for q in bonus_questions:
         status = _bonus_hub_status(q)
         buckets[status].append(_sanitize_open_bonus_item(q) if status == "open" else q)
-    if pt_card is not None:
-        status = _bonus_hub_status(pt_card)
-        buckets[status].insert(
-            0, _sanitize_open_bonus_item(pt_card) if status == "open" else pt_card
-        )
 
     phase_rank = {phase: i for i, phase in enumerate(BONUS_HUB_PHASE_ORDER)}
 
@@ -2381,46 +2479,49 @@ async def bonus_page(request: Request, token: str):
         for q in bonus_questions:
             if not q["is_open"]:
                 q["peer_answers"] = peer_answers.get(q["id"], [])
-        pt_score_row = await db.execute(
-            "SELECT COALESCE(SUM(points), 0) as total FROM pre_tournament_scores WHERE participant_id=?",
+        pt_status = await _pt_status(db, p["id"])
+        pt_score_rows = await db.execute(
+            """SELECT question_key, points, calculated_at
+               FROM pre_tournament_scores WHERE participant_id=?""",
             (p["id"],),
         )
-        pt_points = (await pt_score_row.fetchone())["total"]
-        pt_scored_row = await db.execute(
-            "SELECT COUNT(*) as cnt FROM pre_tournament_scores WHERE participant_id=?",
-            (p["id"],),
-        )
-        pt_scored = (await pt_scored_row.fetchone())["cnt"] > 0
+        raw_pt_scores = {
+            r["question_key"]: dict(r) for r in await pt_score_rows.fetchall()
+        }
+        raw_pt_points = sum(score["points"] or 0 for score in raw_pt_scores.values())
+        if pt_status["open"]:
+            visible_pt_scores = {}
+            visible_pt_points = 0
+            visible_pt_scored = False
+        else:
+            visible_pt_scores = raw_pt_scores
+            visible_pt_points = raw_pt_points
+            visible_pt_scored = bool(raw_pt_scores)
         bq_score_row = await db.execute(
             """SELECT COALESCE(SUM(points), 0) as total FROM scores
                WHERE participant_id=? AND bonus_question_id IS NOT NULL""",
             (p["id"],),
         )
         bonus_questions_points = (await bq_score_row.fetchone())["total"]
-        pt_status = await _pt_status(db, p["id"])
-        pt_card = None
+        pt_cards = []
         if pt_status["question_count"] > 0:
-            pt_card = {
-                "is_pre_tournament": True,
-                "phase": "pre_tournament",
-                "points": pt_points,
-                "has_score": pt_scored,
-                "is_open": pt_status["open"],
-                "complete": pt_status["complete"],
-                "filled_count": pt_status["filled_count"],
-                "question_count": pt_status["question_count"],
-                "deadline": pt_status["deadline"],
-            }
+            pt_questions = await get_pre_tournament_questions(db)
+            pt_cards = _build_pre_tournament_bonus_cards(
+                token,
+                pt_status,
+                pt_questions,
+                visible_pt_scores,
+            )
         ctx.update({
             "bonus_questions": bonus_questions,
             "pending_bonus_questions": pending_count,
             "now": now,
             "phase_labels": {"pre_tournament": "Pré-tournoi", **PHASE_LABELS},
-            "pt_points": pt_points,
-            "pt_scored": pt_scored,
+            "pt_points": visible_pt_points,
+            "pt_scored": visible_pt_scored,
             "bonus_questions_points": bonus_questions_points,
-            "total_bonus_points": bonus_questions_points + pt_points,
-            "hub": _build_bonus_hub(bonus_questions, pt_card),
+            "total_bonus_points": bonus_questions_points + visible_pt_points,
+            "hub": _build_bonus_hub(bonus_questions, pt_cards),
         })
     return templates.TemplateResponse(request, "bonus.html", {"request": request, **ctx})
 
