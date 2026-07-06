@@ -1,5 +1,5 @@
 {% extends "participant_base.html" %}
-{% from "_bonus_macros.html" import bonus_question_card %}
+{% from "_bonus_macros.html" import bonus_question_card, bonus_pt_card %}
 {% block title %}Bonus — RESA Pronostics{% endblock %}
 {% block page_content %}
 
@@ -25,32 +25,81 @@
     <div class="muted" style="font-size:12px;margin-top:2px;">
       Questions bonus : {{ bonus_questions_points }} pt{{ 's' if bonus_questions_points > 1 else '' }} + Pré-tournoi : {{ pt_points }} pt{{ 's' if pt_points > 1 else '' }}
     </div>
-  </div>
-
-  <!-- Pre-tournament section -->
-  <div class="card flat" style="padding:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
-    <div>
-      <div style="font-weight:700;font-size:13px;">🏆 Pré-tournoi
-        {% if pt_scored %}
-        <span class="chip {{ 'ok' if pt_points > 0 else 'gr' }}" style="margin-left:6px;">{{ pt_points }} pt{{ 's' if pt_points > 1 else '' }}</span>
-        {% endif %}
-      </div>
-      <div style="font-size:12px;color:var(--n600);margin-top:2px;">
-        Champion · Finalistes · Buteur · Révélation · Buts
-      </div>
+    <div class="muted" style="font-size:12px;margin-top:2px;" data-bonus-counters>
+      {{ hub.counts.open }} à répondre · {{ hub.counts.waiting }} en attente · {{ hub.counts.resolved }} résolue{{ 's' if hub.counts.resolved != 1 else '' }}
     </div>
-    <a href="/p/{{ token }}/pre-tournoi" class="btn ghost" style="font-size:12px;white-space:nowrap;">Ouvrir</a>
   </div>
 
-  {% if not bonus_questions %}
+  {% if hub.counts.open + hub.counts.waiting + hub.counts.resolved == 0 %}
   <div style="text-align:center;padding:40px 20px;color:var(--n600);">
     <p style="font-family:var(--sketch);font-size:22px;">Aucune question bonus active pour l'instant.</p>
   </div>
+  {% else %}
+
+  <!-- À répondre : toujours visible, tri deadline la plus proche d'abord -->
+  <section class="bonus-hub-open" data-bonus-section="open">
+    <div class="lbl">À répondre</div>
+    {% for item in hub.open %}
+      {% if item.is_pre_tournament %}
+        {{ bonus_pt_card(item, token) }}
+      {% else %}
+        {{ bonus_question_card(item, token, phase_labels, 'page') }}
+      {% endif %}
+    {% else %}
+    <div class="muted" style="font-size:13px;">Rien à répondre pour le moment. ✅</div>
+    {% endfor %}
+  </section>
+
+  {% if hub.waiting.count > 0 %}
+  <details class="bonus-hub-section" data-bonus-section="waiting">
+    <summary class="bonus-hub-summary">
+      <span class="lbl">En attente du résultat</span>
+      <span class="chip gr">{{ hub.waiting.count }}</span>
+      <span class="department-chevron" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="bonus-hub-body">
+      {% for g in hub.waiting.groups %}
+        {% if hub.waiting.groups|length > 1 %}
+        <div class="lbl bonus-hub-phase" data-bonus-phase="{{ g.phase }}">{{ phase_labels.get(g.phase, g.phase) }}</div>
+        {% endif %}
+        {% for item in g.entries %}
+          {% if item.is_pre_tournament %}
+            {{ bonus_pt_card(item, token) }}
+          {% else %}
+            {{ bonus_question_card(item, token, phase_labels, 'page') }}
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </details>
   {% endif %}
 
-  {% for q in bonus_questions %}
-  {{ bonus_question_card(q, token, phase_labels, 'page') }}
-  {% endfor %}
+  {% if hub.resolved.count > 0 %}
+  <details class="bonus-hub-section" data-bonus-section="resolved">
+    <summary class="bonus-hub-summary">
+      <span class="lbl">Résolues</span>
+      <span class="chip gr">{{ hub.resolved.count }}</span>
+      <span class="department-chevron" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="bonus-hub-body">
+      {% for g in hub.resolved.groups %}
+        <div class="lbl bonus-hub-phase" data-bonus-phase="{{ g.phase }}">
+          {{ phase_labels.get(g.phase, g.phase) }}
+          <span class="chip {{ 'ok' if g.points > 0 else 'gr' }}" data-bonus-phase-points="{{ g.points }}">+{{ g.points }} pt{{ 's' if g.points != 1 else '' }}</span>
+        </div>
+        {% for item in g.entries %}
+          {% if item.is_pre_tournament %}
+            {{ bonus_pt_card(item, token) }}
+          {% else %}
+            {{ bonus_question_card(item, token, phase_labels, 'page') }}
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  {% endif %}
 
 </div>
 {% endblock %}

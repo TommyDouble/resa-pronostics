@@ -134,6 +134,18 @@ PREDICTION_SECTION_LABELS = {
     "final": PHASE_LABELS["final"],
 }
 
+# Archives du hub /bonus : étapes du plus récent au plus ancien.
+BONUS_HUB_PHASE_ORDER = [
+    "final",
+    "third_place",
+    "semi",
+    "quarter",
+    "round_of_16",
+    "round_of_32",
+    "group",
+    "pre_tournament",
+]
+
 def _now_utc() -> str:
     return now_utc_iso()
 
@@ -2275,6 +2287,89 @@ async def _load_bonus_peer_answers(db, questions, participant_id: int):
     }
 
 
+def _bonus_hub_status(item: dict) -> str:
+    """Statut hub d'une question bonus ou de la carte pré-tournoi.
+
+    Confidentialité : tant que l'item est ouvert il reste « à répondre » —
+    jamais présenté comme résolu avant deadline, même si un score existe déjà.
+    """
+    if item.get("is_open"):
+        return "open"
+    if item.get("has_score"):
+        return "resolved"
+    return "waiting"
+
+
+def _sanitize_open_bonus_item(item: dict) -> dict:
+    """Version d'affichage d'un item encore ouvert : un score ou une bonne
+    réponse saisis en avance ne doivent rien révéler avant la deadline.
+    Copie défensive — les données du loader (et la base) restent intactes."""
+    if (
+        not item.get("has_score")
+        and not item.get("correct_answer")
+        and not item.get("correct_answer_display")
+    ):
+        return item
+    safe = dict(item)
+    safe["has_score"] = False
+    safe["points"] = None
+    safe["correct_answer"] = None
+    safe["correct_answer_display"] = None
+    return safe
+
+
+def _build_bonus_hub(bonus_questions: list, pt_card: dict | None = None) -> dict:
+    """Regroupe les questions bonus (+ carte pré-tournoi) par statut pour /bonus.
+
+    Pur view-model : aucun recalcul — les points sont ceux déjà chargés par
+    _load_bonus_questions et pre_tournament_scores. Les archives (en attente,
+    résolues) sont sous-groupées par étape, du plus récent au plus ancien.
+    """
+    buckets = {"open": [], "waiting": [], "resolved": []}
+    for q in bonus_questions:
+        status = _bonus_hub_status(q)
+        buckets[status].append(_sanitize_open_bonus_item(q) if status == "open" else q)
+    if pt_card is not None:
+        status = _bonus_hub_status(pt_card)
+        buckets[status].insert(
+            0, _sanitize_open_bonus_item(pt_card) if status == "open" else pt_card
+        )
+
+    phase_rank = {phase: i for i, phase in enumerate(BONUS_HUB_PHASE_ORDER)}
+
+    def _grouped(items, with_points=False):
+        by_phase = {}
+        for item in items:
+            by_phase.setdefault(item.get("phase"), []).append(item)
+        groups = []
+        for phase in sorted(by_phase, key=lambda ph: phase_rank.get(ph, len(phase_rank))):
+            head = [i for i in by_phase[phase] if i.get("is_pre_tournament")]
+            rest = [i for i in by_phase[phase] if not i.get("is_pre_tournament")]
+            rest.sort(key=lambda i: i.get("deadline") or "", reverse=True)
+            group = {"phase": phase, "entries": head + rest}
+            if with_points:
+                group["points"] = sum(i.get("points") or 0 for i in head + rest)
+            groups.append(group)
+        return groups
+
+    return {
+        "open": buckets["open"],
+        "waiting": {
+            "count": len(buckets["waiting"]),
+            "groups": _grouped(buckets["waiting"]),
+        },
+        "resolved": {
+            "count": len(buckets["resolved"]),
+            "groups": _grouped(buckets["resolved"], with_points=True),
+        },
+        "counts": {
+            "open": len(buckets["open"]),
+            "waiting": len(buckets["waiting"]),
+            "resolved": len(buckets["resolved"]),
+        },
+    }
+
+
 @router.get("/p/{token}/bonus", response_class=HTMLResponse)
 async def bonus_page(request: Request, token: str):
     async with get_db() as db:
@@ -2302,6 +2397,20 @@ async def bonus_page(request: Request, token: str):
             (p["id"],),
         )
         bonus_questions_points = (await bq_score_row.fetchone())["total"]
+        pt_status = await _pt_status(db, p["id"])
+        pt_card = None
+        if pt_status["question_count"] > 0:
+            pt_card = {
+                "is_pre_tournament": True,
+                "phase": "pre_tournament",
+                "points": pt_points,
+                "has_score": pt_scored,
+                "is_open": pt_status["open"],
+                "complete": pt_status["complete"],
+                "filled_count": pt_status["filled_count"],
+                "question_count": pt_status["question_count"],
+                "deadline": pt_status["deadline"],
+            }
         ctx.update({
             "bonus_questions": bonus_questions,
             "pending_bonus_questions": pending_count,
@@ -2311,6 +2420,7 @@ async def bonus_page(request: Request, token: str):
             "pt_scored": pt_scored,
             "bonus_questions_points": bonus_questions_points,
             "total_bonus_points": bonus_questions_points + pt_points,
+            "hub": _build_bonus_hub(bonus_questions, pt_card),
         })
     return templates.TemplateResponse(request, "bonus.html", {"request": request, **ctx})
 
