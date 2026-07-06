@@ -869,6 +869,9 @@ body.bonus-stack-open {
   border-left: 3px solid var(--primary);
   background: var(--paper);
 }
+/* Sur /bonus, .home-cta n'est pas un .card (pas de padding hérité) : le
+   liséré orange colle sinon directement au texte. */
+.bonus-next-action.home-cta-bonus { padding-left: 12px; }
 
 /* ---- Rules page ---- */
 .rules-page { gap: 12px; }

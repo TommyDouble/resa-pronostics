@@ -64,7 +64,7 @@
   {% endif %}
 
   {% if not is_stack and q.peer_answers is defined %}
-  {% set peer_total = q.peer_answers.all | map(attribute='count') | sum %}
+  {% set peer_total = (q.peer_answers.preview + q.peer_answers.remaining) | map(attribute='count') | sum %}
   <div class="pred-groups" style="margin-bottom:12px;">
     <div class="pred-groups-head">
       <div class="lbl">Tendance collègues</div>
@@ -85,20 +85,29 @@
           {{ pa.name }}{% if pa.is_me %} <b>· toi</b>{% endif %}
         </a>
         {% endfor %}
-        {% if g.example_names and g.count > g.example_names|length %}
-        <span class="pname">+{{ g.count - g.example_names|length }}</span>
-        {% endif %}
       </div>
+      {% if g.remaining_names %}
+      <details>
+        <summary class="muted" style="font-size:11px;cursor:pointer;padding:0 12px 10px;">Voir les {{ g.remaining_names|length }} autre{{ 's' if g.remaining_names|length > 1 else '' }}</summary>
+        <div class="pgroup-names">
+          {% for pa in g.remaining_names %}
+          <a class="pname {{ 'me' if pa.is_me }}" href="/p/{{ token }}/profil/{{ pa.participant_id }}">
+            {{ pa.name }}{% if pa.is_me %} <b>· toi</b>{% endif %}
+          </a>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
       {% endif %}
     </section>
     {% else %}
     <div class="muted" style="font-size:12px;">Personne n'a répondu.</div>
     {% endfor %}
-    {% if q.peer_answers.all %}
+    {% if q.peer_answers.remaining %}
     <details style="margin-top:2px;">
-      <summary class="muted" style="font-size:12px;cursor:pointer;">Voir toutes les réponses</summary>
+      <summary class="muted" style="font-size:12px;cursor:pointer;">Voir les autres réponses</summary>
       <div class="pred-groups" style="margin-top:8px;">
-        {% for g in q.peer_answers.all %}
+        {% for g in q.peer_answers.remaining %}
         <section class="pgroup {{ 'mine' if g.has_me }}">
           <header class="pgroup-head">
             <span class="pg-outcome">{{ g.display }}</span>

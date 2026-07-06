@@ -38,7 +38,7 @@
       {{ situation.todo_count }} à répondre · {{ situation.counts.waiting }} en attente · {{ situation.counts.resolved }} résolue{{ 's' if situation.counts.resolved != 1 else '' }}
     </div>
 
-    <div class="home-cta {{ 'home-cta-bonus' if situation.next_action.state != 'todo' else '' }}" style="margin-top:10px;" data-bonus-next-action="{{ situation.next_action.state }}">
+    <div class="home-cta bonus-next-action {{ 'home-cta-bonus' if situation.next_action.state != 'todo' else '' }}" style="margin-top:10px;" data-bonus-next-action="{{ situation.next_action.state }}">
       <div>
         <div class="lbl">Prochaine action</div>
         <p>{{ situation.next_action.text }}</p>
