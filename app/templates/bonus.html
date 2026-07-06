@@ -19,6 +19,14 @@
 
 <div class="page-content">
 
+  <!-- Réconciliation du total bonus -->
+  <div class="card flat" style="padding:14px;">
+    <div style="font-weight:700;font-size:13px;">Total bonus : {{ total_bonus_points }} pt{{ 's' if total_bonus_points > 1 else '' }}</div>
+    <div class="muted" style="font-size:12px;margin-top:2px;">
+      Questions bonus : {{ bonus_questions_points }} pt{{ 's' if bonus_questions_points > 1 else '' }} + Pré-tournoi : {{ pt_points }} pt{{ 's' if pt_points > 1 else '' }}
+    </div>
+  </div>
+
   <!-- Pre-tournament section -->
   <div class="card flat" style="padding:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
     <div>
