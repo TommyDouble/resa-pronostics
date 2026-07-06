@@ -582,7 +582,7 @@ def test_no_peer_answers_in_open_section(client, participant):
         assert colleague_name not in html
         assert "reponse-secrete-hub" not in html
         open_html = _section_html(html, "open")
-        assert "Réponses des collègues" not in open_html
+        assert "Tendance collègues" not in open_html
     finally:
         _cleanup([q_open], [colleague_id])
 
