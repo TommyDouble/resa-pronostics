@@ -16,6 +16,7 @@ _PAST = "2020-01-01T12:00:00"
 _PAST_OLDER = "2019-01-01T12:00:00"
 _FUTURE = "2035-01-01T12:00:00"
 _FUTURE_LATER = "2036-01-01T12:00:00"
+_PT_KEYS = ("winner", "finalist", "top_scorer", "revelation", "total_goals")
 
 
 def _section_html(html, key):
@@ -68,6 +69,64 @@ def _seed_pt_score(participant_id, question_key, points):
     run(_create())
 
 
+def _seed_pt_prediction(participant_id, **overrides):
+    values = {
+        "winner": "France",
+        "finalist": "Brésil",
+        "top_scorer": "Kylian Mbappé",
+        "revelation": "Maroc",
+        "total_goals": 140,
+    }
+    values.update(overrides)
+
+    async def _create():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO pre_tournament_predictions
+                   (participant_id, winner, finalist, top_scorer, revelation,
+                    total_goals, submitted, submitted_at)
+                   VALUES (?,?,?,?,?,?,1,?)
+                   ON CONFLICT(participant_id) DO UPDATE SET
+                     winner=excluded.winner,
+                     finalist=excluded.finalist,
+                     top_scorer=excluded.top_scorer,
+                     revelation=excluded.revelation,
+                     total_goals=excluded.total_goals,
+                     submitted=1,
+                     submitted_at=excluded.submitted_at""",
+                (
+                    participant_id,
+                    values["winner"],
+                    values["finalist"],
+                    values["top_scorer"],
+                    values["revelation"],
+                    values["total_goals"],
+                    _PAST,
+                ),
+            )
+            await db.commit()
+
+    run(_create())
+
+
+def _set_pt_correct_answer(question_key, value):
+    async def _set():
+        async with get_db() as db:
+            row = await db.execute(
+                "SELECT correct_answer FROM pre_tournament_questions WHERE key=?",
+                (question_key,),
+            )
+            old_row = await row.fetchone()
+            await db.execute(
+                "UPDATE pre_tournament_questions SET correct_answer=? WHERE key=?",
+                (value, question_key),
+            )
+            await db.commit()
+            return old_row["correct_answer"] if old_row else None
+
+    return run(_set())
+
+
 def _seed_participant(name):
     token = str(uuid.uuid4())
 
@@ -97,7 +156,8 @@ def _seed_answer(question_id, participant_id, answer):
     run(_create())
 
 
-def _cleanup(question_ids=(), participant_ids=(), pt_scores_participant=None):
+def _cleanup(question_ids=(), participant_ids=(), pt_scores_participant=None,
+             pt_prediction_participant=None):
     async def _clean():
         async with get_db() as db:
             if question_ids:
@@ -122,6 +182,11 @@ def _cleanup(question_ids=(), participant_ids=(), pt_scores_participant=None):
                 await db.execute(
                     "DELETE FROM pre_tournament_scores WHERE participant_id=?",
                     (pt_scores_participant,),
+                )
+            if pt_prediction_participant is not None:
+                await db.execute(
+                    "DELETE FROM pre_tournament_predictions WHERE participant_id=?",
+                    (pt_prediction_participant,),
                 )
             await db.commit()
 
@@ -152,6 +217,19 @@ def _set_pt_deadline(value):
             return old_row["value"] if old_row else None
 
     return run(_set())
+
+
+def _assert_pt_keys(section_html):
+    for key in _PT_KEYS:
+        assert f'data-bonus-pt-key="{key}"' in section_html
+
+
+def _pt_card_html(section_html, key):
+    marker = f'data-bonus-pt-key="{key}"'
+    idx = section_html.index(marker)
+    start = section_html.rindex("data-bonus-pt-card", 0, idx)
+    end = section_html.find("data-bonus-pt-card", idx + len(marker))
+    return section_html[start:end if end != -1 else len(section_html)]
 
 
 # ---------------------------------------------------------------------------
@@ -235,31 +313,40 @@ def test_waiting_multi_phase_shows_subheaders(client, participant):
 
 
 # ---------------------------------------------------------------------------
-# Carte-catégorie pré-tournoi
+# Cartes pré-tournoi
 # ---------------------------------------------------------------------------
 
 def test_pt_card_waiting_by_default(client, participant):
-    """Deadline PT passée, aucun score : la carte PT est « en attente »."""
+    """Deadline PT passée, aucun score : les 5 cartes PT sont « en attente »."""
     html = client.get(f"/p/{participant['token']}/bonus").text
     waiting_html = _section_html(html, "waiting")
-    assert "data-bonus-pt-card" in waiting_html
-    assert "Verrouillée" in waiting_html
-    assert f"/p/{participant['token']}/pre-tournoi" in waiting_html
+    assert waiting_html.count("data-bonus-pt-card") == 5
+    _assert_pt_keys(waiting_html)
+    assert "Non répondue" in waiting_html
+    for key in _PT_KEYS:
+        assert f"/p/{participant['token']}/pre-tournoi#pt-{key}" in waiting_html
 
 
 def test_pt_card_resolved_with_points_in_subtotal(client, participant):
     _seed_pt_score(participant["id"], "winner", 8)
+    old_answer = _set_pt_correct_answer("winner", "France")
     try:
         html = client.get(f"/p/{participant['token']}/bonus").text
         resolved_html = _section_html(html, "resolved")
         assert "data-bonus-pt-card" in resolved_html
+        assert 'data-bonus-pt-key="winner"' in resolved_html
         assert 'data-bonus-phase="pre_tournament"' in resolved_html
         assert 'data-bonus-phase-points="8"' in resolved_html
-        assert f"/p/{participant['token']}/pre-tournoi" in resolved_html
-        # Et plus dans « en attente » (section absente si vide).
+        assert f"/p/{participant['token']}/pre-tournoi#pt-winner" in resolved_html
+        assert "Réponse correcte" in resolved_html
+        assert "France" in resolved_html
+        assert "Total bonus : 8 pts" in html
+        assert "Pré-tournoi : 8 pts" in html
+        # La carte scorée n'est plus dans « en attente » ; les autres clés y restent.
         if 'data-bonus-section="waiting"' in html:
-            assert "data-bonus-pt-card" not in _section_html(html, "waiting")
+            assert 'data-bonus-pt-key="winner"' not in _section_html(html, "waiting")
     finally:
+        _set_pt_correct_answer("winner", old_answer)
         _cleanup(pt_scores_participant=participant["id"])
 
 
@@ -268,11 +355,103 @@ def test_pt_card_open_when_deadline_future(client, participant):
     try:
         html = client.get(f"/p/{participant['token']}/bonus").text
         open_html = _section_html(html, "open")
-        assert "data-bonus-pt-card" in open_html
-        assert "À répondre ·" in open_html
-        assert "Compléter mes réponses" in open_html
+        assert open_html.count("data-bonus-pt-card") == 5
+        _assert_pt_keys(open_html)
+        assert "À répondre" in open_html
+        assert "Compléter cette réponse" in open_html
     finally:
         _set_pt_deadline(old_deadline)
+
+
+def test_pt_finalists_card_requires_both_picks_when_open(client, participant):
+    old_deadline = _set_pt_deadline(_FUTURE)
+    _seed_pt_prediction(
+        participant["id"],
+        winner="France",
+        finalist="",
+        top_scorer="",
+        revelation="",
+        total_goals=0,
+    )
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        open_html = _section_html(html, "open")
+        winner_card = _pt_card_html(open_html, "winner")
+        finalist_card = _pt_card_html(open_html, "finalist")
+
+        assert "Réponse enregistrée" in winner_card
+        assert "Ta réponse : <b>France</b>" in winner_card
+        assert "À répondre" in finalist_card
+        assert "Réponse enregistrée" not in finalist_card
+        assert "Ta réponse : <b>France</b>" not in finalist_card
+    finally:
+        _set_pt_deadline(old_deadline)
+        _cleanup(pt_prediction_participant=participant["id"])
+
+
+def test_pt_card_resolved_zero_points_is_still_scored(client, participant):
+    old_answer = _set_pt_correct_answer("winner", "France")
+    _seed_pt_score(participant["id"], "winner", 0)
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        resolved_html = _section_html(html, "resolved")
+        assert 'data-bonus-pt-key="winner"' in resolved_html
+        assert "0 pt" in resolved_html
+        assert "Réponse correcte" in resolved_html
+    finally:
+        _set_pt_correct_answer("winner", old_answer)
+        _cleanup(pt_scores_participant=participant["id"])
+
+
+def test_pt_card_open_hides_accidental_score_and_correct_answer(client, participant):
+    old_deadline = _set_pt_deadline(_FUTURE)
+    old_answer = _set_pt_correct_answer("winner", "secret-champion-b5")
+    _seed_pt_score(participant["id"], "winner", 3)
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        open_html = _section_html(html, "open")
+        assert 'data-bonus-pt-key="winner"' in open_html
+        assert "secret-champion-b5" not in html
+        assert "Réponse correcte" not in open_html
+        assert "3 pt" not in open_html
+        if 'data-bonus-section="resolved"' in html:
+            assert 'data-bonus-pt-key="winner"' not in _section_html(html, "resolved")
+    finally:
+        _set_pt_correct_answer("winner", old_answer)
+        _set_pt_deadline(old_deadline)
+        _cleanup(pt_scores_participant=participant["id"])
+
+
+def test_pt_card_displays_business_answers(client, participant):
+    _seed_pt_prediction(
+        participant["id"],
+        winner="Argentine",
+        finalist="France",
+        top_scorer="Kylian Mbappé",
+        revelation="Maroc",
+        total_goals=151,
+    )
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        waiting_html = _section_html(html, "waiting")
+        assert "Champion" in waiting_html
+        assert "Ta réponse : <b>Argentine</b>" in waiting_html
+        assert "Finalistes" in waiting_html
+        assert "Ta réponse : <b>Argentine + France</b>" in waiting_html
+        assert "Buteur" in waiting_html
+        assert "Ta réponse : <b>Kylian Mbappé" in waiting_html
+        assert "Révélation" in waiting_html
+        assert "Ta réponse : <b>Maroc</b>" in waiting_html
+        assert "Buts" in waiting_html
+        assert "Ta réponse : <b>151</b>" in waiting_html
+    finally:
+        _cleanup(pt_prediction_participant=participant["id"])
+
+
+def test_pre_tournament_page_exposes_pt_anchors(client, participant):
+    html = client.get(f"/p/{participant['token']}/pre-tournoi").text
+    for key in _PT_KEYS:
+        assert f'id="pt-{key}"' in html
 
 
 # ---------------------------------------------------------------------------

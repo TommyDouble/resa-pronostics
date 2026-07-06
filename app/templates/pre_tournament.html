@@ -76,7 +76,7 @@
 
     {% set q = pt_questions.get('winner') %}
     {% if q %}
-    <div class="card flat" style="padding:13px;margin-bottom:12px;">
+    <div class="card flat" id="pt-winner" style="padding:13px;margin-bottom:12px;">
       <div class="lbl">① {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Le champion correct rapporte 8 points. Cette équipe compte aussi parmi tes deux finalistes pour le bonus Finalistes.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="field" style="margin-top:8px;">
@@ -92,7 +92,7 @@
 
     {% set q = pt_questions.get('finalist') %}
     {% if q %}
-    <div class="card flat" style="padding:13px;margin-bottom:12px;">
+    <div class="card flat" id="pt-finalist" style="padding:13px;margin-bottom:12px;">
       <div class="lbl">② {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Tes deux finalistes sont ton champion (recopié ici) et l'équipe que tu choisis. Chaque équipe réellement présente en finale rapporte 7 points, même si tu inverses champion et finaliste.">?</span></div>
       <div class="muted helper-text">Une finale oppose deux équipes. Ton champion ① est automatiquement ton premier finaliste — il te reste à désigner l'autre.</div>
       <div class="finalists-pair">
@@ -125,7 +125,7 @@
 
     {% set q = pt_questions.get('top_scorer') %}
     {% if q %}
-    <div class="card flat" style="padding:13px;margin-bottom:12px;">
+    <div class="card flat" id="pt-top_scorer" style="padding:13px;margin-bottom:12px;">
       <div class="lbl">③ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Tape quelques lettres du joueur ou de son équipe, puis sélectionne une proposition.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="muted helper-text">Ce que tu paries: le joueur qui terminera meilleur buteur officiel. Pas besoin de connaître toute la liste: cherche un nom, un pays ou parcours les joueurs par équipe.</div>
@@ -143,7 +143,7 @@
 
     {% set q = pt_questions.get('revelation') %}
     {% if q %}
-    <div class="card flat" style="padding:13px;margin-bottom:12px;">
+    <div class="card flat" id="pt-revelation" style="padding:13px;margin-bottom:12px;">
       <div class="lbl">④ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Pari sur l'outsider qui ira le plus loin dans la compétition. En cas d'égalité (même tour atteint), plusieurs outsiders peuvent rapporter des points.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="muted helper-text">
@@ -167,7 +167,7 @@
 
     {% set q = pt_questions.get('total_goals') %}
     {% if q %}
-    <div class="card flat" style="padding:13px;margin-bottom:16px;">
+    <div class="card flat" id="pt-total_goals" style="padding:13px;margin-bottom:16px;">
       <div class="lbl">⑤ {{ q.label }} · {{ q.points_label }} <span class="help-tip" tabindex="0" data-tip="Compte uniquement les buts de la phase de groupes. Exact: 8 points. À trois buts ou moins: 4 points. Les deux ne se cumulent pas.">?</span></div>
       {% if q.help_text %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ q.help_text }}</div>{% endif %}
       <div class="muted helper-text">Repère simple: 144 buts sur 72 matchs de groupes correspond à 2 buts par match.</div>

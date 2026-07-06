@@ -166,33 +166,55 @@
 </div>
 {%- endmacro %}
 
-{# Carte-catégorie pré-tournoi du hub /bonus. Attention : ne jamais y introduire
+{# Cartes pré-tournoi du hub /bonus. Attention : ne jamais y introduire
    le marqueur HTML utilisé par les tests B3. #}
 {% macro bonus_pt_card(item, token) -%}
-<div class="card bonus-pt-card" data-bonus-pt-card>
+<div class="card bonus-pt-card" data-bonus-pt-card data-bonus-pt-key="{{ item.key }}">
   <div class="bonus-q-meta">
-    <span class="chip acc">Pré-tournoi · {{ item.question_count }} question{{ 's' if item.question_count != 1 else '' }}</span>
+    <span class="chip acc">Pré-tournoi · {{ item.points_label }}</span>
     {% if item.is_open %}
-      {% if item.complete %}
-        <span class="chip ok">Complet · modifiable</span>
+      {% if item.has_answer %}
+        <span class="chip ok">Réponse enregistrée</span>
       {% else %}
-        <span class="chip warn">À répondre · {{ item.filled_count }}/{{ item.question_count }}</span>
+        <span class="chip warn">À répondre</span>
       {% endif %}
     {% elif item.has_score %}
       <span class="chip {{ 'ok' if item.points > 0 else 'lock' }}">{{ item.points }} pt{{ 's' if item.points != 1 else '' }}</span>
-    {% else %}
+    {% elif item.has_answer %}
       <span class="chip gr">Verrouillée</span>
+    {% else %}
+      <span class="chip lock">Non répondue</span>
     {% endif %}
     <span class="muted bonus-q-deadline">
       Deadline · <span data-local-utc="{{ item.deadline|utc_iso }}">{{ item.deadline|local_datetime }}</span>
     </span>
   </div>
   <div class="bonus-q-copy">
-    <div class="bonus-q-title">🏆 Pré-tournoi</div>
-    <p class="bonus-q-prompt">Champion · Finalistes · Buteur · Révélation · Buts</p>
+    <div class="bonus-q-title">{{ item.label }}</div>
+    <p class="bonus-q-prompt">{{ item.question_label }}</p>
   </div>
-  <a href="/p/{{ token }}/pre-tournoi" class="btn ghost" style="font-size:12px;">
-    {%- if item.is_open and not item.complete %}Compléter mes réponses{% else %}Voir mes réponses{% endif -%}
+
+  {% if item.has_answer %}
+  <div class="bonus-answer-banner" style="margin-bottom:12px;">
+    <div>
+      <span aria-hidden="true">✓</span>
+      <span>Ta réponse : <b>{{ item.answer_display }}</b></span>
+    </div>
+  </div>
+  {% elif not item.is_open %}
+  <div class="banner" style="background:var(--n100);color:var(--n600);margin-bottom:12px;">
+    <span>🔒</span> Deadline dépassée — aucune réponse enregistrée.
+  </div>
+  {% endif %}
+
+  {% if item.has_score and item.correct_answer_display %}
+  <div class="muted" style="font-size:12px;margin-bottom:12px;">
+    Réponse correcte : <b style="color:var(--n900);">{{ item.correct_answer_display }}</b>
+  </div>
+  {% endif %}
+
+  <a href="{{ item.href or ('/p/' ~ token ~ '/pre-tournoi#pt-' ~ item.key) }}" class="btn ghost" style="font-size:12px;">
+    {%- if item.is_open and not item.has_answer %}Compléter cette réponse{% else %}Voir cette réponse{% endif -%}
   </a>
 </div>
 {%- endmacro %}
