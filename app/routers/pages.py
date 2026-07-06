@@ -2306,6 +2306,22 @@ async def _load_bonus_peer_answers(db, questions, participant_id: int):
 
         return _key
 
+    def _select_example_names(names, has_me, limit):
+        """Jusqu'à `limit` noms d'exemple, garantissant que "moi" y figure si
+        mon groupe est représenté (quitte à remplacer le dernier exemple
+        non-moi). Retourne aussi les noms restants du groupe (pour le <details>
+        local "Voir les X autres")."""
+        selected = list(names[:limit])
+        if has_me and not any(n["is_me"] for n in selected):
+            me_entry = next(n for n in names if n["is_me"])
+            if selected:
+                selected[-1] = me_entry
+            else:
+                selected = [me_entry]
+        selected_ids = {n["participant_id"] for n in selected}
+        remaining = [n for n in names if n["participant_id"] not in selected_ids]
+        return selected, remaining
+
     result = {}
     for qid, groups in by_question.items():
         ordered = sorted(groups.values(), key=_group_sort_key(locked[qid]))
@@ -2316,9 +2332,11 @@ async def _load_bonus_peer_answers(db, questions, participant_id: int):
             count = len(g["names"])
             percentage = round(count * 100 / total) if total else 0
             if count < BONUS_TREND_NAME_THRESHOLD and not g["has_me"]:
-                example_names = []
+                example_names, remaining_names = [], []
             else:
-                example_names = g["names"][:BONUS_TREND_EXAMPLE_NAMES]
+                example_names, remaining_names = _select_example_names(
+                    g["names"], g["has_me"], BONUS_TREND_EXAMPLE_NAMES
+                )
             enriched.append({
                 "display": g["display"],
                 "names": g["names"],
@@ -2326,13 +2344,17 @@ async def _load_bonus_peer_answers(db, questions, participant_id: int):
                 "count": count,
                 "percentage": percentage,
                 "example_names": example_names,
+                "remaining_names": remaining_names,
             })
             if g["has_me"]:
                 my_index = idx
         preview = enriched[:BONUS_TREND_PREVIEW_SIZE]
+        preview_indices = set(range(len(preview)))
         if my_index is not None and my_index >= BONUS_TREND_PREVIEW_SIZE:
             preview = preview + [enriched[my_index]]
-        result[qid] = {"preview": preview, "all": enriched}
+            preview_indices.add(my_index)
+        remaining = [g for idx, g in enumerate(enriched) if idx not in preview_indices]
+        result[qid] = {"preview": preview, "remaining": remaining}
     return result
 
 
@@ -2562,7 +2584,7 @@ async def bonus_page(request: Request, token: str):
         peer_answers = await _load_bonus_peer_answers(db, bonus_questions, p["id"])
         for q in bonus_questions:
             if not q["is_open"]:
-                q["peer_answers"] = peer_answers.get(q["id"], {"preview": [], "all": []})
+                q["peer_answers"] = peer_answers.get(q["id"], {"preview": [], "remaining": []})
         pt_status = await _pt_status(db, p["id"])
         pt_score_rows = await db.execute(
             """SELECT question_key, points, calculated_at
