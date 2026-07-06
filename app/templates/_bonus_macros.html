@@ -63,6 +63,35 @@
   </div>
   {% endif %}
 
+  {% if not is_stack and q.peer_answers is defined %}
+  {% set peer_total = q.peer_answers | map(attribute='names') | map('length') | sum %}
+  <div class="pred-groups" style="margin-bottom:12px;">
+    <div class="pred-groups-head">
+      <div class="lbl">Réponses des collègues</div>
+      {% if peer_total %}
+      <span class="muted" style="font-size:11px;">{{ peer_total }} réponse{{ 's' if peer_total != 1 else '' }}</span>
+      {% endif %}
+    </div>
+    {% for g in q.peer_answers %}
+    <section class="pgroup {{ 'mine' if g.has_me }}">
+      <header class="pgroup-head">
+        <span class="pg-outcome">{{ g.display }}</span>
+        <span class="pg-count">{{ g.names|length }} joueur{{ 's' if g.names|length > 1 else '' }}</span>
+      </header>
+      <div class="pgroup-names">
+        {% for pa in g.names %}
+        <a class="pname {{ 'me' if pa.is_me }}" href="/p/{{ token }}/profil/{{ pa.participant_id }}">
+          {{ pa.name }}{% if pa.is_me %} <b>· toi</b>{% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    </section>
+    {% else %}
+    <div class="muted" style="font-size:12px;">Personne n'a répondu.</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if q.can_edit %}
   <form method="post" action="/p/{{ token }}/bonus/{{ q.id }}" class="bonus-answer-form" novalidate{% if is_stack %} data-bonus-stack-form="1"{% endif %}>
     {% if q.answer_type == 'number' %}
