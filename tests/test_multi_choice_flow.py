@@ -396,6 +396,31 @@ def test_home_bonus_stack_and_ajax_submit(client, admin_client, participant, mon
     assert f'data-question-id="{q["id"]}"' not in html_after
 
 
+def test_bonus_stack_ajax_rejects_with_server_detail(client, participant):
+    q = _fetch_question_by_text("Le Favori Qui Tremble")
+    assert q is not None and q["answer_type"] == "number"
+    _publish_question(q["id"], "2030-01-01T12:00:00")
+
+    resp = client.post(
+        f"/p/{participant['token']}/bonus/{q['id']}",
+        data={"answer": "7"},
+        headers={"X-RESA-Bonus-Stack": "1"},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Réponse trop haute (maximum 6)"
+    assert run(_stored_answer(participant["id"], q["id"])) is None
+
+
+def test_bonus_stack_js_reads_server_error_detail():
+    js = Path("app/static/js/resa.js").read_text()
+
+    assert "function bonusStackErrorMessage(response, body)" in js
+    assert "payload.detail" in js
+    assert "throw new Error(bonusStackErrorMessage(response, body));" in js
+
+
 def test_bonus_stack_mobile_input_and_tooltip_contract():
     css = Path("app/static/css/resa.css").read_text()
     js = Path("app/static/js/resa.js").read_text()
@@ -837,6 +862,16 @@ def test_bonus_rejects_answer_after_deadline(client, participant):
         follow_redirects=False,
     )
     assert resp.status_code == 403
+    assert run(_stored_answer(participant["id"], q["id"])) is None
+
+    stack_resp = client.post(
+        f"/p/{participant['token']}/bonus/{q['id']}",
+        data={"answer": "2"},
+        headers={"X-RESA-Bonus-Stack": "1"},
+        follow_redirects=False,
+    )
+    assert stack_resp.status_code == 403
+    assert stack_resp.json()["detail"] == "Deadline dépassée"
     assert run(_stored_answer(participant["id"], q["id"])) is None
 
 

@@ -114,7 +114,7 @@ async def unauthorized_handler(request: Request, exc):
 @app.exception_handler(403)
 async def forbidden_handler(request: Request, exc):
     # Les routes API sont appelées en fetch: le JS affiche `detail` à l'utilisateur.
-    if request.url.path.startswith("/api"):
+    if request.url.path.startswith("/api") or request.headers.get("x-resa-bonus-stack") == "1":
         return JSONResponse(
             {"detail": getattr(exc, "detail", None) or "Accès refusé."},
             status_code=403,

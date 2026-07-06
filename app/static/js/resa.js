@@ -849,6 +849,25 @@ function initBonusStack() {
     closeStack();
   });
 
+  function bonusStackErrorMessage(response, body) {
+    var fallback = 'Réponse refusée. Vérifie ta saisie.';
+    var contentType = response.headers ? (response.headers.get('content-type') || '') : '';
+    if (contentType.indexOf('application/json') !== -1) {
+      try {
+        var payload = JSON.parse(body || '{}');
+        if (payload && typeof payload.detail === 'string' && payload.detail.trim()) {
+          return payload.detail.trim();
+        }
+      } catch (err) {
+        return fallback;
+      }
+    }
+    if (contentType.indexOf('text/plain') !== -1 && body && body.trim()) {
+      return body.trim();
+    }
+    return fallback;
+  }
+
   window.RESABonusStack = {
     submit: function(form, setError) {
       if (form.dataset.submitting === '1') return;
@@ -864,8 +883,8 @@ function initBonusStack() {
         headers: { 'X-RESA-Bonus-Stack': '1' }
       }).then(function(response) {
         if (!response.ok) {
-          return response.text().then(function() {
-            throw new Error('Réponse refusée. Vérifie ta saisie.');
+          return response.text().then(function(body) {
+            throw new Error(bonusStackErrorMessage(response, body));
           });
         }
         return response.json();
