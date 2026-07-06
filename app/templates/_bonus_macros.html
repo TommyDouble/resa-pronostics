@@ -64,31 +64,58 @@
   {% endif %}
 
   {% if not is_stack and q.peer_answers is defined %}
-  {% set peer_total = q.peer_answers | map(attribute='names') | map('length') | sum %}
+  {% set peer_total = q.peer_answers.all | map(attribute='count') | sum %}
   <div class="pred-groups" style="margin-bottom:12px;">
     <div class="pred-groups-head">
-      <div class="lbl">Réponses des collègues</div>
+      <div class="lbl">Tendance collègues</div>
       {% if peer_total %}
       <span class="muted" style="font-size:11px;">{{ peer_total }} réponse{{ 's' if peer_total != 1 else '' }}</span>
       {% endif %}
     </div>
-    {% for g in q.peer_answers %}
+    {% for g in q.peer_answers.preview %}
     <section class="pgroup {{ 'mine' if g.has_me }}">
       <header class="pgroup-head">
         <span class="pg-outcome">{{ g.display }}</span>
-        <span class="pg-count">{{ g.names|length }} joueur{{ 's' if g.names|length > 1 else '' }}</span>
+        <span class="pg-count">{{ g.count }} joueur{{ 's' if g.count > 1 else '' }} · {{ g.percentage }}%</span>
       </header>
+      {% if g.example_names %}
       <div class="pgroup-names">
-        {% for pa in g.names %}
+        {% for pa in g.example_names %}
         <a class="pname {{ 'me' if pa.is_me }}" href="/p/{{ token }}/profil/{{ pa.participant_id }}">
           {{ pa.name }}{% if pa.is_me %} <b>· toi</b>{% endif %}
         </a>
         {% endfor %}
+        {% if g.example_names and g.count > g.example_names|length %}
+        <span class="pname">+{{ g.count - g.example_names|length }}</span>
+        {% endif %}
       </div>
+      {% endif %}
     </section>
     {% else %}
     <div class="muted" style="font-size:12px;">Personne n'a répondu.</div>
     {% endfor %}
+    {% if q.peer_answers.all %}
+    <details style="margin-top:2px;">
+      <summary class="muted" style="font-size:12px;cursor:pointer;">Voir toutes les réponses</summary>
+      <div class="pred-groups" style="margin-top:8px;">
+        {% for g in q.peer_answers.all %}
+        <section class="pgroup {{ 'mine' if g.has_me }}">
+          <header class="pgroup-head">
+            <span class="pg-outcome">{{ g.display }}</span>
+            <span class="pg-count">{{ g.count }} joueur{{ 's' if g.count > 1 else '' }} · {{ g.percentage }}%</span>
+          </header>
+          <div class="pgroup-names">
+            {% for pa in g.names %}
+            <a class="pname {{ 'me' if pa.is_me }}" href="/p/{{ token }}/profil/{{ pa.participant_id }}">
+              {{ pa.name }}{% if pa.is_me %} <b>· toi</b>{% endif %}
+            </a>
+            {% endfor %}
+          </div>
+        </section>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
   </div>
   {% endif %}
 

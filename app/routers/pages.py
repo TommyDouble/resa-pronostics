@@ -2239,8 +2239,13 @@ def _bonus_options_list(raw):
     return parsed if isinstance(parsed, list) else []
 
 
+BONUS_TREND_NAME_THRESHOLD = 2
+BONUS_TREND_PREVIEW_SIZE = 3
+BONUS_TREND_EXAMPLE_NAMES = 4
+
+
 async def _load_bonus_peer_answers(db, questions, participant_id: int):
-    """Réponses de tous les participants, groupées par réponse identique.
+    """Tendances des réponses de tous les participants pour chaque question verrouillée.
 
     Ne requête que les questions verrouillées : une question ouverte ne peut
     jamais voir ses réponses tierces chargées ni exposées au template.
@@ -2265,12 +2270,22 @@ async def _load_bonus_peer_answers(db, questions, participant_id: int):
         q = locked[row["question_id"]]
         if q["answer_type"] == "multi_choice":
             display = format_team_list(row["answer"])
+            key = display
         elif q["answer_type"] == "number_multi":
             display = format_number_multi(row["answer"], _bonus_options_list(q["options"]))
+            key = display
+        elif q["answer_type"] == "number":
+            # "3" et "3,0" désignent la même réponse : grouper sur la valeur
+            # parsée, pas la string brute. Fallback sur la string si une
+            # vieille réponse invalide ne parse pas (ne jamais planter).
+            display = row["answer"]
+            parsed = parse_bonus_number(display)
+            key = parsed if parsed is not None else display
         else:
             display = row["answer"]
+            key = display
         group = by_question[row["question_id"]].setdefault(
-            display, {"display": display, "names": [], "has_me": False}
+            key, {"display": display, "names": [], "has_me": False}
         )
         is_me = row["participant_id"] == participant_id
         group["names"].append(
@@ -2284,18 +2299,41 @@ async def _load_bonus_peer_answers(db, questions, participant_id: int):
         def _key(group):
             display = group["display"] or ""
             if numeric:
-                try:
-                    return (-len(group["names"]), 0, float(display), "")
-                except (TypeError, ValueError):
-                    pass
+                parsed = parse_bonus_number(display)
+                if parsed is not None:
+                    return (-len(group["names"]), 0, float(parsed), "")
             return (-len(group["names"]), 1, 0.0, display)
 
         return _key
 
-    return {
-        qid: sorted(groups.values(), key=_group_sort_key(locked[qid]))
-        for qid, groups in by_question.items()
-    }
+    result = {}
+    for qid, groups in by_question.items():
+        ordered = sorted(groups.values(), key=_group_sort_key(locked[qid]))
+        total = sum(len(g["names"]) for g in ordered)
+        enriched = []
+        my_index = None
+        for idx, g in enumerate(ordered):
+            count = len(g["names"])
+            percentage = round(count * 100 / total) if total else 0
+            if count < BONUS_TREND_NAME_THRESHOLD and not g["has_me"]:
+                example_names = []
+            else:
+                example_names = g["names"][:BONUS_TREND_EXAMPLE_NAMES]
+            enriched.append({
+                "display": g["display"],
+                "names": g["names"],
+                "has_me": g["has_me"],
+                "count": count,
+                "percentage": percentage,
+                "example_names": example_names,
+            })
+            if g["has_me"]:
+                my_index = idx
+        preview = enriched[:BONUS_TREND_PREVIEW_SIZE]
+        if my_index is not None and my_index >= BONUS_TREND_PREVIEW_SIZE:
+            preview = preview + [enriched[my_index]]
+        result[qid] = {"preview": preview, "all": enriched}
+    return result
 
 
 def _bonus_hub_status(item: dict) -> str:
@@ -2524,7 +2562,7 @@ async def bonus_page(request: Request, token: str):
         peer_answers = await _load_bonus_peer_answers(db, bonus_questions, p["id"])
         for q in bonus_questions:
             if not q["is_open"]:
-                q["peer_answers"] = peer_answers.get(q["id"], [])
+                q["peer_answers"] = peer_answers.get(q["id"], {"preview": [], "all": []})
         pt_status = await _pt_status(db, p["id"])
         pt_score_rows = await db.execute(
             """SELECT question_key, points, calculated_at
