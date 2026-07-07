@@ -2244,6 +2244,65 @@ BONUS_TREND_PREVIEW_SIZE = 3
 BONUS_TREND_EXAMPLE_NAMES = 4
 
 
+def _select_example_names(names, has_me, limit):
+    """Jusqu'à `limit` noms d'exemple, garantissant que "moi" y figure si
+    mon groupe est représenté (quitte à remplacer le dernier exemple
+    non-moi). Retourne aussi les noms restants du groupe (pour le <details>
+    local "Voir les X autres")."""
+    selected = list(names[:limit])
+    if has_me and not any(n["is_me"] for n in selected):
+        me_entry = next(n for n in names if n["is_me"])
+        if selected:
+            selected[-1] = me_entry
+        else:
+            selected = [me_entry]
+    selected_ids = {n["participant_id"] for n in selected}
+    remaining = [n for n in names if n["participant_id"] not in selected_ids]
+    return selected, remaining
+
+
+def _build_peer_trend(groups: dict, sort_key) -> dict:
+    """Transforme un dict de groupes bruts {clé: {display, names, has_me}} en
+    structure d'affichage top 3 + mon groupe (preview) / reste (remaining).
+
+    Partagé par les tendances des questions bonus classiques (B7a/B7a.1) et
+    des cartes pré-tournoi (B7b) : même seuil d'anonymat, mêmes règles de
+    préview et de <details> local/global.
+    """
+    ordered = sorted(groups.values(), key=sort_key)
+    total = sum(len(g["names"]) for g in ordered)
+    enriched = []
+    my_index = None
+    for idx, g in enumerate(ordered):
+        count = len(g["names"])
+        percentage = round(count * 100 / total) if total else 0
+        if count < BONUS_TREND_NAME_THRESHOLD and not g["has_me"]:
+            example_names, remaining_names = [], []
+        else:
+            example_names, remaining_names = _select_example_names(
+                g["names"], g["has_me"], BONUS_TREND_EXAMPLE_NAMES
+            )
+        enriched.append({
+            "display": g["display"],
+            "names": g["names"],
+            "has_me": g["has_me"],
+            "count": count,
+            "percentage": percentage,
+            "example_names": example_names,
+            "remaining_names": remaining_names,
+            "show_names": count >= BONUS_TREND_NAME_THRESHOLD or g["has_me"],
+        })
+        if g["has_me"]:
+            my_index = idx
+    preview = enriched[:BONUS_TREND_PREVIEW_SIZE]
+    preview_indices = set(range(len(preview)))
+    if my_index is not None and my_index >= BONUS_TREND_PREVIEW_SIZE:
+        preview = preview + [enriched[my_index]]
+        preview_indices.add(my_index)
+    remaining = [g for idx, g in enumerate(enriched) if idx not in preview_indices]
+    return {"preview": preview, "remaining": remaining}
+
+
 async def _load_bonus_peer_answers(db, questions, participant_id: int):
     """Tendances des réponses de tous les participants pour chaque question verrouillée.
 
@@ -2306,56 +2365,10 @@ async def _load_bonus_peer_answers(db, questions, participant_id: int):
 
         return _key
 
-    def _select_example_names(names, has_me, limit):
-        """Jusqu'à `limit` noms d'exemple, garantissant que "moi" y figure si
-        mon groupe est représenté (quitte à remplacer le dernier exemple
-        non-moi). Retourne aussi les noms restants du groupe (pour le <details>
-        local "Voir les X autres")."""
-        selected = list(names[:limit])
-        if has_me and not any(n["is_me"] for n in selected):
-            me_entry = next(n for n in names if n["is_me"])
-            if selected:
-                selected[-1] = me_entry
-            else:
-                selected = [me_entry]
-        selected_ids = {n["participant_id"] for n in selected}
-        remaining = [n for n in names if n["participant_id"] not in selected_ids]
-        return selected, remaining
-
-    result = {}
-    for qid, groups in by_question.items():
-        ordered = sorted(groups.values(), key=_group_sort_key(locked[qid]))
-        total = sum(len(g["names"]) for g in ordered)
-        enriched = []
-        my_index = None
-        for idx, g in enumerate(ordered):
-            count = len(g["names"])
-            percentage = round(count * 100 / total) if total else 0
-            if count < BONUS_TREND_NAME_THRESHOLD and not g["has_me"]:
-                example_names, remaining_names = [], []
-            else:
-                example_names, remaining_names = _select_example_names(
-                    g["names"], g["has_me"], BONUS_TREND_EXAMPLE_NAMES
-                )
-            enriched.append({
-                "display": g["display"],
-                "names": g["names"],
-                "has_me": g["has_me"],
-                "count": count,
-                "percentage": percentage,
-                "example_names": example_names,
-                "remaining_names": remaining_names,
-            })
-            if g["has_me"]:
-                my_index = idx
-        preview = enriched[:BONUS_TREND_PREVIEW_SIZE]
-        preview_indices = set(range(len(preview)))
-        if my_index is not None and my_index >= BONUS_TREND_PREVIEW_SIZE:
-            preview = preview + [enriched[my_index]]
-            preview_indices.add(my_index)
-        remaining = [g for idx, g in enumerate(enriched) if idx not in preview_indices]
-        result[qid] = {"preview": preview, "remaining": remaining}
-    return result
+    return {
+        qid: _build_peer_trend(groups, _group_sort_key(locked[qid]))
+        for qid, groups in by_question.items()
+    }
 
 
 def _bonus_hub_status(item: dict) -> str:
@@ -2432,21 +2445,100 @@ def _pt_correct_answer_display(key: str, question_map: dict) -> str:
     return str(question.get("correct_answer") or "").strip()
 
 
+_PT_TREND_KEYS = ("winner", "finalist", "top_scorer", "revelation", "total_goals")
+
+
+def _pt_trend_sort_key(numeric: bool):
+    def _key(group):
+        display = group["display"] or ""
+        if numeric:
+            try:
+                return (-len(group["names"]), 0, float(display), "")
+            except (TypeError, ValueError):
+                pass
+        return (-len(group["names"]), 1, 0.0, display)
+
+    return _key
+
+
+async def _load_pre_tournament_peer_trends(db, pt_status: dict, participant_id: int) -> dict:
+    """Tendances collègues pour les 5 questions pré-tournoi (B7b).
+
+    Confidentialité non négociable : tant que pt_status["open"] est vrai,
+    aucune ligne n'est lue ni retournée. Le dict est alors vide (clé absente
+    pour chaque question), jamais une structure preview/remaining vide qui
+    pourrait laisser deviner qu'une donnée existe derrière la deadline. Ne
+    lit jamais la bonne réponse ni les points déjà calculés : uniquement les
+    prédictions brutes des participants confirmés non-admin.
+    """
+    if pt_status["open"]:
+        return {}
+    rows = await db.execute(
+        """SELECT ptp.participant_id, ptp.winner, ptp.finalist, ptp.top_scorer,
+                  ptp.revelation, ptp.total_goals,
+                  COALESCE(NULLIF(p.nickname, ''), p.name) as name
+           FROM pre_tournament_predictions ptp
+           JOIN participants p ON p.id = ptp.participant_id
+           WHERE p.is_confirmed = 1 AND p.is_admin = 0 AND ptp.submitted = 1
+           ORDER BY name COLLATE NOCASE ASC"""
+    )
+    predictions = await rows.fetchall()
+
+    groups_by_key = {key: {} for key in _PT_TREND_KEYS}
+
+    def _add(key, group_key, display, pred):
+        group = groups_by_key[key].setdefault(
+            group_key, {"display": display, "names": [], "has_me": False}
+        )
+        is_me = pred["participant_id"] == participant_id
+        group["names"].append(
+            {"name": pred["name"], "participant_id": pred["participant_id"], "is_me": is_me}
+        )
+        group["has_me"] = group["has_me"] or is_me
+
+    for pred in predictions:
+        winner = str(pred["winner"] or "").strip()
+        finalist = str(pred["finalist"] or "").strip()
+        top_scorer = str(pred["top_scorer"] or "").strip()
+        revelation = str(pred["revelation"] or "").strip()
+        total_goals = pred["total_goals"]
+
+        if winner:
+            _add("winner", winner, winner, pred)
+        if winner and finalist:
+            pair = tuple(sorted((winner, finalist)))
+            _add("finalist", pair, " + ".join(pair), pred)
+        if top_scorer:
+            normalized = normalize_scorer(top_scorer)
+            _add("top_scorer", normalized, normalized, pred)
+        if revelation:
+            _add("revelation", revelation, revelation, pred)
+        if total_goals:
+            _add("total_goals", total_goals, str(total_goals), pred)
+
+    return {
+        key: _build_peer_trend(groups_by_key[key], _pt_trend_sort_key(key == "total_goals"))
+        for key in _PT_TREND_KEYS
+    }
+
+
 def _build_pre_tournament_bonus_cards(
     token: str,
     pt_status: dict,
     questions: list,
     score_by_key: dict,
+    peer_trends: dict | None = None,
 ) -> list:
     """Build one display card per enabled pre-tournament question for /bonus."""
     pt = pt_status.get("pt") or {}
     question_map = {q["key"]: q for q in questions}
+    peer_trends = peer_trends or {}
     cards = []
     for q in questions:
         key = q["key"]
         score = score_by_key.get(key)
         answer_display = _pt_answer_display(key, pt)
-        cards.append({
+        card = {
             "is_pre_tournament": True,
             "key": key,
             "label": PRE_TOURNAMENT_BONUS_CARD_LABELS.get(key, q["label"]),
@@ -2464,7 +2556,10 @@ def _build_pre_tournament_bonus_cards(
             "complete": pt_status["complete"],
             "deadline": pt_status["deadline"],
             "href": f"/p/{token}/pre-tournoi#pt-{key}",
-        })
+        }
+        if key in peer_trends:
+            card["peer_trend"] = peer_trends[key]
+        cards.append(card)
     return cards
 
 
@@ -2612,11 +2707,13 @@ async def bonus_page(request: Request, token: str):
         pt_cards = []
         if pt_status["question_count"] > 0:
             pt_questions = await get_pre_tournament_questions(db)
+            pt_peer_trends = await _load_pre_tournament_peer_trends(db, pt_status, p["id"])
             pt_cards = _build_pre_tournament_bonus_cards(
                 token,
                 pt_status,
                 pt_questions,
                 visible_pt_scores,
+                pt_peer_trends,
             )
         phase_labels = {"pre_tournament": "Pré-tournoi", **PHASE_LABELS}
         total_bonus_points = bonus_questions_points + visible_pt_points

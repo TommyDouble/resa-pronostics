@@ -30,12 +30,19 @@ _GLOBAL_MARKER = "Voir les autres réponses"
 
 def _card_html(html, question_text):
     """Extrait le HTML de la carte d'une question (la page peut contenir des
-    questions laissées par d'autres tests, la BDD étant partagée)."""
+    questions laissées par d'autres tests, la BDD étant partagée).
+
+    La borne de fin doit s'arrêter à la prochaine carte, qu'il s'agisse d'une
+    autre question bonus ou d'une carte pré-tournoi (B7b) : sinon, une fois
+    la deadline pré-tournoi passée, le bloc "Tendance collègues" des cartes
+    pré-tournoi qui suivent se retrouve inclus dans la carte extraite.
+    """
     marker = "bonus-question-card"
     idx = html.index(question_text)
     start = html.rindex(marker, 0, idx)
-    end = html.find(marker, idx)
-    return html[start:end if end != -1 else len(html)]
+    ends = [e for e in (html.find(marker, idx), html.find("bonus-pt-card", idx)) if e != -1]
+    end = min(ends) if ends else len(html)
+    return html[start:end]
 
 
 def _preview_html(card):
@@ -501,6 +508,49 @@ def test_global_block_excludes_preview_groups(client, participant):
         assert "Alpha" not in remaining
         assert "Bravo" not in remaining
         assert "Delta" not in remaining
+        # Charlie est un singleton non-moi hors aperçu : le libellé de
+        # réponse reste visible dans le bloc global, mais pas le nom du
+        # participant (seuil d'anonymat appliqué au bloc global aussi).
+        assert "Coll Charlie 1" not in remaining
+        assert "Voir 1 autre" not in remaining
+    finally:
+        _cleanup([question_id], colleagues)
+
+
+def test_global_block_shows_names_for_two_person_group(client, participant):
+    """Un groupe hors aperçu d'au moins 2 personnes (seuil d'anonymat atteint)
+    affiche bien les noms dans le bloc global — seuls les singletons non-moi
+    voient leur nom masqué."""
+    question_id = _seed_question(
+        "Question global deux personnes (peer-test) ?",
+        deadline=_PAST_DEADLINE,
+        answer_type="choice",
+        options='["Alpha","Bravo","Charlie","Delta"]',
+    )
+    colleagues = []
+    try:
+        for name, answer in [
+            ("Coll Deux Alpha 1", "Alpha"), ("Coll Deux Alpha 2", "Alpha"), ("Coll Deux Alpha 3", "Alpha"),
+            ("Coll Deux Bravo 1", "Bravo"), ("Coll Deux Bravo 2", "Bravo"), ("Coll Deux Bravo 3", "Bravo"),
+            ("Coll Deux Charlie 1", "Charlie"), ("Coll Deux Charlie 2", "Charlie"), ("Coll Deux Charlie 3", "Charlie"),
+            ("Coll Deux Delta 1", "Delta"), ("Coll Deux Delta 2", "Delta"),
+        ]:
+            cid = _seed_participant(name)
+            colleagues.append(cid)
+            _seed_answer(question_id, cid, answer)
+
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        card = _card_html(html, "Question global deux personnes (peer-test) ?")
+        preview = _preview_html(card)
+        remaining = _global_remaining_html(card)
+
+        # Top 3 ex-æquo à 3 : Alpha, Bravo, Charlie (ordre alphabétique).
+        # Delta (2 personnes) reste hors aperçu, dans le bloc global.
+        assert "Delta" not in preview
+        assert remaining is not None
+        assert "Delta" in remaining
+        assert "Coll Deux Delta 1" in remaining
+        assert "Coll Deux Delta 2" in remaining
     finally:
         _cleanup([question_id], colleagues)
 
