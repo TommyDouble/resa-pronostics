@@ -349,6 +349,17 @@ CREATE INDEX IF NOT EXISTS idx_knockout_slots_source
 CREATE INDEX IF NOT EXISTS idx_sporting_evo_climber
   ON sporting_day_rank_evolutions(sporting_day, is_climber);
 
+CREATE TABLE IF NOT EXISTS scoring_point_events (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  source         TEXT    NOT NULL CHECK(source IN ('bonus','pre_tournament')),
+  source_key     TEXT    NOT NULL,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  delta          INTEGER NOT NULL,
+  occurred_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_scoring_point_events_participant
+  ON scoring_point_events(participant_id);
+
 CREATE TABLE IF NOT EXISTS trophy_awards (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
@@ -568,6 +579,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await _migrate_trophy_sporting_day(db)
         await _backfill_trophy_awards(db)
         await _cleanup_journee_parfaite_awards(db)
+        await _migrate_backfill_scoring_point_events(db)
         await db.commit()
 
 
@@ -1117,6 +1129,33 @@ async def _backfill_trophy_awards(db):
     )).fetchone()
     if done:
         return
+    from app.trophies import refresh_trophy_awards
+    await refresh_trophy_awards(db)
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
+async def _migrate_backfill_scoring_point_events(db):
+    """One-shot : reconstruit les événements bonus/pré-tournoi déjà attribués
+    avant l'existence de `scoring_point_events`, puis resynchronise l'historique
+    de rang et les trophées avec ces mouvements retrouvés.
+
+    Sans cette étape, les points bonus/pré-tournoi déjà encodés en production
+    au moment du déploiement de cette table resteraient invisibles : flèches
+    de `/classement`, Reveal, Grimpeur et carrousel de badges ne bougeraient
+    qu'à partir du prochain recalcul, pas pour l'historique déjà en base.
+    """
+    key = "migr_backfill_scoring_point_events_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+    from app.scoring import backfill_scoring_point_events, sync_finalized_evolution_history
+    await backfill_scoring_point_events(db)
+    await sync_finalized_evolution_history(db)
     from app.trophies import refresh_trophy_awards
     await refresh_trophy_awards(db)
     await db.execute(

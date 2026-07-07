@@ -4,16 +4,21 @@ from datetime import timedelta
 from app.database import get_db, _migrate_reveal_sporting_day
 import app.routers.pages as pages
 from app.routers.pages import _register_daily_connection, _reveal_window_data
+from app.scoring import calculate_bonus_scores
 from app.timeutils import now_utc, sporting_day
 from tests.conftest import run
 
 
 def _reset_matches():
     """Isole le scénario : la fenêtre du reveal cible les journées finalisées,
-    donc on repart d'une table matches vide (cascade scores/predictions)."""
+    donc on repart d'une table matches vide (cascade scores/predictions).
+    `scoring_point_events` alimente aussi cette fenêtre (journées bonus/pré-
+    tournoi) : on la vide de même pour ne pas hériter d'événements d'autres
+    tests du même run (DB de session partagée)."""
     async def _c():
         async with get_db() as db:
             await db.execute("DELETE FROM matches")
+            await db.execute("DELETE FROM scoring_point_events")
             await db.commit()
     run(_c())
 
@@ -95,6 +100,57 @@ def _connection_state(pid):
             )).fetchone()
             return dict(row)
     return run(_g())
+
+
+def _make_bonus_question(points_value, options='["A","B"]'):
+    async def _c():
+        async with get_db() as db:
+            cur = await db.execute(
+                """INSERT INTO bonus_questions
+                   (question_text, phase, answer_type, options, points_value,
+                    scoring_mode, is_published, deadline)
+                   VALUES ('Bonus reveal ?', 'group', 'choice', ?, ?, 'exact', 1, '2020-01-01T00:00:00')""",
+                (options, points_value),
+            )
+            await db.commit()
+            return cur.lastrowid
+    return run(_c())
+
+
+def _answer_bonus(question_id, pid, answer):
+    async def _c():
+        async with get_db() as db:
+            await db.execute(
+                "INSERT INTO bonus_answers (participant_id, question_id, answer) VALUES (?,?,?)",
+                (pid, question_id, answer),
+            )
+            await db.commit()
+    run(_c())
+
+
+def _correct_bonus(question_id, correct_answer, occurred_at):
+    """Corrige la question puis recale l'horodatage de l'événement journalisé
+    sur la ligne temporelle fictive du scénario (le vrai `datetime('now')` SQL
+    ne colle pas forcément aux dates de test choisies, cf. le mécanisme de
+    bucketing des événements bonus/pré-tournoi)."""
+    async def _c():
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE bonus_questions SET correct_answer=? WHERE id=?",
+                (correct_answer, question_id),
+            )
+            await db.commit()
+    run(_c())
+    run(calculate_bonus_scores(question_id))
+
+    async def _backdate():
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE scoring_point_events SET occurred_at=? WHERE source='bonus' AND source_key=?",
+                (occurred_at, str(question_id)),
+            )
+            await db.commit()
+    run(_backdate())
 
 
 def _explicit_result_match(number, day):
@@ -306,3 +362,46 @@ def test_reveal_uses_connection_baseline_but_guarantees_latest_finalized_day(
     # Une fois réellement vue, elle disparaît.
     run(_set("2035-02-03", seen="2035-02-03"))
     assert _window(participant["id"]) is None
+
+
+def test_bonus_only_correction_opens_a_reveal_window(client, participant):
+    """Un encodage bonus sans AUCUN match doit quand même déclencher un Reveal,
+    avec la carte bonus et le mouvement de classement correspondant."""
+    _reset_matches()
+    other = run(_create_other_participant("BonusRevealOther"))
+
+    async def _set(baseline="", seen=""):
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE participants
+                   SET reveal_connection_baseline_day=?, last_revealed_date=?
+                   WHERE id IN (?, ?)""",
+                (baseline, seen, participant["id"], other),
+            )
+            await db.commit()
+    run(_set())
+
+    q = _make_bonus_question(points_value=15)
+    _answer_bonus(q, participant["id"], "A")
+    _answer_bonus(q, other, "B")
+    _correct_bonus(q, "A", "2035-06-01T20:00:00")
+
+    win = _window(participant["id"])
+    assert win is not None
+    assert win["match_count"] == 0
+    assert len(win["bonus_items"]) == 1
+    assert win["bonus_items"][0]["points"] == 15
+    assert win["total_points"] == 15
+    assert win["sporting_day"] == "2035-06-01"
+
+
+async def _create_other_participant(name):
+    import uuid
+    async with get_db() as db:
+        token = str(uuid.uuid4())
+        cur = await db.execute(
+            "INSERT INTO participants (name, email, token, is_confirmed) VALUES (?,?,?,1)",
+            (name, f"{token}@test.local", token),
+        )
+        await db.commit()
+        return cur.lastrowid

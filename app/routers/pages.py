@@ -51,6 +51,7 @@ from app.pre_tournament import (
 from app.prizes import get_prize_info
 from app.result_display import qualified_team_name, result_full_label
 from app.scoring import (
+    _scoring_points_by_day,
     actual_match_winner,
     bonus_number_is_integer,
     format_number_multi,
@@ -60,6 +61,7 @@ from app.scoring import (
     get_rank_evolution,
     get_rankings,
     get_remontada,
+    get_sporting_day_states,
     is_match_prediction_correct,
     is_match_score_exact,
     normalize_closest_config,
@@ -84,6 +86,7 @@ from app.timeutils import (
     now_utc_iso,
     sporting_day,
     sporting_day_bounds,
+    sporting_day_for_timestamp,
 )
 
 # Whitelist stricte des templates de story (registre central app.news) :
@@ -497,34 +500,32 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
     }
 
 
-async def _reveal_rank_evolution(db, participant_id: int, window_ids: list,
+async def _reveal_rank_evolution(db, participant_id: int, selected_days: list,
                                  through_day: str | None = None) -> dict:
-    """Évolution de rang provoquée par les matchs du périmètre, focus participant.
+    """Évolution de rang provoquée par la fenêtre (matchs + bonus + pré-tournoi),
+    focus participant.
 
-    Avant = classement actuel privé des points gagnés sur ces matchs (déterministe,
-    sans état stocké). Renvoie les extraits 3 lignes (dessus/toi/dessous) avant/après.
+    Avant = classement actuel privé des points gagnés sur ces jours (déterministe,
+    sans état stocké, `_scoring_points_by_day` unifie matchs/bonus/pré-tournoi —
+    cf. `app/scoring.py`). Renvoie les extraits 3 lignes (dessus/toi/dessous)
+    avant/après.
     """
     current = await get_rankings(db)
-    if not current or not window_ids:
+    if not current or not selected_days:
         return {}
-    placeholders = ",".join("?" for _ in window_ids)
-    pts_rows = await db.execute(
-        f"""SELECT participant_id, COALESCE(SUM(points), 0) AS pts
-            FROM scores WHERE match_id IN ({placeholders}) GROUP BY participant_id""",
-        window_ids,
-    )
-    win_pts = {r["participant_id"]: r["pts"] for r in await pts_rows.fetchall()}
+    points_by_day = await _scoring_points_by_day(db)
+    selected = set(selected_days)
+    win_pts: dict[int, int] = {}
+    for day in selected:
+        for pid, pts in points_by_day.get(day, {}).items():
+            win_pts[pid] = win_pts.get(pid, 0) + pts
     after_points = {r["id"]: r["total_points"] for r in current}
     if through_day:
-        future_rows = await db.execute(
-            """SELECT s.participant_id, s.points, m.match_date, m.kickoff_time
-               FROM scores s JOIN matches m ON m.id=s.match_id
-               WHERE s.match_id IS NOT NULL"""
-        )
-        for row in await future_rows.fetchall():
-            item = dict(row)
-            if sporting_day(item) > through_day and item["participant_id"] in after_points:
-                after_points[item["participant_id"]] -= item["points"]
+        for day, day_pts in points_by_day.items():
+            if day > through_day:
+                for pid, pts in day_pts.items():
+                    if pid in after_points:
+                        after_points[pid] -= pts
     baseline_points = {pid: points - win_pts.get(pid, 0) for pid, points in after_points.items()}
     all_bp = sorted(baseline_points.values(), reverse=True)
     before_rank = {pid: 1 + sum(1 for p in all_bp if p > bp) for pid, bp in baseline_points.items()}
@@ -618,8 +619,81 @@ async def _register_daily_connection(db, participant_id: int) -> str:
     return baseline
 
 
+async def _bonus_pretournament_window_items(
+    db, participant_id: int, selected_days: list
+) -> tuple[list[dict], list[dict]]:
+    """Cartes bonus/pré-tournoi de la fenêtre, sourcées de `scoring_point_events`
+    (le delta réel de l'événement, pas la valeur absolue courante de la question
+    — cf. la note "delta vs valeur absolue" du plan de correction : après une
+    correction rétroactive, la valeur courante ne représente plus le delta du
+    jour où l'événement historique a eu lieu). Une carte par question touchée
+    dans la fenêtre, même si le delta du participant est nul (symétrie avec les
+    cartes de match, toujours affichées même à 0 pt / sans prono)."""
+    selected = set(selected_days)
+    rows = await db.execute(
+        "SELECT source, source_key, participant_id, delta, occurred_at FROM scoring_point_events"
+    )
+    by_source_key: dict[tuple[str, str], dict[int, int]] = defaultdict(dict)
+    for r in await rows.fetchall():
+        day = sporting_day_for_timestamp(r["occurred_at"])
+        if day not in selected:
+            continue
+        bucket = by_source_key[(r["source"], r["source_key"])]
+        bucket[r["participant_id"]] = bucket.get(r["participant_id"], 0) + r["delta"]
+
+    bonus_items: list[dict] = []
+    pretournament_items: list[dict] = []
+    if not by_source_key:
+        return bonus_items, pretournament_items
+
+    bonus_ids = [key for (src, key) in by_source_key if src == "bonus"]
+    pt_keys = [key for (src, key) in by_source_key if src == "pre_tournament"]
+
+    bonus_titles: dict[str, str] = {}
+    if bonus_ids:
+        placeholders = ",".join("?" for _ in bonus_ids)
+        qrows = await db.execute(
+            f"SELECT id, question_text FROM bonus_questions WHERE id IN ({placeholders})",
+            [int(x) for x in bonus_ids],
+        )
+        for r in await qrows.fetchall():
+            title, prompt = _bonus_title_prompt(r["question_text"])
+            bonus_titles[str(r["id"])] = title or prompt
+
+    pt_titles: dict[str, str] = {}
+    if pt_keys:
+        placeholders = ",".join("?" for _ in pt_keys)
+        qrows = await db.execute(
+            f"SELECT key, label FROM pre_tournament_questions WHERE key IN ({placeholders})",
+            pt_keys,
+        )
+        pt_titles = {r["key"]: r["label"] for r in await qrows.fetchall()}
+
+    for (source, key), deltas in by_source_key.items():
+        points = deltas.get(participant_id, 0)
+        if source == "bonus":
+            bonus_items.append({
+                "question_id": key,
+                "title": bonus_titles.get(key, ""),
+                "points": points,
+            })
+        else:
+            pretournament_items.append({
+                "question_key": key,
+                "title": pt_titles.get(key, ""),
+                "points": points,
+            })
+    bonus_items.sort(key=lambda i: i["title"])
+    pretournament_items.sort(key=lambda i: i["title"])
+    return bonus_items, pretournament_items
+
+
 async def _reveal_window_data(db, participant_id: int) -> dict | None:
-    """Journées finalisées depuis la connexion précédente, dernière garantie."""
+    """Journées finalisées depuis la connexion précédente, dernière garantie.
+
+    Une journée peut désormais être "finalisée" par une activité bonus/pré-tournoi
+    seule (aucun match ce jour) — cf. `get_sporting_day_states`.
+    """
     prow = await (await db.execute(
         """SELECT last_revealed_date, reveal_connection_baseline_day,
                   last_connected_sporting_day
@@ -634,13 +708,8 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
     for m in all_matches:
         m["sd"] = sporting_day(m)
 
-    by_day = defaultdict(list)
-    for match in all_matches:
-        by_day[match["sd"]].append(match)
-    finalized_days = sorted(
-        day for day, matches in by_day.items()
-        if matches and all(m["result"] is not None for m in matches)
-    )
+    states = await get_sporting_day_states(db)
+    finalized_days = sorted(day for day, state in states.items() if state["finalized"])
     if not finalized_days:
         return None
     latest_sd = finalized_days[-1]
@@ -660,17 +729,19 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
         key=lambda m: (m["match_date"], m["kickoff_time"], m["match_number"]),
     )
     window_ids = [m["id"] for m in window]
-    placeholders = ",".join("?" for _ in window_ids)
-    mrows = await db.execute(
-        f"""SELECT m.id AS mid, pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
-                   pr.qualifier_prediction, s.points
-            FROM matches m
-            LEFT JOIN predictions pr ON pr.match_id = m.id AND pr.participant_id = ?
-            LEFT JOIN scores s ON s.match_id = m.id AND s.participant_id = ?
-            WHERE m.id IN ({placeholders})""",
-        (participant_id, participant_id, *window_ids),
-    )
-    extra = {r["mid"]: dict(r) for r in await mrows.fetchall()}
+    extra = {}
+    if window_ids:
+        placeholders = ",".join("?" for _ in window_ids)
+        mrows = await db.execute(
+            f"""SELECT m.id AS mid, pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
+                       pr.qualifier_prediction, s.points
+                FROM matches m
+                LEFT JOIN predictions pr ON pr.match_id = m.id AND pr.participant_id = ?
+                LEFT JOIN scores s ON s.match_id = m.id AND s.participant_id = ?
+                WHERE m.id IN ({placeholders})""",
+            (participant_id, participant_id, *window_ids),
+        )
+        extra = {r["mid"]: dict(r) for r in await mrows.fetchall()}
     matches = []
     total = 0
     exact_count = 0
@@ -701,6 +772,12 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
             "total_points": sum(m["points"] for m in day_matches),
             "exact_count": sum(1 for m in day_matches if m["tier"] == "exact"),
         })
+    bonus_items, pretournament_items = await _bonus_pretournament_window_items(
+        db, participant_id, selected_days
+    )
+    bonus_points = sum(item["points"] for item in bonus_items)
+    pretournament_points = sum(item["points"] for item in pretournament_items)
+
     reveal_sd = selected_days[-1]
     is_catchup = len(selected_days) > 1
     return {
@@ -710,11 +787,13 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
         "day_count": len(day_groups),
         "is_catchup": is_catchup,
         "matches": matches,
-        "total_points": total,
+        "bonus_items": bonus_items,
+        "pretournament_items": pretournament_items,
+        "total_points": total + bonus_points + pretournament_points,
         "exact_count": exact_count,
         "match_count": len(matches),
         "evolution": await _reveal_rank_evolution(
-            db, participant_id, window_ids, through_day=reveal_sd
+            db, participant_id, selected_days, through_day=reveal_sd
         ),
     }
 
@@ -937,6 +1016,9 @@ async def participant_home(request: Request, token: str):
         # même baseline) : points, compte et flèche dérivent du même objet, donc
         # toujours cohérents. Se cache en même temps que le Reveal (reveal_available).
         ctx["reveal_match_count"] = reveal["match_count"] if reveal else 0
+        ctx["reveal_bonus_count"] = (
+            len(reveal["bonus_items"]) + len(reveal["pretournament_items"]) if reveal else 0
+        )
         ctx["reveal_evolution"] = (
             reveal["evolution"]["delta"]
             if reveal and reveal.get("evolution") and reveal["evolution"].get("after")

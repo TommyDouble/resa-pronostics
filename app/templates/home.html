@@ -185,7 +185,11 @@
     <div class="re-body">
       <span class="re-title">{{ 'Ton rattrapage est prêt' if reveal_is_catchup else 'Le Reveal du jour est prêt' }}</span>
       <span class="re-sub">
-        {% if reveal_is_catchup %}Depuis ta dernière visite · {{ reveal_day_count }} journées · {{ reveal_match_count }} matchs{% else %}{{ reveal_day_label }} · {{ reveal_match_count }} match{{ 's' if reveal_match_count > 1 else '' }}{% endif %}
+        {% set match_part = reveal_match_count ~ ' match' ~ ('s' if reveal_match_count > 1 else '') if reveal_match_count else '' %}
+        {% set bonus_part = reveal_bonus_count ~ ' bonus' if reveal_bonus_count else '' %}
+        {% set parts = [match_part, bonus_part] | select | list %}
+        {% if reveal_is_catchup %}Depuis ta dernière visite · {{ reveal_day_count }} journées{% if parts %} · {{ parts | join(' · ') }}{% endif %}
+        {% else %}{{ reveal_day_label }}{% if parts %} · {{ parts | join(' · ') }}{% endif %}{% endif %}
       </span>
     </div>
     <div class="re-result">

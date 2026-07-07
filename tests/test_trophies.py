@@ -327,6 +327,70 @@ def test_grimpeur_from_evolutions():
     assert ("grimpeur", "2099-05-09") in _awards(pid)
 
 
+def test_grimpeur_from_bonus_correction_keyed_by_encoding_date():
+    """Décision PO : un mouvement provoqué par un bonus/pré-tournoi doit aussi
+    pouvoir décrocher "Le Grimpeur", daté du jour d'ENCODAGE de la réponse (pas
+    d'une date de match) — cf. `_scoring_points_by_day` (app/scoring.py), qui
+    bucket les événements bonus/pré-tournoi via `scoring_point_events.occurred_at`."""
+    from app.scoring import calculate_bonus_scores
+    from app.timeutils import current_sporting_day
+
+    leader = _new_participant("GrimpeurBonusLeader")
+    middle = _new_participant("GrimpeurBonusMiddle")
+    climber = _new_participant("GrimpeurBonusClimber")
+    m = _mk_match(result="team1", s1=1, s2=0, date="2010-01-01")
+
+    async def _seed_baseline():
+        async with get_db() as db:
+            await db.execute(
+                "INSERT INTO scores (participant_id, match_id, points) VALUES (?,?,20)",
+                (leader, m),
+            )
+            await db.execute(
+                "INSERT INTO scores (participant_id, match_id, points) VALUES (?,?,10)",
+                (middle, m),
+            )
+            await db.execute(
+                "INSERT INTO scores (participant_id, match_id, points) VALUES (?,?,0)",
+                (climber, m),
+            )
+            await db.commit()
+
+    run(_seed_baseline())
+
+    async def _create_bonus():
+        async with get_db() as db:
+            cur = await db.execute(
+                """INSERT INTO bonus_questions
+                   (question_text, phase, answer_type, options, points_value,
+                    scoring_mode, is_published, deadline, correct_answer)
+                   VALUES ('Grimpeur bonus ?', 'group', 'choice', '["A","B"]', 25,
+                           'exact', 1, '2020-01-01T00:00:00', NULL)""",
+            )
+            question_id = cur.lastrowid
+            await db.execute(
+                "INSERT INTO bonus_answers (participant_id, question_id, answer) VALUES (?,?,'A')",
+                (climber, question_id),
+            )
+            await db.execute(
+                "INSERT INTO bonus_answers (participant_id, question_id, answer) VALUES (?,?,'B')",
+                (leader, question_id),
+            )
+            await db.execute(
+                "UPDATE bonus_questions SET correct_answer='A' WHERE id=?", (question_id,)
+            )
+            await db.commit()
+            return question_id
+
+    question_id = run(_create_bonus())
+    run(calculate_bonus_scores(question_id))
+    # climber : 0 -> 25 pts de bonus aujourd'hui, dépasse middle (10) et leader
+    # (20) : 3e -> 1er, un vrai bond (delta >= 2) daté d'aujourd'hui (jour
+    # d'encodage), pas de la journée du match (2010, très antérieure).
+    today = current_sporting_day()
+    assert ("grimpeur", today) in _awards(climber)
+
+
 def test_extraterrestre_secret_hidden_then_unlocked():
     # Participant sans rien : le secret est masqué dans le cabinet
     other = _new_participant("Lambda")
