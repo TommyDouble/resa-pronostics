@@ -474,6 +474,12 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
 .chip.up { background: #E6F0E6; color: var(--success); }
 .chip.dn { background: #FBE3E3; color: var(--error); }
 .chip.fl { background: var(--n100); color: var(--n400); }
+.chip.new {
+  background: var(--paper);
+  color: var(--primary);
+  border: 1.5px solid var(--primary);
+  font-weight: 800;
+}
 
 /* ---- Number+teams badges (number_multi bonus) ---- */
 .nm-badge {
@@ -508,6 +514,11 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
 }
 .bonus-hub-phase { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .bonus-pt-card { padding: 14px; }
+.bonus-question-card.is-new-result,
+.bonus-pt-card.is-new-result {
+  border-color: rgba(211,69,13,.35);
+  box-shadow: 0 0 0 2px rgba(211,69,13,.08);
+}
 
 /* ---- Bonus question cards ---- */
 .bonus-question-card {

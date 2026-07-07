@@ -372,6 +372,18 @@ CREATE TABLE IF NOT EXISTS trophy_awards (
 );
 CREATE INDEX IF NOT EXISTS idx_trophy_awards_participant
   ON trophy_awards(participant_id);
+
+CREATE TABLE IF NOT EXISTS bonus_result_views (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  source         TEXT    NOT NULL CHECK(source IN ('bonus_question','pre_tournament')),
+  source_key     TEXT    NOT NULL,
+  result_version TEXT    NOT NULL,
+  seen_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(participant_id, source, source_key)
+);
+CREATE INDEX IF NOT EXISTS idx_bonus_result_views_participant
+  ON bonus_result_views(participant_id);
         """)
         await db.commit()
 

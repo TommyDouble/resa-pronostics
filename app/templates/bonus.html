@@ -35,6 +35,9 @@
     </div>
 
     <div class="muted" style="font-size:12px;margin-top:6px;" data-bonus-counters>
+      {% if situation.new_result_count > 0 %}
+      <span data-bonus-new-result-count>{{ situation.new_result_count }} nouveau{{ 'x' if situation.new_result_count > 1 else '' }} résultat{{ 's' if situation.new_result_count > 1 else '' }}</span> ·
+      {% endif %}
       {{ situation.todo_count }} à répondre · {{ situation.counts.waiting }} en attente · {{ situation.counts.resolved }} résolue{{ 's' if situation.counts.resolved != 1 else '' }}
     </div>
 

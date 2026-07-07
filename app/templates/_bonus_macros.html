@@ -71,8 +71,8 @@
 
 {% macro bonus_question_card(q, token, phase_labels, mode='page', index=1, total=1) -%}
 {% set is_stack = mode == 'stack' %}
-<div class="{% if is_stack %}bonus-stack-card{% if index == 1 %} is-active{% elif index == 2 %} is-next{% endif %}{% else %}card bonus-question-card{% endif %}"
-     {% if is_stack %}data-bonus-stack-card data-question-id="{{ q.id }}" style="--stack-pos: {{ index - 1 }};"{% endif %}>
+<div class="{% if is_stack %}bonus-stack-card{% if index == 1 %} is-active{% elif index == 2 %} is-next{% endif %}{% else %}card bonus-question-card{% if q.is_new_result %} is-new-result{% endif %}{% endif %}"
+     {% if is_stack %}data-bonus-stack-card data-question-id="{{ q.id }}" style="--stack-pos: {{ index - 1 }};"{% else %}id="bonus-q-{{ q.id }}"{% endif %}>
   <div class="bonus-q-meta">
     <span class="chip acc tip" tabindex="0" data-tip="Points attribués selon le barème de la question.">{{ phase_labels.get(q.phase, q.phase) }} · {{ q.points_label or (q.points_value ~ ' pts') }}</span>
     {% if not is_stack %}
@@ -86,6 +86,9 @@
         <span class="chip gr">Verrouillée</span>
       {% else %}
         <span class="chip lock">Non répondue</span>
+      {% endif %}
+      {% if q.is_new_result %}
+        <span class="chip new">Nouveau résultat</span>
       {% endif %}
     {% endif %}
     <span class="muted tip bonus-q-deadline" tabindex="0" data-tip="Après cette deadline, la réponse n'est plus modifiable.">
@@ -215,7 +218,7 @@
 {# Cartes pré-tournoi du hub /bonus. Attention : ne jamais y introduire
    le marqueur HTML utilisé par les tests B3. #}
 {% macro bonus_pt_card(item, token) -%}
-<div class="card bonus-pt-card" data-bonus-pt-card data-bonus-pt-key="{{ item.key }}">
+<div class="card bonus-pt-card{{ ' is-new-result' if item.is_new_result else '' }}" data-bonus-pt-card data-bonus-pt-key="{{ item.key }}" id="bonus-pt-{{ item.key }}">
   <div class="bonus-q-meta">
     <span class="chip acc">Pré-tournoi · {{ item.points_label }}</span>
     {% if item.is_open %}
@@ -230,6 +233,9 @@
       <span class="chip gr">Verrouillée</span>
     {% else %}
       <span class="chip lock">Non répondue</span>
+    {% endif %}
+    {% if item.is_new_result %}
+      <span class="chip new">Nouveau résultat</span>
     {% endif %}
     <span class="muted bonus-q-deadline">
       Deadline · <span data-local-utc="{{ item.deadline|utc_iso }}">{{ item.deadline|local_datetime }}</span>

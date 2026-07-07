@@ -859,13 +859,19 @@ def test_situation_next_action_waiting_when_nothing_left_to_answer(client, parti
 
 def test_situation_next_action_done_when_all_resolved(client, participant):
     """Par défaut les 5 cartes PT sont « en attente » (deadline passée, non
-    scorées) : pour atteindre l'état "done", il faut aussi les résoudre."""
+    scorées) : pour atteindre l'état "done", il faut aussi les résoudre.
+
+    B8 : un résultat résolu jamais vu est "nouveau" et prend la priorité sur
+    "done" — une première visite (qui marque les résultats vus) est donc
+    nécessaire avant de pouvoir observer l'état "done" ici.
+    """
     saved = _quarantine_foreign_bonus_questions()
     q_done = _seed_question("Question situation résolue (hub-test) ?", deadline=_PAST)
     _seed_score(q_done, participant["id"], 5)
     for key in _PT_KEYS:
         _seed_pt_score(participant["id"], key, 1)
     try:
+        client.get(f"/p/{participant['token']}/bonus")  # marque les résultats vus (B8)
         html = client.get(f"/p/{participant['token']}/bonus").text
         assert 'data-bonus-next-action="done"' in html
         assert "À jour" in html

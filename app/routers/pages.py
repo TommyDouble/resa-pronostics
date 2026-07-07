@@ -2710,6 +2710,42 @@ def _build_bonus_hub(bonus_questions: list, pt_cards=None) -> dict:
     }
 
 
+def _bonus_result_identity(item: dict) -> tuple[str, str]:
+    """(source, source_key) stable pour bonus_result_views. À n'appeler que sur
+    un item déjà "resolved" du hub (score visible) — jamais sur open/waiting."""
+    if item.get("is_pre_tournament"):
+        return "pre_tournament", item["key"]
+    return "bonus_question", str(item["id"])
+
+
+async def _load_bonus_result_views(db, participant_id: int) -> dict:
+    """{(source, source_key): result_version vu} pour ce participant."""
+    rows = await db.execute(
+        """SELECT source, source_key, result_version
+           FROM bonus_result_views WHERE participant_id=?""",
+        (participant_id,),
+    )
+    return {(r["source"], r["source_key"]): r["result_version"] for r in await rows.fetchall()}
+
+
+def _apply_new_result_flags(hub: dict, views: dict) -> list:
+    """Marque is_new_result sur chaque item de hub["resolved"] (mutation en place
+    des objets réels — jamais hub["open"]/["waiting"], déjà masqués en amont par
+    _build_bonus_hub/_sanitize_open_bonus_item). Retourne, dans l'ordre d'affichage
+    de la page (groupes triés par phase, carte pré-tournoi en tête de groupe), la
+    liste des items nouveaux."""
+    new_items = []
+    for group in hub["resolved"]["groups"]:
+        for item in group["entries"]:
+            source, source_key = _bonus_result_identity(item)
+            seen_version = views.get((source, source_key))
+            current_version = item.get("scored_at") or ""
+            item["is_new_result"] = seen_version is None or seen_version != current_version
+            if item["is_new_result"]:
+                new_items.append(item)
+    return new_items
+
+
 def _bonus_item_needs_answer(item: dict) -> bool:
     """Un item "ouvert" (hub["open"]) reste modifiable jusqu'à sa deadline mais
     peut déjà avoir été répondu (B5 : les 5 cartes pré-tournoi restent ouvertes
@@ -2721,12 +2757,17 @@ def _bonus_item_needs_answer(item: dict) -> bool:
     return not item["has_answer"]
 
 
-def _build_bonus_situation(hub: dict, total_bonus_points: int, phase_labels: dict) -> dict:
+def _build_bonus_situation(hub: dict, total_bonus_points: int, phase_labels: dict,
+                            new_items: list | None = None) -> dict:
     """View-model du bloc "Ma situation Bonus" : dérivé uniquement du hub déjà
     sanitizé (points visibles), aucun accès DB ni recalcul de scoring. Le détail
     par phase reprend tel quel hub["resolved"]["groups"] : une carte pré-tournoi
     n'y entre jamais tant que sa deadline est ouverte (cf. _build_bonus_hub /
-    sanitisation B5), donc pas de fuite possible via ce détail."""
+    sanitisation B5), donc pas de fuite possible via ce détail.
+
+    new_items (B8) : items déjà flaggés is_new_result par _apply_new_result_flags,
+    dans l'ordre d'affichage de la page. S'il y en a, la prochaine action priorise
+    toujours "voir les nouveaux résultats" avant "à répondre"/"en attente"."""
     phase_breakdown = [
         {
             "phase": g["phase"],
@@ -2737,7 +2778,25 @@ def _build_bonus_situation(hub: dict, total_bonus_points: int, phase_labels: dic
     ]
     counts = hub["counts"]
     todo_count = sum(1 for item in hub["open"] if _bonus_item_needs_answer(item))
-    if todo_count > 0:
+    new_items = new_items or []
+    new_result_count = len(new_items)
+    if new_result_count > 0:
+        first = new_items[0]
+        href = (
+            f"#bonus-pt-{first['key']}"
+            if first.get("is_pre_tournament")
+            else f"#bonus-q-{first['id']}"
+        )
+        next_action = {
+            "state": "new_result",
+            "text": (
+                "Nouveau résultat bonus disponible."
+                if new_result_count == 1
+                else f"{new_result_count} nouveaux résultats bonus disponibles."
+            ),
+            "href": href,
+        }
+    elif todo_count > 0:
         next_action = {
             "state": "todo",
             "text": f"{todo_count} question{'s' if todo_count > 1 else ''} à répondre",
@@ -2752,8 +2811,34 @@ def _build_bonus_situation(hub: dict, total_bonus_points: int, phase_labels: dic
         "phase_breakdown": phase_breakdown,
         "counts": counts,
         "todo_count": todo_count,
+        "new_result_count": new_result_count,
         "next_action": next_action,
     }
+
+
+async def _mark_bonus_results_seen(db, participant_id: int, hub: dict) -> None:
+    """Enregistre, pour les PROCHAINES visites de /bonus, la version vue de chaque
+    résultat actuellement affiché dans hub["resolved"]. À appeler seulement après
+    avoir construit `situation`/le contexte de rendu : les badges de CETTE requête
+    ne doivent jamais dépendre de cet appel. N'écrit jamais pour hub["open"]/["waiting"]."""
+    now = _now_utc()
+    rows = [
+        (participant_id, *_bonus_result_identity(item), item.get("scored_at") or "", now)
+        for group in hub["resolved"]["groups"]
+        for item in group["entries"]
+    ]
+    if not rows:
+        return
+    await db.executemany(
+        """INSERT INTO bonus_result_views
+             (participant_id, source, source_key, result_version, seen_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(participant_id, source, source_key) DO UPDATE SET
+             result_version=excluded.result_version,
+             seen_at=excluded.seen_at""",
+        rows,
+    )
+    await db.commit()
 
 
 @router.get("/p/{token}/bonus", response_class=HTMLResponse)
@@ -2805,6 +2890,15 @@ async def bonus_page(request: Request, token: str):
         phase_labels = {"pre_tournament": "Pré-tournoi", **PHASE_LABELS}
         total_bonus_points = bonus_questions_points + visible_pt_points
         hub = _build_bonus_hub(bonus_questions, pt_cards)
+
+        # B8 — flags calculés APRÈS le masquage de confidentialité (uniquement sur
+        # hub["resolved"]) : jamais sur un item encore ouvert ou non scoré.
+        result_views = await _load_bonus_result_views(db, p["id"])
+        new_result_items = _apply_new_result_flags(hub, result_views)
+
+        situation = _build_bonus_situation(
+            hub, total_bonus_points, phase_labels, new_items=new_result_items
+        )
         ctx.update({
             "bonus_questions": bonus_questions,
             "pending_bonus_questions": pending_count,
@@ -2815,8 +2909,13 @@ async def bonus_page(request: Request, token: str):
             "bonus_questions_points": bonus_questions_points,
             "total_bonus_points": total_bonus_points,
             "hub": hub,
-            "situation": _build_bonus_situation(hub, total_bonus_points, phase_labels),
+            "situation": situation,
         })
+
+        # Marquage "vu" pour les PROCHAINES visites seulement : après avoir déjà
+        # calculé is_new_result/situation pour CETTE requête (les badges restent
+        # visibles sur la page rendue courante ; ils disparaîtront au refresh suivant).
+        await _mark_bonus_results_seen(db, p["id"], hub)
     return templates.TemplateResponse(request, "bonus.html", {"request": request, **ctx})
 
 
