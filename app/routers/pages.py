@@ -2290,6 +2290,7 @@ def _build_peer_trend(groups: dict, sort_key) -> dict:
             "percentage": percentage,
             "example_names": example_names,
             "remaining_names": remaining_names,
+            "show_names": count >= BONUS_TREND_NAME_THRESHOLD or g["has_me"],
         })
         if g["has_me"]:
             my_index = idx

@@ -52,6 +52,7 @@
           <span class="pg-outcome">{{ g.display }}</span>
           <span class="pg-count">{{ g.count }} joueur{{ 's' if g.count > 1 else '' }} · {{ g.percentage }}%</span>
         </header>
+        {% if g.show_names %}
         <div class="pgroup-names">
           {% for pa in g.names %}
           <a class="pname {{ 'me' if pa.is_me }}" href="/p/{{ token }}/profil/{{ pa.participant_id }}">
@@ -59,6 +60,7 @@
           </a>
           {% endfor %}
         </div>
+        {% endif %}
       </section>
       {% endfor %}
     </div>

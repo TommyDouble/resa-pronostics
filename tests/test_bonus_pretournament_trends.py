@@ -452,6 +452,39 @@ def test_global_block_excludes_preview_groups(client, participant):
         assert "Alpha" not in remaining
         assert "Bravo" not in remaining
         assert "Delta" not in remaining
+        # Charlie est un singleton non-moi hors aperçu : le libellé reste
+        # visible dans le bloc global, mais pas le nom du participant.
+        assert "Coll GDup C1" not in remaining
+    finally:
+        _cleanup(colleagues, colleagues)
+
+
+def test_global_block_shows_names_for_two_person_group(client, participant):
+    """Un groupe hors aperçu d'au moins 2 participants (seuil d'anonymat
+    atteint) affiche bien les noms dans le bloc global."""
+    colleagues = []
+    try:
+        for name, winner in [
+            ("Coll RemNames A1", "Alpha"), ("Coll RemNames A2", "Alpha"), ("Coll RemNames A3", "Alpha"),
+            ("Coll RemNames B1", "Bravo"), ("Coll RemNames B2", "Bravo"), ("Coll RemNames B3", "Bravo"),
+            ("Coll RemNames C1", "Charlie"), ("Coll RemNames C2", "Charlie"), ("Coll RemNames C3", "Charlie"),
+            ("Coll RemNames D1", "Delta"), ("Coll RemNames D2", "Delta"),
+        ]:
+            cid = _seed_participant(name)
+            colleagues.append(cid)
+            _seed_pt_prediction(cid, winner=winner)
+
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        card = _pt_card_html(html, "winner")
+        preview = _preview_html(card)
+        remaining = _global_remaining_html(card)
+
+        # Top 3 ex-æquo à 3 : Alpha, Bravo, Charlie. Delta (2) hors aperçu.
+        assert "Delta" not in preview
+        assert remaining is not None
+        assert "Delta" in remaining
+        assert "Coll RemNames D1" in remaining
+        assert "Coll RemNames D2" in remaining
     finally:
         _cleanup(colleagues, colleagues)
 
