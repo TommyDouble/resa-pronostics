@@ -104,6 +104,19 @@ def sporting_day(match: dict) -> str:
         return match.get("match_date") or ""
 
 
+def sporting_day_for_timestamp(value: str) -> str:
+    """Label de journée sportive (YYYY-MM-DD) d'un horodatage UTC brut.
+
+    Même règle de coupure à 9h que ``sporting_day()``, mais pour un timestamp
+    (ex. ``calculated_at``/``occurred_at``) plutôt qu'un dict de match.
+    """
+    try:
+        local = parse_utc_iso(value).astimezone(DISPLAY_TZ)
+        return (local - timedelta(hours=SPORTING_DAY_CUTOFF_HOUR)).strftime("%Y-%m-%d")
+    except Exception:
+        return (value or "")[:10]
+
+
 def current_sporting_day() -> str:
     """Journée sportive locale courante (borne à 9 h Europe/Brussels)."""
     local = now_utc().astimezone(DISPLAY_TZ) - timedelta(hours=SPORTING_DAY_CUTOFF_HOUR)

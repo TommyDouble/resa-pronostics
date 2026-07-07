@@ -3,7 +3,7 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from app.database import get_db
-from app.timeutils import sporting_day
+from app.timeutils import sporting_day, sporting_day_for_timestamp
 
 
 def parse_team_set(value) -> set:
@@ -329,7 +329,14 @@ def _ranks_from_points(points_by_id: dict[int, int]) -> dict[int, int]:
 
 
 async def get_sporting_day_states(db) -> dict[str, dict]:
-    """Matchs groupés selon la fenêtre locale 9 h–8 h 59."""
+    """Journées groupées selon la fenêtre locale 9 h–8 h 59.
+
+    Inclut aussi les journées dont l'unique activité est un événement bonus ou
+    pré-tournoi (aucun match ce jour-là) : elles sont "finalisées" par
+    construction (0 match encodé sur 0), un encodage bonus/pré-tournoi étant
+    une action ponctuelle et complète, pas un état "en cours" comme une nuit de
+    matchs qui s'encode match par match.
+    """
     rows = await db.execute(
         "SELECT id, match_date, kickoff_time, result FROM matches ORDER BY match_date, kickoff_time"
     )
@@ -343,26 +350,53 @@ async def get_sporting_day_states(db) -> dict[str, dict]:
         bucket["match_count"] += 1
         if match["result"] is not None:
             bucket["encoded_count"] += 1
+
+    scoring_days = await _scoring_points_by_day(db)
+    for day in scoring_days:
+        states.setdefault(day, {"day": day, "match_ids": [], "match_count": 0,
+                                 "encoded_count": 0, "finalized": False})
+
     for bucket in states.values():
-        bucket["finalized"] = (
-            bucket["match_count"] > 0
-            and bucket["encoded_count"] == bucket["match_count"]
-        )
+        bucket["finalized"] = bucket["match_count"] == bucket["encoded_count"]
     return states
 
 
-async def _match_points_by_sporting_day(db) -> dict[str, dict[int, int]]:
+async def _scoring_points_by_day(db) -> dict[str, dict[int, int]]:
+    """Points attribués par jour, toutes sources confondues.
+
+    Matchs : relus "à la volée" (valeur courante de `scores`, jour du coup
+    d'envoi) — jour fixe, donc toujours correct même après une correction
+    tardive du résultat (cf. `test_late_correction_replaces_persisted_climber`).
+
+    Bonus/pré-tournoi : n'ont pas de jour fixe (leur seul repère temporel est
+    "quand a-t-on corrigé la question", qui change à chaque nouvelle
+    correction) — relire leur valeur courante bucketée par date de recalcul
+    romprait le delta en cas de correction rétroactive (5 -> 2 pts afficherait
+    +2 au lieu de -3). On lit donc à la place les deltas déjà journalisés dans
+    `scoring_point_events` (un événement = un vrai changement de valeur, jamais
+    réécrit), horodatés au jour de la correction.
+    """
+    result: dict[str, dict[int, int]] = {}
+
+    def _add(day: str, pid: int, points: int) -> None:
+        bucket = result.setdefault(day, {})
+        bucket[pid] = bucket.get(pid, 0) + points
+
     rows = await db.execute(
         """SELECT s.participant_id, s.points, m.match_date, m.kickoff_time
            FROM scores s JOIN matches m ON m.id=s.match_id
            WHERE s.match_id IS NOT NULL"""
     )
-    result = {}
     for row in await rows.fetchall():
         item = dict(row)
-        day = sporting_day(item)
-        bucket = result.setdefault(day, {})
-        bucket[item["participant_id"]] = bucket.get(item["participant_id"], 0) + item["points"]
+        _add(sporting_day(item), item["participant_id"], item["points"])
+
+    event_rows = await db.execute(
+        "SELECT participant_id, delta, occurred_at FROM scoring_point_events"
+    )
+    for row in await event_rows.fetchall():
+        _add(sporting_day_for_timestamp(row["occurred_at"]), row["participant_id"], row["delta"])
+
     return result
 
 
@@ -403,12 +437,15 @@ async def get_rank_evolution(db) -> dict:
         "points_after": {}, "day_points": {},
     }
     states = await get_sporting_day_states(db)
-    candidates = [day for day, state in states.items() if state["encoded_count"] > 0]
+    candidates = [
+        day for day, state in states.items()
+        if state["encoded_count"] > 0 or state["match_count"] == 0
+    ]
     if not candidates:
         return empty
     day = max(candidates)
     state = states[day]
-    points_by_day = await _match_points_by_sporting_day(db)
+    points_by_day = await _scoring_points_by_day(db)
     current = await _rankings_from_db(db, "general")
     return _evolution_payload(
         current,
@@ -431,7 +468,7 @@ async def sync_finalized_evolution_history(db, from_day: str | None = None) -> N
         return
     current = await _rankings_from_db(db, "general")
     current_points = {r["id"]: r["total_points"] for r in current}
-    all_day_points = await _match_points_by_sporting_day(db)
+    all_day_points = await _scoring_points_by_day(db)
     all_days = sorted(all_day_points)
 
     for day in finalized_days:
@@ -879,6 +916,96 @@ def multi_select_bonus_points(points_value: int, correct_answer, answers, scorin
     return scores
 
 
+async def _log_scoring_point_events(
+    db, source: str, source_key: str, old_points: dict[int, int], new_points: dict[int, int]
+) -> None:
+    """Journalise le delta réel (pas la valeur absolue) pour chaque participant
+    dont les points bonus/pré-tournoi ont changé. Aucune ligne si rien ne change
+    (resave, édition sans rapport) — voir la note "delta vs valeur absolue" du
+    plan de correction : une simple valeur courante horodatée ne peut pas
+    représenter correctement une correction rétroactive (ex. 5 -> 2 pts)."""
+    changed = set(old_points) | set(new_points)
+    events = []
+    for pid in changed:
+        delta = new_points.get(pid, 0) - old_points.get(pid, 0)
+        if delta != 0:
+            events.append((source, source_key, pid, delta))
+    if events:
+        await db.executemany(
+            """INSERT INTO scoring_point_events (source, source_key, participant_id, delta)
+               VALUES (?, ?, ?, ?)""",
+            events,
+        )
+
+
+async def backfill_scoring_point_events(db) -> None:
+    """Backfill idempotent : reconstruit un événement initial pour chaque
+    question bonus/pré-tournoi déjà notée AVANT l'existence de cette table
+    (déploiement de la journalisation des événements de scoring).
+
+    Sans ce backfill, les points bonus/pré-tournoi déjà encodés en production
+    resteraient invisibles pour `_scoring_points_by_day` (qui ne lit QUE
+    `scoring_point_events` pour ces deux sources) : flèches de `/classement`,
+    Reveal personnel, trophée "Le Grimpeur" et carrousel de badges ne
+    refléteraient aucun mouvement causé par ces points déjà en base.
+
+    Idempotence : un (participant, question) n'est JAMAIS rebackfillé s'il a
+    déjà au moins un événement journalisé pour CE participant sur CETTE
+    question — que ce soit un backfill précédent (rejouer cette fonction ne
+    crée donc aucun doublon) ou un vrai recalcul survenu depuis le déploiement
+    (évite le double-comptage : ce recalcul a déjà journalisé son propre delta
+    correct, le backfill ne doit pas en rajouter un second basé sur la valeur
+    absolue). Le suivi est scopé par (source, clé, PARTICIPANT) et non par
+    (source, clé) seule : si un seul participant d'une question a déjà un
+    événement (ex. un recalcul en direct qui ne l'a touché que lui), les
+    AUTRES participants de cette même question, encore legacy, doivent quand
+    même être backfillés — un garde-fou par question seule les ferait sauter
+    silencieusement, pour toujours (migration one-shot, jamais rejouée).
+
+    Limite assumée (documentée dans le plan de correction) : si une question a
+    été corrigée plusieurs fois AVANT ce backfill, seule sa valeur FINALE
+    actuellement en base est reconstructible (`delta = points`, `occurred_at =
+    calculated_at`) — les corrections intermédiaires déjà écrasées ne sont
+    récupérables nulle part, faute d'avoir jamais été journalisées.
+    """
+    tracked_rows = await db.execute(
+        "SELECT DISTINCT source, source_key, participant_id FROM scoring_point_events"
+    )
+    tracked = {
+        (r["source"], r["source_key"], r["participant_id"])
+        for r in await tracked_rows.fetchall()
+    }
+
+    events = []
+
+    bonus_rows = await db.execute(
+        """SELECT participant_id, bonus_question_id, points, calculated_at
+           FROM scores WHERE bonus_question_id IS NOT NULL"""
+    )
+    for r in await bonus_rows.fetchall():
+        key = str(r["bonus_question_id"])
+        if ("bonus", key, r["participant_id"]) in tracked or not r["points"]:
+            continue
+        events.append(("bonus", key, r["participant_id"], r["points"], r["calculated_at"]))
+
+    pt_rows = await db.execute(
+        "SELECT participant_id, question_key, points, calculated_at FROM pre_tournament_scores"
+    )
+    for r in await pt_rows.fetchall():
+        key = r["question_key"]
+        if ("pre_tournament", key, r["participant_id"]) in tracked or not r["points"]:
+            continue
+        events.append(("pre_tournament", key, r["participant_id"], r["points"], r["calculated_at"]))
+
+    if events:
+        await db.executemany(
+            """INSERT INTO scoring_point_events
+               (source, source_key, participant_id, delta, occurred_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            events,
+        )
+
+
 async def calculate_bonus_scores(question_id: int):
     """Calculate scores for a bonus question after correct answer is set."""
     async with get_db() as db:
@@ -889,10 +1016,17 @@ async def calculate_bonus_scores(question_id: int):
         if not question:
             return
 
+        old_rows = await db.execute(
+            "SELECT participant_id, points FROM scores WHERE bonus_question_id = ?",
+            (question_id,),
+        )
+        old_points = {r["participant_id"]: r["points"] for r in await old_rows.fetchall()}
+
         await db.execute(
             "DELETE FROM scores WHERE bonus_question_id = ?", (question_id,)
         )
 
+        new_points: dict[int, int] = {}
         if question["correct_answer"] is not None:
             rows = await db.execute(
                 "SELECT * FROM bonus_answers WHERE question_id = ?", (question_id,)
@@ -929,11 +1063,14 @@ async def calculate_bonus_scores(question_id: int):
                         question["answer_type"], ans["answer"], question["correct_answer"]
                     )
                     points = question["points_value"] if correct else 0
+                new_points[ans["participant_id"]] = points
                 await db.execute(
                     """INSERT INTO scores (participant_id, bonus_question_id, points)
                        VALUES (?, ?, ?)""",
                     (ans["participant_id"], question_id, points),
                 )
+
+        await _log_scoring_point_events(db, "bonus", str(question_id), old_points, new_points)
 
         await sync_finalized_evolution_history(db)
         from app.trophies import refresh_trophy_awards
@@ -1016,11 +1153,20 @@ async def recalculate_pre_tournament_scores():
         )
         predictions = [dict(r) for r in await p_rows.fetchall()]
 
+        old_rows = await db.execute(
+            "SELECT participant_id, question_key, points FROM pre_tournament_scores"
+        )
+        old_points: dict[str, dict[int, int]] = {}
+        for r in await old_rows.fetchall():
+            old_points.setdefault(r["question_key"], {})[r["participant_id"]] = r["points"]
+
         await db.execute("DELETE FROM pre_tournament_scores")
 
+        new_points: dict[str, dict[int, int]] = {}
         for question in questions:
             if not (question["correct_answer"] or "").strip():
                 continue
+            key_points: dict[int, int] = {}
             for pred in predictions:
                 points = calculate_pre_tournament_points(
                     question,
@@ -1028,11 +1174,19 @@ async def recalculate_pre_tournament_scores():
                     prediction=pred,
                     correct_answers=correct_answers,
                 )
+                key_points[pred["participant_id"]] = points
                 await db.execute(
                     """INSERT INTO pre_tournament_scores (participant_id, question_key, points)
                        VALUES (?, ?, ?)""",
                     (pred["participant_id"], question["key"], points),
                 )
+            new_points[question["key"]] = key_points
+
+        for key in set(old_points) | set(new_points):
+            await _log_scoring_point_events(
+                db, "pre_tournament", key,
+                old_points.get(key, {}), new_points.get(key, {}),
+            )
 
         await sync_finalized_evolution_history(db)
         from app.trophies import refresh_trophy_awards
