@@ -1128,6 +1128,14 @@ body.bonus-stack-open {
   align-items: center;
   justify-content: center;
 }
+/* Easter egg temporaire "Folarin Balogun" (app/easter_egg.py) : affordance
+   discrète indiquant que le nom est tapable pour révéler le vrai nom.
+   À supprimer avec le reste de la fonctionnalité après l'événement. */
+.balogun-name {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
 .prono-progress {
   border: 1px solid var(--line);
   border-radius: var(--r-sm);

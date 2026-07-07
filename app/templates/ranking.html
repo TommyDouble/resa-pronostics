@@ -1,6 +1,14 @@
 {% extends "participant_base.html" %}
 {% from "_macros.html" import avatar %}
 {% block title %}Classement — RESA Pronostics{% endblock %}
+
+{# Easter egg temporaire "Folarin Balogun" (voir app/easter_egg.py) : quand
+   `real_name` est présent, le nom réel reste accessible au survol (desktop)
+   et au tap (mobile) via le mécanisme .tip[data-tip] déjà partagé sur le
+   site (app/static/js/resa.js:initFloatingTooltips). Bloc à supprimer avec
+   le reste de la fonctionnalité après l'événement. #}
+{% macro balogun_name(name, real_name) %}{% if real_name %}<span class="tip balogun-name" tabindex="0" data-tip="{{ real_name }}" data-real-name="{{ real_name }}" aria-label="Nom réel : {{ real_name }}">{{ name }}</span>{% else %}{{ name }}{% endif %}{% endmacro %}
+
 {% block page_content %}
 
 <div class="page-head">
@@ -65,7 +73,7 @@
              href="/p/{{ token }}/profil{{ '' if m.id == participant.id else '/' ~ m.id }}?return_view=departments&amp;return_department={{ d.department|urlencode }}{% if expanded_members or hide_member %}&amp;return_members=all{% endif %}"
              {% if hide_member %}hidden data-department-member-hidden{% endif %}>
             <div class="nm">
-              {{ m.name }}{% if m.id == participant.id %}<small> · c’est toi</small>{% endif %}
+              {{ balogun_name(m.name, m.real_name) }}{% if m.id == participant.id %}<small> · c’est toi</small>{% endif %}
             </div>
             <span class="sc">{{ m.total_points }} <small>pts</small></span>
           </a>
@@ -105,7 +113,7 @@
       <span class="rk">{{ r.remontada_rank }}</span>
       {{ avatar(r.avatar_path, r.name, r.id) }}
       <div class="nm">
-        {{ r.name }}
+        {{ balogun_name(r.name, r.real_name) }}
         <small>{{ r.baseline_rank }}e fin de groupes → {{ r.rank }}e aujourd'hui{% if r.is_me %} · c’est toi{% endif %}</small>
       </div>
       <span class="chip {{ 'up' if r.delta > 0 else ('dn' if r.delta < 0 else 'fl') }}">
@@ -146,12 +154,12 @@
           {% endif %}
           <div class="tc-winners{% if item.visible_winner_lines[0].detail is defined and item.visible_winner_lines[0].detail %} tc-has-detail{% endif %}">
             {% for w in item.visible_winner_lines %}
-            <span class="tc-winner{% if w.is_me %} tc-me{% endif %}">{{ w.name }}{% if w.detail %}<span class="tc-wdetail">{{ w.detail }}</span>{% endif %}</span>
+            <span class="tc-winner{% if w.is_me %} tc-me{% endif %}">{{ balogun_name(w.name, w.real_name) }}{% if w.detail %}<span class="tc-wdetail">{{ w.detail }}</span>{% endif %}</span>
             {% endfor %}
             {% if item.overflow_winner_lines %}
             <span class="tc-overflow" id="tc-overflow-{{ slide_idx }}" hidden>
               {% for w in item.overflow_winner_lines %}
-              <span class="tc-winner{% if w.is_me %} tc-me{% endif %}">{{ w.name }}{% if w.detail %}<span class="tc-wdetail">{{ w.detail }}</span>{% endif %}</span>
+              <span class="tc-winner{% if w.is_me %} tc-me{% endif %}">{{ balogun_name(w.name, w.real_name) }}{% if w.detail %}<span class="tc-wdetail">{{ w.detail }}</span>{% endif %}</span>
               {% endfor %}
             </span>
             <button type="button" class="tc-show-more rar-text-{{ item.rarity }}"
@@ -182,7 +190,7 @@
       <span class="medal">{% if r.rank == 1 %}🥇{% elif r.rank == 2 %}🥈{% elif r.rank == 3 %}🥉{% else %}#{{ r.rank }}{% endif %}</span>
       {{ avatar(r.avatar_path, r.name, r.id) }}
       <div class="bar">{{ r.rank }}</div>
-      <span class="pod-name">{{ r.name }}</span>
+      <span class="pod-name">{{ balogun_name(r.name, r.real_name) }}</span>
       <span class="pts">{{ r.total_points }} pts</span>
     </a>
     {% endfor %}
@@ -223,7 +231,7 @@
       <span class="rk">{{ r.rank }}</span>
       {{ avatar(r.avatar_path, r.name, r.id) }}
       <div class="nm">
-        <span class="nm-line">{{ r.name }}{% for b in r.badges[:2] %}<span class="mini-badge rar-{{ b.rarity }} tip" tabindex="0" data-tip="{{ b.label }}{% if b.detail_label %} · {{ b.detail_label }}{% endif %} — {{ b.caption }}"><img src="/static/img/trophies/noto/{{ b.icon_key }}.svg" alt="" aria-hidden="true"></span>{% endfor %}{% if r.badges|length > 2 %}<span class="mini-badge-more tip" tabindex="0" data-tip="{{ r.badges[2:]|map(attribute='label')|join(', ') }}">+{{ r.badges|length - 2 }}</span>{% endif %}</span>
+        <span class="nm-line">{{ balogun_name(r.name, r.real_name) }}{% for b in r.badges[:2] %}<span class="mini-badge rar-{{ b.rarity }} tip" tabindex="0" data-tip="{{ b.label }}{% if b.detail_label %} · {{ b.detail_label }}{% endif %} — {{ b.caption }}"><img src="/static/img/trophies/noto/{{ b.icon_key }}.svg" alt="" aria-hidden="true"></span>{% endfor %}{% if r.badges|length > 2 %}<span class="mini-badge-more tip" tabindex="0" data-tip="{{ r.badges[2:]|map(attribute='label')|join(', ') }}">+{{ r.badges|length - 2 }}</span>{% endif %}</span>
         {% if r.full_name and r.full_name != r.name %}
           <small>{{ r.full_name }}{% if r.is_me %} · c’est toi{% endif %}</small>
         {% elif r.is_me %}
