@@ -5,8 +5,9 @@ from datetime import datetime, timezone
 from app.database import get_db
 from app.easter_egg import (
     BALOGUN_NAME,
+    BALOGUN_TRIGGER_MATCH_NUMBER,
     apply_balogun_swap,
-    get_next_match,
+    get_deactivation_match,
     is_balogun_easter_egg_active,
 )
 from app.routers import pages as pages_router
@@ -65,29 +66,57 @@ def test_inactive_when_no_next_match_found():
     assert is_balogun_easter_egg_active(now, None) is False
 
 
-# ---- get_next_match (accès BDD) ----------------------------------------
+# ---- get_deactivation_match (accès BDD) --------------------------------
+# `DELETE FROM matches` isole le scénario : la DB de test est partagée entre
+# tous les fichiers de la session, donc on repart d'une table vide pour ne
+# pas hériter de matchs d'autres tests du run (ni d'un éventuel match
+# n°BALOGUN_TRIGGER_MATCH_NUMBER laissé par un autre test).
 
-def test_get_next_match_returns_earliest_upcoming(client, monkeypatch):
-    monkeypatch.setenv("FAKE_NOW_UTC", "2999-01-01T00:00:00")
-    make_match("3000-06-10", "18:00", 900001, "Belgique", "Maroc")
-    later_id = make_match("3000-06-20", "18:00", 900002, "France", "Brésil")
+def _reset_matches():
+    async def _reset():
+        async with get_db() as db:
+            await db.execute("DELETE FROM matches")
+            await db.commit()
+
+    run(_reset())
+
+
+def test_get_deactivation_match_returns_match_right_after_trigger(client):
+    _reset_matches()
+    make_match("3000-06-10", "18:00", 900001, "Belgique", "Maroc")  # avant, ignoré
+    make_match("3000-06-15", "20:00", BALOGUN_TRIGGER_MATCH_NUMBER, "Belgique", "États-Unis")
+    next_id = make_match("3000-06-16", "18:00", 900002, "France", "Brésil")
+    make_match("3000-06-20", "18:00", 900003, "Argentine", "Portugal")  # après, ignoré
 
     async def _fetch():
         async with get_db() as db:
-            return await get_next_match(db)
+            return await get_deactivation_match(db)
 
     result = run(_fetch())
     assert result is not None
-    assert result["match_date"] == "3000-06-10"
-    assert result["id"] != later_id
+    assert result["id"] == next_id
+    assert result["match_date"] == "3000-06-16"
 
 
-def test_get_next_match_returns_none_when_none_upcoming(client, monkeypatch):
-    monkeypatch.setenv("FAKE_NOW_UTC", "9999-12-31T23:59:59")
+def test_get_deactivation_match_returns_none_when_trigger_missing(client):
+    _reset_matches()
+    make_match("3000-06-16", "18:00", 900002, "France", "Brésil")
 
     async def _fetch():
         async with get_db() as db:
-            return await get_next_match(db)
+            return await get_deactivation_match(db)
+
+    assert run(_fetch()) is None
+
+
+def test_get_deactivation_match_returns_none_when_trigger_is_last(client):
+    _reset_matches()
+    make_match("3000-06-10", "18:00", 900001, "Belgique", "Maroc")
+    make_match("3000-06-15", "20:00", BALOGUN_TRIGGER_MATCH_NUMBER, "Belgique", "États-Unis")
+
+    async def _fetch():
+        async with get_db() as db:
+            return await get_deactivation_match(db)
 
     assert run(_fetch()) is None
 

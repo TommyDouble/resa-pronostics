@@ -30,7 +30,7 @@ from app.database import (
     ROUND32_TIEBREAK_COUNT_TEXT,
     get_db,
 )
-from app.easter_egg import apply_balogun_swap, get_next_match, is_balogun_easter_egg_active
+from app.easter_egg import apply_balogun_swap, get_deactivation_match, is_balogun_easter_egg_active
 from app.flags import team_flag
 from app.knockout import is_placeholder_team, match_predictions_open, parse_source_label
 from app.mail import send_invitation
@@ -1505,7 +1505,7 @@ async def ranking_page(
             "knockout_started": knockout_started,
             "prize_info": prize_info,
         })
-        balogun_active = is_balogun_easter_egg_active(now_utc(), await get_next_match(db))
+        balogun_active = is_balogun_easter_egg_active(now_utc(), await get_deactivation_match(db))
         if balogun_active:
             apply_balogun_swap(ctx)
         ctx["balogun_easter_egg_active"] = balogun_active
