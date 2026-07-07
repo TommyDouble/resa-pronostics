@@ -1,3 +1,72 @@
+{# Bloc "Tendance collègues" partagé par les questions bonus classiques
+   (bonus_question_card) et les cartes pré-tournoi (bonus_pt_card).
+   `trend` a la forme {preview: [...], remaining: [...]}, chaque groupe
+   portant display/count/percentage/has_me/example_names/remaining_names. #}
+{% macro render_peer_trend(trend, token) -%}
+{% set peer_total = (trend.preview + trend.remaining) | map(attribute='count') | sum %}
+<div class="pred-groups" style="margin-bottom:12px;">
+  <div class="pred-groups-head">
+    <div class="lbl">Tendance collègues</div>
+    {% if peer_total %}
+    <span class="muted" style="font-size:11px;">{{ peer_total }} réponse{{ 's' if peer_total != 1 else '' }}</span>
+    {% endif %}
+  </div>
+  {% for g in trend.preview %}
+  <section class="pgroup {{ 'mine' if g.has_me }}">
+    <header class="pgroup-head">
+      <span class="pg-outcome">{{ g.display }}</span>
+      <span class="pg-count">{{ g.count }} joueur{{ 's' if g.count > 1 else '' }} · {{ g.percentage }}%</span>
+    </header>
+    {% if g.example_names %}
+    <div class="pgroup-names">
+      {% for pa in g.example_names %}
+      <a class="pname {{ 'me' if pa.is_me }}" href="/p/{{ token }}/profil/{{ pa.participant_id }}">
+        {{ pa.name }}{% if pa.is_me %} <b>· toi</b>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+    {% if g.remaining_names %}
+    <details>
+      <summary class="muted" style="font-size:11px;cursor:pointer;padding:0 12px 10px;">Voir les {{ g.remaining_names|length }} autre{{ 's' if g.remaining_names|length > 1 else '' }}</summary>
+      <div class="pgroup-names">
+        {% for pa in g.remaining_names %}
+        <a class="pname {{ 'me' if pa.is_me }}" href="/p/{{ token }}/profil/{{ pa.participant_id }}">
+          {{ pa.name }}{% if pa.is_me %} <b>· toi</b>{% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+    {% endif %}
+  </section>
+  {% else %}
+  <div class="muted" style="font-size:12px;">Personne n'a répondu.</div>
+  {% endfor %}
+  {% if trend.remaining %}
+  <details style="margin-top:2px;">
+    <summary class="muted" style="font-size:12px;cursor:pointer;">Voir les autres réponses</summary>
+    <div class="pred-groups" style="margin-top:8px;">
+      {% for g in trend.remaining %}
+      <section class="pgroup {{ 'mine' if g.has_me }}">
+        <header class="pgroup-head">
+          <span class="pg-outcome">{{ g.display }}</span>
+          <span class="pg-count">{{ g.count }} joueur{{ 's' if g.count > 1 else '' }} · {{ g.percentage }}%</span>
+        </header>
+        <div class="pgroup-names">
+          {% for pa in g.names %}
+          <a class="pname {{ 'me' if pa.is_me }}" href="/p/{{ token }}/profil/{{ pa.participant_id }}">
+            {{ pa.name }}{% if pa.is_me %} <b>· toi</b>{% endif %}
+          </a>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+</div>
+{%- endmacro %}
+
 {% macro bonus_question_card(q, token, phase_labels, mode='page', index=1, total=1) -%}
 {% set is_stack = mode == 'stack' %}
 <div class="{% if is_stack %}bonus-stack-card{% if index == 1 %} is-active{% elif index == 2 %} is-next{% endif %}{% else %}card bonus-question-card{% endif %}"
@@ -64,68 +133,7 @@
   {% endif %}
 
   {% if not is_stack and q.peer_answers is defined %}
-  {% set peer_total = (q.peer_answers.preview + q.peer_answers.remaining) | map(attribute='count') | sum %}
-  <div class="pred-groups" style="margin-bottom:12px;">
-    <div class="pred-groups-head">
-      <div class="lbl">Tendance collègues</div>
-      {% if peer_total %}
-      <span class="muted" style="font-size:11px;">{{ peer_total }} réponse{{ 's' if peer_total != 1 else '' }}</span>
-      {% endif %}
-    </div>
-    {% for g in q.peer_answers.preview %}
-    <section class="pgroup {{ 'mine' if g.has_me }}">
-      <header class="pgroup-head">
-        <span class="pg-outcome">{{ g.display }}</span>
-        <span class="pg-count">{{ g.count }} joueur{{ 's' if g.count > 1 else '' }} · {{ g.percentage }}%</span>
-      </header>
-      {% if g.example_names %}
-      <div class="pgroup-names">
-        {% for pa in g.example_names %}
-        <a class="pname {{ 'me' if pa.is_me }}" href="/p/{{ token }}/profil/{{ pa.participant_id }}">
-          {{ pa.name }}{% if pa.is_me %} <b>· toi</b>{% endif %}
-        </a>
-        {% endfor %}
-      </div>
-      {% if g.remaining_names %}
-      <details>
-        <summary class="muted" style="font-size:11px;cursor:pointer;padding:0 12px 10px;">Voir les {{ g.remaining_names|length }} autre{{ 's' if g.remaining_names|length > 1 else '' }}</summary>
-        <div class="pgroup-names">
-          {% for pa in g.remaining_names %}
-          <a class="pname {{ 'me' if pa.is_me }}" href="/p/{{ token }}/profil/{{ pa.participant_id }}">
-            {{ pa.name }}{% if pa.is_me %} <b>· toi</b>{% endif %}
-          </a>
-          {% endfor %}
-        </div>
-      </details>
-      {% endif %}
-      {% endif %}
-    </section>
-    {% else %}
-    <div class="muted" style="font-size:12px;">Personne n'a répondu.</div>
-    {% endfor %}
-    {% if q.peer_answers.remaining %}
-    <details style="margin-top:2px;">
-      <summary class="muted" style="font-size:12px;cursor:pointer;">Voir les autres réponses</summary>
-      <div class="pred-groups" style="margin-top:8px;">
-        {% for g in q.peer_answers.remaining %}
-        <section class="pgroup {{ 'mine' if g.has_me }}">
-          <header class="pgroup-head">
-            <span class="pg-outcome">{{ g.display }}</span>
-            <span class="pg-count">{{ g.count }} joueur{{ 's' if g.count > 1 else '' }} · {{ g.percentage }}%</span>
-          </header>
-          <div class="pgroup-names">
-            {% for pa in g.names %}
-            <a class="pname {{ 'me' if pa.is_me }}" href="/p/{{ token }}/profil/{{ pa.participant_id }}">
-              {{ pa.name }}{% if pa.is_me %} <b>· toi</b>{% endif %}
-            </a>
-            {% endfor %}
-          </div>
-        </section>
-        {% endfor %}
-      </div>
-    </details>
-    {% endif %}
-  </div>
+  {{ render_peer_trend(q.peer_answers, token) }}
   {% endif %}
 
   {% if q.can_edit %}
@@ -247,6 +255,10 @@
   <div class="muted" style="font-size:12px;margin-bottom:12px;">
     Réponse correcte : <b style="color:var(--n900);">{{ item.correct_answer_display }}</b>
   </div>
+  {% endif %}
+
+  {% if item.peer_trend is defined %}
+  {{ render_peer_trend(item.peer_trend, token) }}
   {% endif %}
 
   <a href="{{ item.href or ('/p/' ~ token ~ '/pre-tournoi#pt-' ~ item.key) }}" class="btn ghost" style="font-size:12px;">

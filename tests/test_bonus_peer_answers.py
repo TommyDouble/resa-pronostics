@@ -30,12 +30,19 @@ _GLOBAL_MARKER = "Voir les autres réponses"
 
 def _card_html(html, question_text):
     """Extrait le HTML de la carte d'une question (la page peut contenir des
-    questions laissées par d'autres tests, la BDD étant partagée)."""
+    questions laissées par d'autres tests, la BDD étant partagée).
+
+    La borne de fin doit s'arrêter à la prochaine carte, qu'il s'agisse d'une
+    autre question bonus ou d'une carte pré-tournoi (B7b) : sinon, une fois
+    la deadline pré-tournoi passée, le bloc "Tendance collègues" des cartes
+    pré-tournoi qui suivent se retrouve inclus dans la carte extraite.
+    """
     marker = "bonus-question-card"
     idx = html.index(question_text)
     start = html.rindex(marker, 0, idx)
-    end = html.find(marker, idx)
-    return html[start:end if end != -1 else len(html)]
+    ends = [e for e in (html.find(marker, idx), html.find("bonus-pt-card", idx)) if e != -1]
+    end = min(ends) if ends else len(html)
+    return html[start:end]
 
 
 def _preview_html(card):
