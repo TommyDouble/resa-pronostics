@@ -528,9 +528,10 @@
         <div data-bonus-number-only>
           <div class="lbl" style="margin-bottom:5px;">Réponse correcte numérique</div>
           {% if q.minute_notation %}
-          <div data-minute-notation style="display:flex;gap:8px;align-items:end;">
-            <div class="field" style="flex:1;"><input type="number" name="correct_minute" min="1" max="120" value="{{ q.correct_minute or '' }}" placeholder="Minute" data-minute-field></div>
-            <div data-added-wrap hidden style="flex:1;">
+          <div class="minute-notation" data-minute-notation>
+            <div class="field"><input type="number" name="correct_minute" min="1" max="120" value="{{ q.correct_minute or '' }}" placeholder="Minute" data-minute-field></div>
+            <div class="minute-notation-added" data-added-wrap hidden>
+              <span class="minute-notation-plus" aria-hidden="true">+</span>
               <div class="field"><input type="number" name="correct_added" min="1" max="98" value="{{ q.correct_added or '' }}" placeholder="Temps additionnel" data-added-field></div>
             </div>
           </div>

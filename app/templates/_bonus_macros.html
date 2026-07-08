@@ -144,9 +144,10 @@
   {% if q.can_edit %}
   <form method="post" action="/p/{{ token }}/bonus/{{ q.id }}" class="bonus-answer-form" novalidate{% if is_stack %} data-bonus-stack-form="1"{% endif %}>
     {% if q.answer_type == 'number' and q.minute_notation %}
-    <div data-minute-notation style="margin-bottom:14px;display:flex;gap:8px;align-items:end;">
-      <div class="field" style="flex:1;"><input type="number" name="minute" min="1" max="120" value="{{ q.answer_minute or '' }}" placeholder="Minute" inputmode="numeric" data-minute-field></div>
-      <div data-added-wrap hidden style="flex:1;">
+    <div class="minute-notation" data-minute-notation>
+      <div class="field"><input type="number" name="minute" min="1" max="120" value="{{ q.answer_minute or '' }}" placeholder="Minute" inputmode="numeric" data-minute-field></div>
+      <div class="minute-notation-added" data-added-wrap hidden>
+        <span class="minute-notation-plus" aria-hidden="true">+</span>
         <div class="field"><input type="number" name="added" min="1" max="98" value="{{ q.answer_added or '' }}" placeholder="Temps additionnel" inputmode="numeric" data-added-field></div>
       </div>
     </div>

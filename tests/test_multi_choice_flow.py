@@ -802,6 +802,18 @@ def test_quarter_latest_goal_minute_notation_end_to_end(client, admin_client, pa
     assert ">90+3<" in html
 
 
+def test_quarter_latest_goal_participant_minute_markup_is_mobile_friendly(client, participant):
+    latest = _fetch_question_by_text("Jusqu'au bout du suspense")
+    _publish_question(latest["id"], "2030-01-01T12:00:00")
+
+    html = client.get(f"/p/{participant['token']}/bonus").text
+
+    assert 'class="minute-notation" data-minute-notation' in html
+    assert 'class="minute-notation-added" data-added-wrap hidden' in html
+    assert 'class="minute-notation-plus" aria-hidden="true">+</span>' in html
+    assert 'placeholder="Temps additionnel"' in html
+
+
 def test_numeric_bonus_without_integer_only_still_accepts_decimals(client, admin_client, participant):
     resp = admin_client.post(
         "/admin/bonus/create",
