@@ -6,12 +6,20 @@ import uuid
 import app.routers.pages as page_routes
 
 from app.database import (
+    QUARTER_CLOSEST_GOALS_CONFIG,
+    QUARTER_COMEBACK_QUALIFIERS_CONFIG,
+    QUARTER_COMEBACK_QUALIFIERS_TEXT,
+    QUARTER_LATEST_GOAL_CONFIG,
+    QUARTER_LATEST_GOAL_TEXT,
+    QUARTER_SEMIFINALIST_GOALS_TEXT,
+    QUARTER_TEAM_OPTIONS,
     ROUND16_FASTEST_GOAL_TEXT,
     ROUND16_HOST_COUNTRIES_TEXT,
     ROUND16_RESCAPED_TIEBREAK_TEXT,
     ROUND32_EXACT_POINTS,
     ROUND32_FAVORITE_CONCEDE_TEXT,
     ROUND32_TIEBREAK_COUNT_TEXT,
+    ensure_quarter_bonus_drafts,
     ensure_round_of_32_bonus_drafts,
     get_db,
 )
@@ -129,6 +137,83 @@ def test_round_of_16_drafts_seeded(client):
         "max_points": 5,
     }
     assert "90+5 compte comme 90" in fastest["help_text"]
+
+
+def test_quarter_drafts_seeded(client):
+    comeback = _fetch_question_by_text("Les qualifiés dos au mur")
+    assert comeback is not None
+    assert comeback["question_text"] == QUARTER_COMEBACK_QUALIFIERS_TEXT
+    assert comeback["phase"] == "quarter"
+    assert comeback["answer_type"] == "number_multi"
+    assert comeback["scoring_mode"] == "number_multi"
+    assert comeback["points_value"] == 10
+    assert comeback["is_published"] == 0
+    assert comeback["deadline"] == "2026-07-09T19:59:00"
+    assert json.loads(comeback["options"]) == QUARTER_TEAM_OPTIONS
+    assert json.loads(comeback["scoring_config"]) == QUARTER_COMEBACK_QUALIFIERS_CONFIG
+    assert "2 points si le total est exact" in comeback["help_text"]
+    assert "but contre son camp" in comeback["help_text"]
+    assert "France-Maroc" in comeback["help_text"]
+
+    semifinalist_goals = _fetch_question_by_text("La puissance des futurs demi-finalistes")
+    assert semifinalist_goals is not None
+    assert semifinalist_goals["question_text"] == QUARTER_SEMIFINALIST_GOALS_TEXT
+    assert semifinalist_goals["phase"] == "quarter"
+    assert semifinalist_goals["answer_type"] == "number"
+    assert semifinalist_goals["scoring_mode"] == "closest_podium"
+    assert semifinalist_goals["points_value"] == 5
+    assert semifinalist_goals["is_published"] == 0
+    assert json.loads(semifinalist_goals["scoring_config"]) == QUARTER_CLOSEST_GOALS_CONFIG
+    assert "leurs adversaires" in semifinalist_goals["help_text"]
+
+    latest_goal = _fetch_question_by_text("Jusqu'au bout du suspense")
+    assert latest_goal is not None
+    assert latest_goal["question_text"] == QUARTER_LATEST_GOAL_TEXT
+    assert latest_goal["phase"] == "quarter"
+    assert latest_goal["answer_type"] == "number"
+    assert latest_goal["scoring_mode"] == "closest_podium"
+    assert latest_goal["points_value"] == 5
+    assert latest_goal["is_published"] == 0
+    assert json.loads(latest_goal["scoring_config"]) == QUARTER_LATEST_GOAL_CONFIG
+    assert "temps additionnel" in latest_goal["help_text"]
+
+
+def test_quarter_draft_deadline_comes_from_first_quarter_match(client):
+    async def _reseed_with_calendar():
+        async with get_db() as db:
+            await db.execute(
+                "DELETE FROM app_settings WHERE key IN ('bonus_drafts_quarter_2026_v1', 'bonus_drafts_quarter_2026_v2')"
+            )
+            await db.execute(
+                """DELETE FROM bonus_questions
+                   WHERE question_text IN (?, ?, ?)""",
+                (
+                    QUARTER_COMEBACK_QUALIFIERS_TEXT,
+                    QUARTER_SEMIFINALIST_GOALS_TEXT,
+                    QUARTER_LATEST_GOAL_TEXT,
+                ),
+            )
+            await db.execute(
+                "DELETE FROM matches WHERE match_number IN (980097, 980098)"
+            )
+            await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time, team1_name, team2_name, weight)
+                   VALUES (980098, 'quarter', '2030-07-10', '18:00', 'Espagne', 'Belgique', 2)"""
+            )
+            await db.execute(
+                """INSERT INTO matches
+                   (match_number, phase, match_date, kickoff_time, team1_name, team2_name, weight)
+                   VALUES (980097, 'quarter', '2030-07-09', '20:00', 'France', 'Maroc', 2)"""
+            )
+            await ensure_quarter_bonus_drafts(db)
+            await db.commit()
+
+    run(_reseed_with_calendar())
+
+    comeback = _fetch_question_by_text("Les qualifiés dos au mur")
+    assert comeback["deadline"] == "2030-07-09T19:59:00"
+    assert json.loads(comeback["options"]) == QUARTER_TEAM_OPTIONS
 
 
 def test_multi_choice_end_to_end(client, admin_client, participant):
@@ -615,6 +700,120 @@ def test_depart_canon_integer_only_and_bounds(client, participant):
     assert run(_stored_answer(participant["id"], q["id"])) == "120"
 
 
+def test_quarter_numeric_bonus_integer_only_and_bounds(client, participant):
+    goals = _fetch_question_by_text("La puissance des futurs demi-finalistes")
+    assert goals is not None and goals["answer_type"] == "number"
+    _publish_question(goals["id"], "2030-01-01T12:00:00")
+    goals_base = f"/p/{participant['token']}/bonus/{goals['id']}"
+
+    decimal = client.post(goals_base, data={"answer": "7.5"}, follow_redirects=False)
+    assert decimal.status_code == 400
+
+    too_low = client.post(goals_base, data={"answer": "-1"}, follow_redirects=False)
+    assert too_low.status_code == 400
+
+    too_high = client.post(goals_base, data={"answer": "41"}, follow_redirects=False)
+    assert too_high.status_code == 400
+
+    low_ok = client.post(goals_base, data={"answer": "0"}, follow_redirects=False)
+    assert low_ok.status_code == 303
+    assert run(_stored_answer(participant["id"], goals["id"])) == "0"
+
+    high_ok = client.post(goals_base, data={"answer": "40"}, follow_redirects=False)
+    assert high_ok.status_code == 303
+    assert run(_stored_answer(participant["id"], goals["id"])) == "40"
+
+    latest = _fetch_question_by_text("Jusqu'au bout du suspense")
+    assert latest is not None and latest["answer_type"] == "number"
+    _publish_question(latest["id"], "2030-01-01T12:00:00")
+    latest_base = f"/p/{participant['token']}/bonus/{latest['id']}"
+
+    too_low = client.post(latest_base, data={"minute": "0"}, follow_redirects=False)
+    assert too_low.status_code == 400
+
+    too_high = client.post(latest_base, data={"minute": "121"}, follow_redirects=False)
+    assert too_high.status_code == 400
+
+    # "added" fourni pour une minute qui n'est pas un palier (45/90/105/120) : invalide.
+    bad_pair = client.post(
+        latest_base, data={"minute": "63", "added": "2"}, follow_redirects=False
+    )
+    assert bad_pair.status_code == 400
+
+    plain_ok = client.post(latest_base, data={"minute": "63"}, follow_redirects=False)
+    assert plain_ok.status_code == 303
+    assert run(_stored_answer(participant["id"], latest["id"])) == "63"
+
+    stoppage_ok = client.post(
+        latest_base, data={"minute": "90", "added": "3"}, follow_redirects=False
+    )
+    assert stoppage_ok.status_code == 303
+    assert run(_stored_answer(participant["id"], latest["id"])) == "90.03"
+
+    high_ok = client.post(latest_base, data={"minute": "120"}, follow_redirects=False)
+    assert high_ok.status_code == 303
+    assert run(_stored_answer(participant["id"], latest["id"])) == "120"
+
+
+def test_quarter_latest_goal_minute_notation_end_to_end(client, admin_client, participant):
+    latest = _fetch_question_by_text("Jusqu'au bout du suspense")
+    _publish_question(latest["id"], "2030-01-01T12:00:00")
+    base = f"/p/{participant['token']}/bonus/{latest['id']}"
+
+    resp = client.post(base, data={"minute": "90", "added": "3"}, follow_redirects=False)
+    assert resp.status_code == 303
+    assert run(_stored_answer(participant["id"], latest["id"])) == "90.03"
+
+    # L'admin encode aussi via minute + temps additionnel, jamais le décimal brut.
+    update = admin_client.post(
+        f"/admin/bonus/{latest['id']}/update",
+        data={
+            "question_text": latest["question_text"],
+            "phase": "quarter",
+            "answer_type": "number",
+            "points_value": "5",
+            "deadline": "2030-01-01T12:00",
+            "help_text": latest["help_text"] or "",
+            "is_published": "1",
+            "closest_preset_key": "custom",
+            "closest_award_mode": "podium_custom",
+            "closest_tie_policy": "full_dense",
+            "closest_rank1_points": "5",
+            "closest_rank2_points": "3",
+            "closest_rank3_points": "1",
+            "correct_minute": "90",
+            "correct_added": "3",
+        },
+        follow_redirects=False,
+    )
+    assert update.status_code == 303
+
+    updated = _fetch_question_by_text("Jusqu'au bout du suspense")
+    assert updated["correct_answer"] == "90.03"
+    assert json.loads(updated["scoring_config"])["minute_notation"] is True
+    assert run(_score(participant["id"], latest["id"])) == 5
+
+    html = unescape(admin_client.get("/admin/bonus").text)
+    # Le classement et la liste des réponses affichent "90+3" en clair (pas le
+    # décimal interne) : on vérifie que la valeur apparaît bien comme contenu
+    # de balise, pas seulement quelque part sur la page (un champ de saisie
+    # générique préexistant, hors-scope ici, réutilise aussi "correct_answer"
+    # et porte la valeur brute dans son attribut `value`).
+    assert ">90+3<" in html
+
+
+def test_quarter_latest_goal_participant_minute_markup_is_mobile_friendly(client, participant):
+    latest = _fetch_question_by_text("Jusqu'au bout du suspense")
+    _publish_question(latest["id"], "2030-01-01T12:00:00")
+
+    html = client.get(f"/p/{participant['token']}/bonus").text
+
+    assert 'class="minute-notation" data-minute-notation' in html
+    assert 'class="minute-notation-added" data-added-wrap hidden' in html
+    assert 'class="minute-notation-plus" aria-hidden="true">+</span>' in html
+    assert 'placeholder="Temps additionnel"' in html
+
+
 def test_numeric_bonus_without_integer_only_still_accepts_decimals(client, admin_client, participant):
     resp = admin_client.post(
         "/admin/bonus/create",
@@ -698,6 +897,21 @@ def test_depart_canon_admin_correction_requires_integer(admin_client):
     )
     assert ok.status_code == 303
     assert _fetch_question_by_text("Départ canon")["correct_answer"] == "7"
+
+
+def test_number_config_bounds_enforced_without_integer_only(admin_client):
+    # "Le Favori Qui Tremble" a des bornes (min 0, max 6) sans integer_only : les
+    # bornes doivent quand même être vérifiées côté admin (bug corrigé dans
+    # _number_config_error, qui les ignorait auparavant quand integer_only était faux).
+    q = _fetch_question_by_text("Le Favori Qui Tremble")
+    resp = admin_client.post(
+        f"/admin/bonus/{q['id']}/answer",
+        data={"correct_answer": "99"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    updated = _fetch_question_by_text("Le Favori Qui Tremble")
+    assert updated["correct_answer"] != "99"
 
 
 def test_round32_numeric_bonus_only_exact_answers_score(client, admin_client):

@@ -17,6 +17,7 @@ Depuis B7a.1 :
 - le bloc global replié ("Voir les autres réponses") ne contient plus que les
   groupes hors aperçu, pour ne pas dupliquer le top 3 déjà visible.
 """
+import json
 import uuid
 
 from app.database import get_db
@@ -406,6 +407,39 @@ def test_number_answers_merge_synonymous_values(client, participant):
         preview = _preview_html(card)
         assert preview.count('<section class="pgroup') == 1
         assert "2 joueurs" in preview
+    finally:
+        _cleanup([question_id], colleagues)
+
+
+def test_minute_notation_peer_trend_shows_readable_format(client, participant):
+    """La tendance collègues affiche "90+3", jamais le décimal brut "90.03"."""
+    async def _create():
+        async with get_db() as db:
+            cursor = await db.execute(
+                """INSERT INTO bonus_questions
+                   (question_text, phase, answer_type, points_value, deadline,
+                    scoring_mode, scoring_config)
+                   VALUES (?, 'pre_tournament', 'number', 5, ?, 'closest_podium', ?)""",
+                (
+                    "Question minute notation (peer-test) ?",
+                    _PAST_DEADLINE,
+                    json.dumps({"min_value": 1, "max_value": 121, "minute_notation": True}),
+                ),
+            )
+            await db.commit()
+            return cursor.lastrowid
+
+    question_id = run(_create())
+    colleagues = []
+    try:
+        c1 = _seed_participant("Coll Minute 1")
+        colleagues = [c1]
+        _seed_answer(question_id, c1, "90.03")
+
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        card = _card_html(html, "Question minute notation (peer-test) ?")
+        assert "90+3" in card
+        assert "90.03" not in card
     finally:
         _cleanup([question_id], colleagues)
 

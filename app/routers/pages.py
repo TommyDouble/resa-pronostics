@@ -54,6 +54,8 @@ from app.scoring import (
     _scoring_points_by_day,
     actual_match_winner,
     bonus_number_is_integer,
+    compose_minute_notation,
+    format_minute_notation,
     format_number_multi,
     format_team_list,
     get_department_rankings,
@@ -70,6 +72,7 @@ from app.scoring import (
     parse_number_multi,
     parse_team_set,
     predicted_match_winner,
+    split_minute_notation,
 )
 from app.templating import create_templates
 from app.timeutils import (
@@ -2260,6 +2263,9 @@ async def _load_bonus_questions(db, participant_id: int, now: str, *, only_pendi
         q["answer_min"] = None
         q["answer_max"] = None
         q["integer_only"] = False
+        q["minute_notation"] = False
+        q["answer_minute"] = None
+        q["answer_added"] = None
         q["number_multi_config"] = None
         closest_config = None
         try:
@@ -2302,6 +2308,13 @@ async def _load_bonus_questions(db, participant_id: int, now: str, *, only_pendi
                 q["answer_min"] = closest_config.get("min_value")
                 q["answer_max"] = closest_config.get("max_value")
                 q["integer_only"] = closest_config.get("integer_only", False)
+                q["minute_notation"] = closest_config.get("minute_notation", False)
+                if q["minute_notation"]:
+                    if q["answer"]:
+                        q["answer_display"] = format_minute_notation(q["answer"])
+                    if q["correct_answer"]:
+                        q["correct_answer_display"] = format_minute_notation(q["correct_answer"])
+                    q["answer_minute"], q["answer_added"] = split_minute_notation(q["answer"])
             else:
                 q["points_label"] = f"{q['points_value']} pts"
         q["help_lead"] = _bonus_help_lead(q, closest_config)
@@ -2424,8 +2437,8 @@ async def _load_bonus_peer_answers(db, questions, participant_id: int):
             # "3" et "3,0" désignent la même réponse : grouper sur la valeur
             # parsée, pas la string brute. Fallback sur la string si une
             # vieille réponse invalide ne parse pas (ne jamais planter).
-            display = row["answer"]
-            parsed = parse_bonus_number(display)
+            display = format_minute_notation(row["answer"]) if q["minute_notation"] else row["answer"]
+            parsed = parse_bonus_number(row["answer"])
             key = parsed if parsed is not None else display
         else:
             display = row["answer"]
@@ -2967,7 +2980,12 @@ async def submit_bonus(request: Request, token: str, question_id: int):
                 ordered.append(team)
             answer = json.dumps({"count": count, "teams": ordered}, ensure_ascii=False)
         else:
-            answer = (form.get("answer") or "").strip()
+            if q["answer_type"] == "number" and normalize_closest_config(
+                q["points_value"], q["scoring_config"]
+            ).get("minute_notation"):
+                answer = compose_minute_notation(form.get("minute", ""), form.get("added", "")) or ""
+            else:
+                answer = (form.get("answer") or "").strip()
             if not answer:
                 raise HTTPException(400, "Réponse vide")
             if q["answer_type"] == "choice" and q["options"]:

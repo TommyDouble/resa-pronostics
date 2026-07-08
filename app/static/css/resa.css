@@ -1767,6 +1767,43 @@ img.av { object-fit: cover; display: block; }
 }
 .form-error.show { display: block; }
 
+.minute-notation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.minute-notation > .field,
+.minute-notation-added {
+  min-width: 0;
+}
+.minute-notation-added {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+.minute-notation-added[hidden] {
+  display: none;
+}
+.minute-notation-plus {
+  color: var(--n500);
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+}
+
+@media (max-width: 420px) {
+  .minute-notation {
+    grid-template-columns: 1fr;
+  }
+  .minute-notation-added {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+}
+
 /* ---- Admin: bonus and deadline operations ---- */
 .admin-bonus-controls {
   display: flex;

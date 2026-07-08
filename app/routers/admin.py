@@ -45,6 +45,8 @@ from app.scoring import (
     bonus_number_is_integer,
     calculate_bonus_scores,
     closest_bonus_standings,
+    compose_minute_notation,
+    format_minute_notation,
     format_number_multi,
     format_team_list,
     get_rankings,
@@ -57,6 +59,7 @@ from app.scoring import (
     recalculate_match_scores,
     recalculate_pre_tournament_scores,
     serialize_closest_config,
+    split_minute_notation,
 )
 from app.push import push_enabled, send_push_to_participant
 from app.templating import create_templates
@@ -334,7 +337,7 @@ def _preserve_closest_value_bounds(scoring_config: str | None, existing_config: 
         return scoring_config
     if not isinstance(new_config, dict) or not isinstance(old_config, dict):
         return scoring_config
-    for key in ("min_value", "max_value", "integer_only", "max_points"):
+    for key in ("min_value", "max_value", "integer_only", "max_points", "minute_notation"):
         if key in old_config and key not in new_config:
             new_config[key] = old_config[key]
     return json.dumps(new_config, ensure_ascii=False, separators=(",", ":"))
@@ -345,15 +348,14 @@ def _number_config_error(value: str, scoring_config: str | None) -> str | None:
     if parsed is None:
         return "La réponse correcte doit être un nombre."
     config = normalize_closest_config(0, scoring_config)
-    if config.get("integer_only"):
-        if not bonus_number_is_integer(parsed):
-            return "La réponse correcte doit être un nombre entier."
-        min_value = config.get("min_value")
-        max_value = config.get("max_value")
-        if min_value is not None and parsed < min_value:
-            return f"La réponse correcte doit être au moins {min_value}."
-        if max_value is not None and parsed > max_value:
-            return f"La réponse correcte doit être au maximum {max_value}."
+    if config.get("integer_only") and not bonus_number_is_integer(parsed):
+        return "La réponse correcte doit être un nombre entier."
+    min_value = config.get("min_value")
+    max_value = config.get("max_value")
+    if min_value is not None and parsed < min_value:
+        return f"La réponse correcte doit être au moins {min_value}."
+    if max_value is not None and parsed > max_value:
+        return f"La réponse correcte doit être au maximum {max_value}."
     return None
 
 
@@ -362,15 +364,14 @@ def _participant_number_config_error(value: str, scoring_config: str | None) -> 
     if parsed is None:
         return "Réponse invalide : indique un nombre."
     config = normalize_closest_config(0, scoring_config)
-    if config.get("integer_only"):
-        if not bonus_number_is_integer(parsed):
-            return "Réponse invalide : indique un nombre entier."
-        min_value = config.get("min_value")
-        max_value = config.get("max_value")
-        if min_value is not None and parsed < min_value:
-            return f"Réponse invalide : minimum {min_value}."
-        if max_value is not None and parsed > max_value:
-            return f"Réponse invalide : maximum {max_value}."
+    if config.get("integer_only") and not bonus_number_is_integer(parsed):
+        return "Réponse invalide : indique un nombre entier."
+    min_value = config.get("min_value")
+    max_value = config.get("max_value")
+    if min_value is not None and parsed < min_value:
+        return f"Réponse invalide : minimum {min_value}."
+    if max_value is not None and parsed > max_value:
+        return f"Réponse invalide : maximum {max_value}."
     return None
 
 
@@ -2229,6 +2230,10 @@ async def bonus_admin(request: Request):
             question["integer_only"] = closest_config.get("integer_only", False)
             question["answer_min"] = closest_config.get("min_value")
             question["answer_max"] = closest_config.get("max_value")
+            question["minute_notation"] = closest_config.get("minute_notation", False)
+            question["correct_minute"], question["correct_added"] = split_minute_notation(
+                question.get("correct_answer")
+            )
             question["preview_can_edit"] = question["deadline"] > now
             question["participant_total"] = confirmed_count
             if not question["is_published"]:
@@ -2277,7 +2282,11 @@ async def bonus_admin(request: Request):
             else:
                 question["correct_set"] = []
                 question["correct_count"] = None
-                question["correct_answer_display"] = question.get("correct_answer") or ""
+                question["correct_answer_display"] = (
+                    format_minute_notation(question.get("correct_answer"))
+                    if question["minute_notation"] and question.get("correct_answer")
+                    else question.get("correct_answer") or ""
+                )
                 question["locked_teams"] = set()
                 question["points_label"] = (
                     f"{' / '.join(str(p) for p in question['closest_rank_points'])} pts"
@@ -2297,6 +2306,7 @@ async def bonus_admin(request: Request):
         ))
         team_ids = {q["id"] for q in questions if q["answer_type"] == "multi_choice"}
         combo_ids = {q["id"] for q in questions if q["answer_type"] == "number_multi"}
+        minute_notation_ids = {q["id"] for q in questions if q.get("minute_notation")}
         answer_rows = await db.execute(
             """SELECT
                   ba.question_id,
@@ -2321,6 +2331,8 @@ async def bonus_admin(request: Request):
             elif answer_dict["question_id"] in combo_ids:
                 options = next((q.get("options_text", "").split("\n") for q in questions if q["id"] == answer_dict["question_id"]), [])
                 answer_dict["answer_display"] = format_number_multi(answer_dict.get("answer"), options)
+            elif answer_dict["question_id"] in minute_notation_ids:
+                answer_dict["answer_display"] = format_minute_notation(answer_dict.get("answer"))
             else:
                 answer_dict["answer_display"] = answer_dict.get("answer")
             answers_by_question.setdefault(answer_dict["question_id"], []).append(answer_dict)
@@ -2567,6 +2579,15 @@ async def update_bonus_question(
             if error:
                 _flash(request, error, "err")
                 return RedirectResponse("/admin/bonus", status_code=303)
+        if answer_type == "number" and normalize_closest_config(0, scoring_config).get("minute_notation"):
+            form = await request.form()
+            composed = compose_minute_notation(
+                form.get("correct_minute", ""), form.get("correct_added", "")
+            )
+            if composed is None and (form.get("correct_minute") or "").strip():
+                _flash(request, "Minute ou temps additionnel invalide.", "err")
+                return RedirectResponse("/admin/bonus", status_code=303)
+            correct_answer = composed or ""
         if answer_type == "number" and correct_answer.strip():
             error = _number_config_error(correct_answer, scoring_config)
             if error:
@@ -2628,6 +2649,16 @@ async def set_bonus_answer(request: Request, question_id: int,
                 _flash(request, error, "err")
                 return RedirectResponse("/admin/bonus", status_code=303)
         if question["answer_type"] == "number":
+            closest_config = normalize_closest_config(0, question["scoring_config"])
+            if closest_config.get("minute_notation"):
+                form = await request.form()
+                composed = compose_minute_notation(
+                    form.get("correct_minute", ""), form.get("correct_added", "")
+                )
+                if composed is None and (form.get("correct_minute") or "").strip():
+                    _flash(request, "Minute ou temps additionnel invalide.", "err")
+                    return RedirectResponse("/admin/bonus", status_code=303)
+                correct_answer = composed or ""
             error = _number_config_error(correct_answer, question["scoring_config"])
             if error:
                 _flash(request, error, "err")

@@ -2,6 +2,7 @@ import aiosqlite
 import json
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from app.config import settings
 from app.nameutils import build_full_name, split_full_name
 from app.pre_tournament import ensure_pre_tournament_defaults
@@ -89,6 +90,97 @@ ROUND16_FASTEST_GOAL_HELP = (
     "Si aucun but n'est inscrit sur l'ensemble des huitièmes, la question est "
     "annulée. Barème : 5 points pour le ou les plus proches, 3 points pour le "
     "deuxième écart distinct, 1 point pour le troisième écart distinct."
+)
+
+QUARTER_COMEBACK_QUALIFIERS_TEXT = (
+    "Les qualifiés dos au mur — Combien d'équipes qualifiées pour les "
+    "demi-finales auront encaissé le tout premier but de leur quart de finale — "
+    "et lesquelles ?"
+)
+QUARTER_SEMIFINALIST_GOALS_TEXT = (
+    "La puissance des futurs demi-finalistes — Combien de buts marqueront, à "
+    "elles quatre, les équipes qui se qualifient pour les demi-finales — en ne "
+    "comptant que leurs propres buts, marqués pendant leur quart de finale ?"
+)
+QUARTER_LATEST_GOAL_TEXT = (
+    "Jusqu'au bout du suspense — À quelle minute sera inscrit le but le plus "
+    "tardif de tous les quarts de finale ?"
+)
+QUARTER_TEAM_OPTIONS = [
+    "France",
+    "Maroc",
+    "Espagne",
+    "Belgique",
+    "Norvège",
+    "Angleterre",
+    "Argentine",
+    "Suisse",
+]
+QUARTER_COMEBACK_QUALIFIERS_CONFIG = {
+    "locked_teams": [],
+    "min_count": 0,
+    "max_count": 4,
+    "part1_points": 2,
+    "team_step": 2,
+    "max_points": 10,
+    "team_pairs": True,
+}
+QUARTER_CLOSEST_GOALS_CONFIG = {
+    "preset_key": "custom",
+    "award_mode": "podium_custom",
+    "tie_policy": "full_dense",
+    "rank_points": [5, 3, 1],
+    "min_value": 0,
+    "max_value": 40,
+    "integer_only": True,
+    "max_points": 5,
+}
+QUARTER_LATEST_GOAL_CONFIG = {
+    "preset_key": "custom",
+    "award_mode": "podium_custom",
+    "tie_policy": "full_dense",
+    "rank_points": [5, 3, 1],
+    "min_value": 1,
+    "max_value": 121,
+    "integer_only": False,
+    "max_points": 5,
+    "minute_notation": True,
+}
+QUARTER_COMEBACK_QUALIFIERS_HELP = (
+    "Il faut avoir pris le premier but du match (temps réglementaire ou "
+    "prolongation) et se qualifier quand même. On compte les équipes qui "
+    "encaissent le premier but de leur quart de finale puis se qualifient pour "
+    "les demi-finales. Un but contre son camp compte comme encaissé par l'équipe "
+    "dans les filets de laquelle il est marqué. Si un match finit 0-0 à l'issue "
+    "de la prolongation et se joue aux tirs au but, aucune équipe de ce match ne "
+    "compte. En cas de match interrompu ou abandonné avant son terme, ce match "
+    "est neutralisé pour cette question. Les 4 quarts opposent France-Maroc, "
+    "Espagne-Belgique, Norvège-Angleterre et Argentine-Suisse : un seul "
+    "finaliste par quart peut être coché à raison, cocher les deux équipes d'un "
+    "même quart garantit qu'au moins une des deux est fausse. Jusqu'à 10 points "
+    ": 2 points si le total est exact, puis +2 / -2 par équipe sélectionnée. Le "
+    "bonus détail ne peut jamais descendre sous 0."
+)
+QUARTER_SEMIFINALIST_GOALS_HELP = (
+    "Seuls les buts des 4 équipes qui passent en demi comptent, pas ceux de "
+    "leurs adversaires. On additionne uniquement les buts marqués en quart de "
+    "finale par les 4 équipes qui se qualifient pour les demi-finales. Temps "
+    "réglementaire et prolongation inclus, tirs au but exclus. Un but contre son "
+    "camp est crédité à l'équipe qui en bénéficie. Barème : 5 points pour le ou "
+    "les plus proches, 3 points pour le deuxième écart distinct, 1 point pour le "
+    "troisième écart distinct."
+)
+QUARTER_LATEST_GOAL_HELP = (
+    "Le but le plus tard, tous quarts confondus, prolongation incluse, tirs au "
+    "but exclus. On retient la minute officielle du but inscrit le plus tard sur "
+    "l'ensemble des quarts de finale : réponds par la minute (ex: 63). Si le but "
+    "est marqué en arrêt de jeu (fin de mi-temps ou de prolongation), un second "
+    "champ « temps additionnel » apparaît pour préciser (ex: minute 90 + 3 de "
+    "temps additionnel) — un but en arrêt de jeu compte toujours avant la "
+    "période suivante. Si aucun but n'est inscrit sur l'ensemble des quarts, la "
+    "question est annulée. Barème : 5 points pour le ou les plus proches, 3 "
+    "points pour le deuxième écart distinct, 1 point pour le troisième écart "
+    "distinct."
 )
 
 
@@ -574,6 +666,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await ensure_bonus_question_drafts(db)
         await ensure_round_of_32_bonus_drafts(db)
         await ensure_round_of_16_bonus_drafts(db)
+        await ensure_quarter_bonus_drafts(db)
 
         # Les anciens brouillons comptent désormais comme des réponses valides.
         await db.execute(
@@ -1020,6 +1113,135 @@ async def ensure_round_of_16_bonus_drafts(db):
                 draft["help_text"],
                 0,
                 placeholder_deadline,
+            ),
+        )
+
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
+async def _deadline_before_first_phase_match(db, phase: str, fallback: str) -> str:
+    row = await (await db.execute(
+        """SELECT match_date, kickoff_time
+           FROM matches
+           WHERE phase=?
+           ORDER BY match_date, kickoff_time, match_number
+           LIMIT 1""",
+        (phase,),
+    )).fetchone()
+    if not row:
+        return fallback
+    try:
+        kickoff = datetime.fromisoformat(f"{row['match_date']}T{row['kickoff_time']}")
+    except (TypeError, ValueError):
+        return fallback
+    return (kickoff - timedelta(minutes=1)).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+async def ensure_quarter_bonus_drafts(db):
+    """Prépare les bonus quarts en brouillon.
+
+    Les deadlines suivent le premier quart présent dans le calendrier applicatif
+    (`matches`) : coup d'envoi moins une minute. L'admin règle ensuite les
+    réponses correctes, puis publie.
+    """
+    key = "bonus_drafts_quarter_2026_v2"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    comeback_config = json.dumps(
+        QUARTER_COMEBACK_QUALIFIERS_CONFIG,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    semifinalist_goals_config = json.dumps(
+        QUARTER_CLOSEST_GOALS_CONFIG,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    latest_goal_config = json.dumps(
+        QUARTER_LATEST_GOAL_CONFIG,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    quarter_deadline = await _deadline_before_first_phase_match(
+        db,
+        "quarter",
+        "2026-07-09T19:59:00",
+    )
+    drafts = [
+        {
+            "question_text": QUARTER_COMEBACK_QUALIFIERS_TEXT,
+            "answer_type": "number_multi",
+            "options": json.dumps(QUARTER_TEAM_OPTIONS, ensure_ascii=False),
+            "points_value": 10,
+            "scoring_mode": "number_multi",
+            "scoring_config": comeback_config,
+            "help_text": QUARTER_COMEBACK_QUALIFIERS_HELP,
+        },
+        {
+            "question_text": QUARTER_SEMIFINALIST_GOALS_TEXT,
+            "answer_type": "number",
+            "options": None,
+            "points_value": 5,
+            "scoring_mode": "closest_podium",
+            "scoring_config": semifinalist_goals_config,
+            "help_text": QUARTER_SEMIFINALIST_GOALS_HELP,
+        },
+        {
+            "question_text": QUARTER_LATEST_GOAL_TEXT,
+            "answer_type": "number",
+            "options": None,
+            "points_value": 5,
+            "scoring_mode": "closest_podium",
+            "scoring_config": latest_goal_config,
+            "help_text": QUARTER_LATEST_GOAL_HELP,
+        },
+    ]
+    for draft in drafts:
+        existing = await (await db.execute(
+            "SELECT id FROM bonus_questions WHERE question_text=?",
+            (draft["question_text"],),
+        )).fetchone()
+        if existing:
+            await db.execute(
+                """UPDATE bonus_questions
+                   SET options=?, scoring_config=?, help_text=?, deadline=?
+                   WHERE id=?
+                     AND is_published=0
+                     AND id NOT IN (SELECT question_id FROM bonus_answers)""",
+                (
+                    draft["options"],
+                    draft["scoring_config"],
+                    draft["help_text"],
+                    quarter_deadline,
+                    existing["id"],
+                ),
+            )
+            continue
+        await db.execute(
+            """INSERT INTO bonus_questions
+               (question_text, phase, answer_type, options, points_value,
+                correct_answer, scoring_mode, scoring_config, help_text,
+                is_published, deadline)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                draft["question_text"],
+                "quarter",
+                draft["answer_type"],
+                draft["options"],
+                draft["points_value"],
+                None,
+                draft["scoring_mode"],
+                draft["scoring_config"],
+                draft["help_text"],
+                0,
+                quarter_deadline,
             ),
         )
 
