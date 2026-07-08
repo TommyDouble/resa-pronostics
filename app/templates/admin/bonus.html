@@ -485,18 +485,20 @@
           <div class="lbl" style="margin-bottom:5px;">Réponse correcte</div>
           {% if q.answer_type == 'number_multi' and q.options %}
           <div style="margin-bottom:8px;max-width:160px;">
-            <div class="muted" style="font-size:11px;margin-bottom:4px;">Total (Maroc inclus)</div>
+            <div class="muted" style="font-size:11px;margin-bottom:4px;">Total{% if q.locked_teams %} (équipes déjà validées incluses){% endif %}</div>
             <div class="field"><input type="number" name="correct_count" min="{{ q.number_multi_config.min_count }}" max="{{ q.number_multi_config.max_count }}" value="{{ q.correct_count if q.correct_count is not none else '' }}" placeholder="ex: 4"></div>
           </div>
           <div class="muted" style="font-size:11px;margin-bottom:4px;">Équipes qualifiées (parmi celles en course)</div>
           <div style="display:flex;flex-direction:column;gap:6px;">
             {% for opt in q.options | fromjson %}
+            {% if q.number_multi_config.team_pairs and loop.index0 is even %}<div class="grid2" style="gap:6px;">{% endif %}
             {% set is_locked = opt in q.locked_teams %}
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
               <input type="checkbox" name="correct_answer" value="{{ opt }}" {{ 'checked' if is_locked or opt in q.correct_set else '' }} {{ 'disabled' if is_locked else '' }}>
               <span>{{ opt }}</span>
               {% if is_locked %}<span class="chip ok" style="font-size:10px;">déjà qualifié</span>{% endif %}
             </label>
+            {% if q.number_multi_config.team_pairs and loop.index0 is odd %}</div>{% endif %}
             {% endfor %}
           </div>
           <p class="muted helper-text" style="margin-bottom:0;">{{ q.number_multi_config.part1_points }} pts si le total est exact, +{{ q.number_multi_config.team_step }} par autre équipe juste, -{{ q.number_multi_config.team_step }} par erreur (plancher 0), {{ q.number_multi_config.max_points }} pts max.</p>
@@ -525,7 +527,17 @@
         </div>
         <div data-bonus-number-only>
           <div class="lbl" style="margin-bottom:5px;">Réponse correcte numérique</div>
+          {% if q.minute_notation %}
+          <div data-minute-notation style="display:flex;gap:8px;align-items:end;">
+            <div class="field" style="flex:1;"><input type="number" name="correct_minute" min="1" max="120" value="{{ q.correct_minute or '' }}" placeholder="Minute" data-minute-field></div>
+            <div data-added-wrap hidden style="flex:1;">
+              <div class="field"><input type="number" name="correct_added" min="1" max="98" value="{{ q.correct_added or '' }}" placeholder="Temps additionnel" data-added-field></div>
+            </div>
+          </div>
+          <p class="muted helper-text" style="margin-bottom:0;">But en fin de mi-temps ou de prolongation (45, 90, 105, 120) : le champ "temps additionnel" apparaît pour préciser (ex: 90 + 3).</p>
+          {% else %}
           <div class="field"><input type="number" step="{{ '1' if q.integer_only else 'any' }}" name="correct_answer" value="{{ q.correct_answer or '' }}" placeholder="Déclenche le recalcul" inputmode="numeric"{% if q.answer_min is not none %} min="{{ q.answer_min }}"{% endif %}{% if q.answer_max is not none %} max="{{ q.answer_max }}"{% endif %}></div>
+          {% endif %}
         </div>
         <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;cursor:pointer;padding-bottom:12px;">
           <input type="checkbox" name="is_published" value="1" {{ 'checked' if q.is_published else '' }}>
@@ -568,7 +580,7 @@
           {% for group in standing.groups %}
           <tr>
             <td class="s">#{{ group.rank }}</td>
-            <td>{{ group.participants[0].answer }}</td>
+            <td>{{ group.participants[0].answer_display or group.participants[0].answer }}</td>
             <td>{{ group.distance }}</td>
             <td class="s">{{ group.points }}</td>
             <td>

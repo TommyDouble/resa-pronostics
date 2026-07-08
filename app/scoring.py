@@ -567,6 +567,63 @@ def bonus_number_is_integer(value: Decimal) -> bool:
     return value == value.to_integral_value()
 
 
+_MINUTE_NOTATION_BASES = (45, 90, 105, 120)
+
+
+def compose_minute_notation(minute_raw: str, added_raw: str) -> str | None:
+    """Combine a base minute and an optional stoppage-time addition.
+
+    Added time is encoded as a decimal fraction (``90+3`` -> ``"90.03"``) so it
+    always sorts before the next phase (91-105 is real extra time) without
+    colliding with it. Returns ``None`` if the combination is invalid.
+    """
+    minute_raw = (minute_raw or "").strip()
+    added_raw = (added_raw or "").strip()
+    try:
+        minute = int(minute_raw)
+    except (TypeError, ValueError):
+        return None
+    if minute < 1 or minute > 120:
+        return None
+    if not added_raw:
+        return str(minute)
+    try:
+        added = int(added_raw)
+    except (TypeError, ValueError):
+        return None
+    if minute not in _MINUTE_NOTATION_BASES or added < 1 or added > 98:
+        return None
+    return f"{minute}.{added:02d}"
+
+
+def split_minute_notation(value) -> tuple[str, str]:
+    """Inverse of ``compose_minute_notation``, for form pre-filling."""
+    raw = str(value or "").strip().replace(",", ".")
+    if not raw:
+        return ("", "")
+    minute_part, _, decimals = raw.partition(".")
+    try:
+        minute = int(minute_part)
+    except ValueError:
+        return ("", "")
+    if minute in _MINUTE_NOTATION_BASES and decimals:
+        try:
+            added = round(float(f"0.{decimals}") * 100)
+        except ValueError:
+            added = 0
+        if added > 0:
+            return (str(minute), str(added))
+    return (str(minute), "")
+
+
+def format_minute_notation(value) -> str:
+    """Human-readable "90+3" rendering of a minute-notation bonus answer."""
+    minute, added = split_minute_notation(value)
+    if not minute:
+        return str(value or "")
+    return f"{minute}+{added}" if added else minute
+
+
 def _row_get(row, key, default=None):
     if isinstance(row, dict):
         return row.get(key, default)
@@ -645,6 +702,8 @@ def normalize_closest_config(points_value: int, raw_config=None) -> dict:
     else:
         integer_only = bool(integer_only)
 
+    minute_notation = bool(config.get("minute_notation"))
+
     return {
         "preset_key": preset_key,
         "award_mode": award_mode,
@@ -653,6 +712,7 @@ def normalize_closest_config(points_value: int, raw_config=None) -> dict:
         "min_value": min_value,
         "max_value": max_value,
         "integer_only": integer_only,
+        "minute_notation": minute_notation,
     }
 
 
@@ -678,6 +738,8 @@ def serialize_closest_config(
         config.pop("max_value", None)
     if not config.get("integer_only"):
         config.pop("integer_only", None)
+    if not config.get("minute_notation"):
+        config.pop("minute_notation", None)
     return json.dumps(config, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -858,6 +920,7 @@ def normalize_number_multi_config(points_value: int = 0, raw_config=None, option
         "part1_points": part1_points,
         "team_step": team_step,
         "max_points": max_points,
+        "team_pairs": bool(config.get("team_pairs")),
     }
 
 

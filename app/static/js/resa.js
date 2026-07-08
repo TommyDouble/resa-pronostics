@@ -979,6 +979,29 @@ function initAdminMobileMenu() {
   }
 }
 
+/* ---- Bonus minute notation (90+3 style, participant + admin) ---- */
+function initMinuteNotationToggles() {
+  var STOPPAGE_MINUTES = [45, 90, 105, 120];
+  document.querySelectorAll('[data-minute-notation]').forEach(function(wrap) {
+    var minuteField = wrap.querySelector('[data-minute-field]');
+    var addedWrap = wrap.querySelector('[data-added-wrap]');
+    var addedField = addedWrap && addedWrap.querySelector('[data-added-field]');
+    if (!minuteField || !addedWrap) return;
+    function refresh() {
+      var minute = parseInt(minuteField.value, 10);
+      if (STOPPAGE_MINUTES.indexOf(minute) !== -1) {
+        addedWrap.hidden = false;
+      } else {
+        addedWrap.hidden = true;
+        if (addedField) addedField.value = '';
+      }
+    }
+    minuteField.addEventListener('input', refresh);
+    minuteField.addEventListener('change', refresh);
+    refresh();
+  });
+}
+
 /* ---- Bonus answer validation ---- */
 function initBonusForms() {
   document.querySelectorAll('.bonus-answer-form').forEach(function(form) {
@@ -2844,6 +2867,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initAdminMobileMenu();
   initBonusForms();
   initAdminBonusQuestionForms();
+  initMinuteNotationToggles();
   initPush();
   initMatchLive();
   initCountUp();

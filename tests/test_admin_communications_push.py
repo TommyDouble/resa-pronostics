@@ -6,6 +6,7 @@ import app.routers.admin as admin_routes
 from app.config import settings
 from app.database import (
     ensure_bonus_question_drafts,
+    ensure_quarter_bonus_drafts,
     ensure_round_of_16_bonus_drafts,
     ensure_round_of_32_bonus_drafts,
     get_db,
@@ -78,12 +79,15 @@ def clear_operational_data():
                      'pre_tournament_deadline',
                      'bonus_drafts_group_j3_2026_v1',
                      'bonus_drafts_round_of_32_2026_v4',
-                     'bonus_drafts_round_of_16_2026_v1'
+                     'bonus_drafts_round_of_16_2026_v1',
+                     'bonus_drafts_quarter_2026_v1',
+                     'bonus_drafts_quarter_2026_v2'
                    )"""
             )
             await ensure_bonus_question_drafts(db)
             await ensure_round_of_32_bonus_drafts(db)
             await ensure_round_of_16_bonus_drafts(db)
+            await ensure_quarter_bonus_drafts(db)
             await db.commit()
 
     run(_clear())

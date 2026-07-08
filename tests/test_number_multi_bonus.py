@@ -1,5 +1,6 @@
 import json
 
+from app.database import QUARTER_COMEBACK_QUALIFIERS_CONFIG
 from app.scoring import (
     format_number_multi,
     normalize_number_multi_config,
@@ -33,6 +34,7 @@ ROUND16_CONFIG = json.dumps({
     "team_step": 2,
     "max_points": 10,
 }, ensure_ascii=False)
+QUARTER_CONFIG = json.dumps(QUARTER_COMEBACK_QUALIFIERS_CONFIG, ensure_ascii=False)
 
 # total = 4 (Maroc + 3 in-race teams qualified)
 CORRECT = json.dumps(
@@ -140,3 +142,37 @@ def test_round16_number_multi_detail_cannot_go_negative():
     answers = _answers({1: (3, ["États-Unis"])})
 
     assert number_multi_bonus_points(10, correct, answers, ROUND16_CONFIG) == {1: 0}
+
+
+def test_quarter_number_multi_uses_two_point_count_and_team_steps():
+    correct = json.dumps(
+        {"count": 4, "teams": ["France", "Brésil", "Maroc", "Japon"]},
+        ensure_ascii=False,
+    )
+
+    perfect = _answers({1: (4, ["France", "Brésil", "Maroc", "Japon"])})
+    assert number_multi_bonus_points(10, correct, perfect, QUARTER_CONFIG) == {1: 10}
+
+    zero_comeback = json.dumps({"count": 0, "teams": []}, ensure_ascii=False)
+    assert number_multi_bonus_points(
+        10,
+        zero_comeback,
+        _answers({1: (0, [])}),
+        QUARTER_CONFIG,
+    ) == {1: 2}
+
+    wrong_team = _answers({1: (4, ["France", "Brésil", "Maroc", "Espagne"])})
+    assert number_multi_bonus_points(10, correct, wrong_team, QUARTER_CONFIG) == {1: 6}
+
+    wrong_count_good_teams = _answers({1: (3, ["France", "Brésil", "Maroc"])})
+    assert number_multi_bonus_points(10, correct, wrong_count_good_teams, QUARTER_CONFIG) == {1: 6}
+
+    detail_floored = _answers({1: (2, ["Espagne", "Italie"])})
+    assert number_multi_bonus_points(10, correct, detail_floored, QUARTER_CONFIG) == {1: 0}
+
+
+def test_team_pairs_flag_passes_through_normalize_config():
+    assert normalize_number_multi_config(10, QUARTER_COMEBACK_QUALIFIERS_CONFIG, None)["team_pairs"] is True
+
+    without_flag = json.dumps({"part1_points": 2, "team_step": 2}, ensure_ascii=False)
+    assert normalize_number_multi_config(10, without_flag, None)["team_pairs"] is False

@@ -143,7 +143,14 @@
 
   {% if q.can_edit %}
   <form method="post" action="/p/{{ token }}/bonus/{{ q.id }}" class="bonus-answer-form" novalidate{% if is_stack %} data-bonus-stack-form="1"{% endif %}>
-    {% if q.answer_type == 'number' %}
+    {% if q.answer_type == 'number' and q.minute_notation %}
+    <div data-minute-notation style="margin-bottom:14px;display:flex;gap:8px;align-items:end;">
+      <div class="field" style="flex:1;"><input type="number" name="minute" min="1" max="120" value="{{ q.answer_minute or '' }}" placeholder="Minute" inputmode="numeric" data-minute-field></div>
+      <div data-added-wrap hidden style="flex:1;">
+        <div class="field"><input type="number" name="added" min="1" max="98" value="{{ q.answer_added or '' }}" placeholder="Temps additionnel" inputmode="numeric" data-added-field></div>
+      </div>
+    </div>
+    {% elif q.answer_type == 'number' %}
     <div class="field" style="margin-bottom:14px;">
       <input type="number" name="answer"
              {% if q.answer_min is not none %}min="{{ q.answer_min }}"{% else %}min="0"{% endif %}
@@ -165,6 +172,7 @@
       </div>
       <div data-nm-badges style="display:flex;flex-wrap:wrap;gap:8px;">
         {% for opt in q.options | fromjson %}
+        {% if q.number_multi_config.team_pairs and loop.index0 is even %}<div class="grid2" style="width:100%;gap:8px;">{% endif %}
         {% set is_locked = opt in q.locked_teams %}
         <label class="nm-badge{% if is_locked %} is-locked{% endif %}" data-nm-badge>
           {% if is_locked %}<input type="hidden" name="teams" value="{{ opt }}">{% endif %}
@@ -172,6 +180,7 @@
           <span>{{ opt }}</span>
           {% if is_locked %}<small>déjà qualifié</small>{% endif %}
         </label>
+        {% if q.number_multi_config.team_pairs and loop.index0 is odd %}</div>{% endif %}
         {% endfor %}
       </div>
     </div>

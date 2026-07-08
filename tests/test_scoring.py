@@ -7,9 +7,12 @@ from app.scoring import (
     calculate_pre_tournament_points,
     closest_bonus_standings,
     closest_podium_bonus_points,
+    compose_minute_notation,
+    format_minute_notation,
     normalize_closest_config,
     parse_revelation_winners,
     serialize_closest_config,
+    split_minute_notation,
 )
 
 
@@ -425,3 +428,39 @@ class TestClosestPodiumBonusPoints:
             "tie_policy": "full_skip",
             "rank_points": [9, 0, 0],
         }
+
+
+class TestMinuteNotation:
+    def test_compose_plain_minute(self):
+        assert compose_minute_notation("63", "") == "63"
+        assert compose_minute_notation("63", None) == "63"
+
+    def test_compose_stoppage_time(self):
+        assert compose_minute_notation("90", "3") == "90.03"
+        assert compose_minute_notation("120", "15") == "120.15"
+        assert compose_minute_notation("45", "2") == "45.02"
+        assert compose_minute_notation("105", "1") == "105.01"
+
+    def test_compose_rejects_added_on_non_checkpoint_minute(self):
+        assert compose_minute_notation("63", "2") is None
+
+    def test_compose_rejects_out_of_bounds_minute(self):
+        assert compose_minute_notation("0", "") is None
+        assert compose_minute_notation("121", "") is None
+
+    def test_compose_rejects_invalid_added(self):
+        assert compose_minute_notation("90", "0") is None
+        assert compose_minute_notation("90", "99") is None
+        assert compose_minute_notation("90", "abc") is None
+
+    def test_format_and_split_round_trip(self):
+        composed = compose_minute_notation("90", "3")
+        assert split_minute_notation(composed) == ("90", "3")
+        assert format_minute_notation(composed) == "90+3"
+
+        assert split_minute_notation("63") == ("63", "")
+        assert format_minute_notation("63") == "63"
+
+    def test_format_plain_value_without_added_time(self):
+        assert format_minute_notation("120") == "120"
+        assert split_minute_notation("120") == ("120", "")
