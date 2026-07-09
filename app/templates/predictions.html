@@ -10,7 +10,7 @@
   {% endif %}
 {% endfor %}
 
-<div class="page-head">
+<div class="page-head predictions-head">
   <div class="row1">
     <h1>Pronostics</h1>
     <span class="sp"></span>
@@ -37,7 +37,7 @@
       Tous les matchs de cette section sont joués.
     {% endif %}
   </div>
-  <div class="fchips prono-tabs">
+  <div class="fchips prono-tabs" data-prono-tabs>
     {% for sec in prediction_sections %}
     <a href="/p/{{ token }}/pronos?section={{ sec.key }}"
        class="{{ 'on' if current_section == sec.key else '' }}"
