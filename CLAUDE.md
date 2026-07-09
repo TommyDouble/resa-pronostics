@@ -9,6 +9,11 @@ Pas de venv ni pytest préinstallés sur la machine. Créer/utiliser un venv loc
 `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest httpx`
 puis `.venv/bin/python -m pytest -q`. (Le scheduler est désactivé en test via `SCHEDULER_ENABLED=0`, cf. `tests/conftest.py`.)
 
+## UI mobile
+Les champs focusables (`input`, `select`, `textarea`) doivent rester à **16px minimum**
+sur mobile, sinon Safari iOS zoome automatiquement au focus. Ne pas contourner ça avec
+un viewport qui désactive le zoom utilisateur : corriger la taille du champ dans le CSS.
+
 ## Convention : story des nouveautés (IMPORTANT)
 
 > **À chaque nouvelle fonctionnalité UX/UI, DEMANDER au PO si on crée une story** pour la

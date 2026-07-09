@@ -513,6 +513,16 @@ def test_bonus_stack_mobile_input_and_tooltip_contract():
     tooltip_css = css.split(".floating-tooltip {", 1)[1].split("}", 1)[0]
     assert "z-index: 1200;" in tooltip_css
 
+    # iOS Safari zoome automatiquement au focus si un champ est sous 16px.
+    # La règle doit couvrir toutes les réponses bonus, pas seulement la stack.
+    bonus_form_css = css.split(".bonus-answer-form .field", 1)[1].split(
+        "/* ---- Home bonus stack ----", 1
+    )[0]
+    assert '.bonus-answer-form input[type="text"]' in bonus_form_css
+    assert '.bonus-answer-form input[type="number"]' in bonus_form_css
+    assert ".bonus-answer-form select" in bonus_form_css
+    assert "font-size: 16px;" in bonus_form_css
+
     stack_css = css.split(".bonus-stack-card .bonus-answer-form", 1)[1].split(
         ".bonus-stack-done", 1
     )[0]

@@ -622,6 +622,14 @@ input[type="text"], input[type="email"], input[type="password"], select, textare
   gap: 8px;
   cursor: pointer;
 }
+.bonus-answer-form .field,
+.bonus-answer-form input[type="text"],
+.bonus-answer-form input[type="number"],
+.bonus-answer-form select,
+.bonus-answer-form textarea,
+.bonus-answer-form .textarea {
+  font-size: 16px;
+}
 
 /* ---- Home bonus stack ---- */
 .icon-btn {
