@@ -15,6 +15,8 @@
   --sh: 0 1px 3px rgba(31,29,27,.10);
   --sh2: 0 6px 20px -8px rgba(31,29,27,.22);
   --sh-focus: 0 0 0 3px rgba(211,69,13,.15);
+  --bnav-height: 60px;
+  --bnav-edge: max(10px, env(safe-area-inset-bottom));
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -47,7 +49,7 @@ body {
   background-size: 18px 18px;
   display: flex;
   flex-direction: column;
-  padding-bottom: 64px;
+  padding-bottom: calc(var(--bnav-height) + var(--bnav-edge) + 12px);
 }
 
 /* ---- Page head (sticky) ---- */
@@ -95,44 +97,92 @@ body {
 /* ---- Bottom nav (mobile) ---- */
 .bnav {
   position: fixed;
-  bottom: 0;
+  bottom: var(--bnav-edge);
   left: 50%;
   transform: translateX(-50%);
-  width: 100%;
-  max-width: 480px;
+  width: calc(100% - 24px);
+  max-width: 456px;
+  min-height: var(--bnav-height);
   display: flex;
-  background: rgba(255,253,250,.97);
-  border-top: 1px solid var(--line);
+  background: linear-gradient(135deg, rgba(255,255,255,.58), rgba(255,253,250,.30));
+  -webkit-backdrop-filter: blur(24px) saturate(165%);
+  backdrop-filter: blur(24px) saturate(165%);
+  border: 1px solid rgba(255,255,255,.68);
+  border-radius: 22px;
+  box-shadow:
+    0 10px 30px rgba(31,29,27,.16),
+    inset 0 1px 0 rgba(255,255,255,.88),
+    inset 0 -1px 0 rgba(120,110,95,.08);
   z-index: 20;
-  padding: 6px 4px 10px;
+  padding: 5px 6px;
+  isolation: isolate;
+}
+.bnav::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(112deg, rgba(255,255,255,.38), rgba(255,255,255,.06) 42%, transparent 62%),
+    linear-gradient(to bottom, rgba(255,255,255,.26), transparent 48%);
+  pointer-events: none;
 }
 .bnav a {
   flex: 1;
+  min-width: 0;
+  min-height: 48px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  color: var(--n400);
+  justify-content: center;
+  padding: 0 1px;
+  color: var(--n600);
   text-decoration: none;
   position: relative;
+  z-index: 1;
+  border-radius: 17px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: color 160ms ease, transform 140ms ease;
 }
-.bnav a span { font-size: 10px; font-weight: 700; font-family: var(--display); }
+.bnav a:active { transform: scale(.96); }
 .bnav a.on { color: var(--primary); }
-.bnav a.on::after {
-  content: "";
-  position: absolute; top: -6px; left: 50%;
-  transform: translateX(-50%);
-  width: 28px; height: 3px;
-  background: var(--primary);
-  border-radius: 0 0 3px 3px;
+.bnav-active-bg {
+  position: absolute;
+  inset: 2px 4px;
+  z-index: 0;
+  border: 1px solid rgba(211,69,13,.22);
+  border-radius: 17px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.32), rgba(211,69,13,.10)),
+    rgba(245,232,227,.36);
+  box-shadow:
+    0 3px 10px rgba(163,51,8,.12),
+    inset 0 1px 0 rgba(255,255,255,.78);
+  pointer-events: none;
+  view-transition-name: bottom-nav-active-pill;
 }
 .bnav .nicon-wrap.bdg::after {
   content: "";
   position: absolute; top: -2px; right: -2px;
   width: 8px; height: 8px; border-radius: 99px;
-  background: var(--primary); border: 1.5px solid var(--paper);
+  background: var(--primary); border: 1.5px solid rgba(255,253,250,.94);
 }
-.bnav a .nicon-wrap { position: relative; }
+.bnav a .nicon-wrap { position: relative; z-index: 1; }
+.bnav .nicon { width: 25px; height: 25px; }
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .bnav { background: rgba(255,253,250,.97); }
+}
+
+@media (max-width: 360px) {
+  .bnav { width: calc(100% - 16px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bnav a { transition: none; }
+}
 
 /* Nav icons */
 .nicon {
@@ -3599,6 +3649,15 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 .bnav { view-transition-name: bottom-nav; }
 .page-head { view-transition-name: page-head; }
 .top-nav { view-transition-name: top-nav; }
+::view-transition-group(bottom-nav) {
+  animation-duration: 0s;
+  z-index: 100;
+}
+::view-transition-group(bottom-nav-active-pill) {
+  animation-duration: 240ms;
+  animation-timing-function: cubic-bezier(.22,.8,.2,1);
+  z-index: 101;
+}
 
 /* ---- Ligne de verdict des cartes terminées ---- */
 .your-prono { font-size: 12px; color: var(--n600); }
