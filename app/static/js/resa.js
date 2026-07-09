@@ -2452,8 +2452,12 @@ function initStickyTop() {
   var pageHead = document.querySelector('.page-head');
   if (!pageHead || !document.querySelector('.pgroup-head')) return;
   function apply() {
-    document.documentElement.style.setProperty(
-      '--sticky-top', pageHead.getBoundingClientRect().height + 'px');
+    var offset = pageHead.getBoundingClientRect().height;
+    var topNav = document.getElementById('top-nav');
+    if (topNav && getComputedStyle(topNav).display !== 'none') {
+      offset += topNav.getBoundingClientRect().height;
+    }
+    document.documentElement.style.setProperty('--sticky-top', offset + 'px');
   }
   apply();
   window.addEventListener('resize', apply);
