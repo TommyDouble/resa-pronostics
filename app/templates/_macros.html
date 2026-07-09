@@ -23,9 +23,10 @@
 <nav class="bnav" aria-label="Navigation principale">
   {%- for item in nav_items if item.mobile %}
   {%- set is_active = active_nav == item.key %}
-  <a href="{{ item.href }}" class="{{ 'on' if is_active else '' }}" aria-label="{{ item.label }}"{% if is_active %} aria-current="page"{% endif %}>
+  <a href="{{ item.href }}" class="{{ 'on' if is_active else '' }}"{% if is_active %} aria-current="page"{% endif %}>
     {%- if is_active %}<span class="bnav-active-bg" aria-hidden="true"></span>{% endif %}
     <span class="nicon-wrap{% if item.key == 'bonus' and bonus_count > 0 %} bdg{% endif %}"><i class="nicon {{ item.icon }}"></i></span>
+    <span class="bnav-label">{{ item.label }}</span>
   </a>
   {%- endfor %}
 </nav>

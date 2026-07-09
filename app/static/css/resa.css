@@ -55,13 +55,18 @@ body {
 /* ---- Page head (sticky) ---- */
 .page-head {
   padding: 12px 16px 10px;
-  background: rgba(255,253,250,.96);
-  backdrop-filter: blur(8px);
+  background: linear-gradient(to bottom, rgba(255,253,250,.94), rgba(255,253,250,.86));
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  backdrop-filter: blur(12px) saturate(150%);
   border-bottom: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
   position: sticky;
   top: 0;
   z-index: 10;
   flex: none;
+}
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .page-head { background: rgba(255,253,250,.97); }
 }
 .page-head .row1 {
   display: flex;
@@ -94,7 +99,7 @@ body {
 }
 .home-content { gap: 11px; }
 
-/* ---- Bottom nav (mobile) ---- */
+/* ---- Bottom nav (mobile) — capsule "liquid glass" flottante ---- */
 .bnav {
   position: fixed;
   bottom: var(--bnav-edge);
@@ -104,15 +109,18 @@ body {
   max-width: 456px;
   min-height: var(--bnav-height);
   display: flex;
-  background: linear-gradient(135deg, rgba(255,255,255,.58), rgba(255,253,250,.30));
-  -webkit-backdrop-filter: blur(24px) saturate(165%);
-  backdrop-filter: blur(24px) saturate(165%);
-  border: 1px solid rgba(255,255,255,.68);
-  border-radius: 22px;
+  background: linear-gradient(to bottom, rgba(255,255,255,.62), rgba(255,253,250,.44));
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255,255,255,.55);
+  border-radius: 24px;
+  /* Hairline de définition + ombre de contact + ombre d'ambiance + reflets internes */
   box-shadow:
-    0 10px 30px rgba(31,29,27,.16),
-    inset 0 1px 0 rgba(255,255,255,.88),
-    inset 0 -1px 0 rgba(120,110,95,.08);
+    0 0 0 1px rgba(31,29,27,.06),
+    0 2px 6px rgba(31,29,27,.07),
+    0 14px 34px -8px rgba(31,29,27,.20),
+    inset 0 1px 0 rgba(255,255,255,.92),
+    inset 0 -1px 0 rgba(120,110,95,.07);
   z-index: 20;
   padding: 5px 6px;
   isolation: isolate;
@@ -124,8 +132,8 @@ body {
   z-index: 0;
   border-radius: inherit;
   background:
-    linear-gradient(112deg, rgba(255,255,255,.38), rgba(255,255,255,.06) 42%, transparent 62%),
-    linear-gradient(to bottom, rgba(255,255,255,.26), transparent 48%);
+    linear-gradient(115deg, rgba(255,255,255,.42), rgba(255,255,255,.06) 40%, transparent 62%),
+    radial-gradient(130% 100% at 50% 0%, rgba(255,255,255,.28), transparent 55%);
   pointer-events: none;
 }
 .bnav a {
@@ -136,30 +144,44 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0 1px;
+  gap: 3px;
+  padding: 3px 2px 4px;
   color: var(--n600);
   text-decoration: none;
   position: relative;
   z-index: 1;
-  border-radius: 17px;
+  border-radius: 18px;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  transition: color 160ms ease, transform 140ms ease;
+  transition: color 160ms ease, transform 160ms ease;
 }
-.bnav a:active { transform: scale(.96); }
+.bnav a:hover { color: var(--n900); }
+.bnav a:active { transform: scale(.94); }
+.bnav a:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .bnav a.on { color: var(--primary); }
+.bnav-label {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--display);
+  line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bnav a.on .bnav-label { font-weight: 800; }
 .bnav-active-bg {
   position: absolute;
-  inset: 2px 4px;
+  inset: 3px 2px;
   z-index: 0;
-  border: 1px solid rgba(211,69,13,.22);
-  border-radius: 17px;
+  border: 1px solid rgba(211,69,13,.24);
+  border-radius: 15px;
   background:
-    linear-gradient(135deg, rgba(255,255,255,.32), rgba(211,69,13,.10)),
-    rgba(245,232,227,.36);
+    linear-gradient(to bottom, rgba(255,255,255,.55), rgba(255,255,255,.10)),
+    linear-gradient(to bottom, rgba(211,69,13,.13), rgba(211,69,13,.08));
   box-shadow:
-    0 3px 10px rgba(163,51,8,.12),
-    inset 0 1px 0 rgba(255,255,255,.78);
+    0 2px 8px -1px rgba(163,51,8,.16),
+    inset 0 1px 0 rgba(255,255,255,.85);
   pointer-events: none;
   view-transition-name: bottom-nav-active-pill;
 }
@@ -170,7 +192,7 @@ body {
   background: var(--primary); border: 1.5px solid rgba(255,253,250,.94);
 }
 .bnav a .nicon-wrap { position: relative; z-index: 1; }
-.bnav .nicon { width: 25px; height: 25px; }
+.bnav .nicon { width: 22px; height: 22px; }
 
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .bnav { background: rgba(255,253,250,.97); }
@@ -182,6 +204,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .bnav a { transition: none; }
+  .bnav a:active { transform: none; }
 }
 
 /* Nav icons */
@@ -3364,9 +3387,16 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
     display: flex; align-items: center; gap: 6px;
     padding: 0 max(24px, calc(50% - 380px));
     height: 58px;
-    background: rgba(255,253,250,.97);
-    backdrop-filter: blur(8px);
+    background: linear-gradient(to bottom, rgba(255,253,250,.94), rgba(255,253,250,.82));
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(14px) saturate(160%);
     border-bottom: 1px solid var(--line);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.75),
+      0 10px 26px -20px rgba(31,29,27,.35);
+  }
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .top-nav { background: rgba(255,253,250,.97); }
   }
   .top-nav .brand { font-family: var(--sketch); font-weight: 700; font-size: 26px; margin-right: 12px; }
   .top-nav .brand b { color: var(--primary); }
@@ -3375,8 +3405,9 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
     color: var(--n600); text-decoration: none;
     padding: 6px 10px; border-radius: var(--pill);
     position: relative;
+    transition: background 140ms ease, color 140ms ease;
   }
-  .top-nav a:hover { background: var(--n50); color: var(--n900); }
+  .top-nav a:hover { background: rgba(31,29,27,.055); color: var(--n900); }
   .top-nav a.on { color: var(--primary); }
   .top-nav a.on::after {
     content: ""; position: absolute; bottom: 0; left: 6px; right: 6px; height: 2px;
@@ -3657,6 +3688,9 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
   animation-duration: 240ms;
   animation-timing-function: cubic-bezier(.22,.8,.2,1);
   z-index: 101;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(bottom-nav-active-pill) { animation-duration: 0s; }
 }
 
 /* ---- Ligne de verdict des cartes terminées ---- */

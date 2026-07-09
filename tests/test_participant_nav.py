@@ -18,16 +18,15 @@ def test_mobile_nav_renders_five_destinations_and_one_active_pill():
     html = _render_mobile_nav("rank")
 
     assert html.count("<a ") == 5
-    assert len(re.findall(r"<a [^>]*aria-label=", html)) == 5
     assert html.count('aria-current="page"') == 1
     assert html.count('class="bnav-active-bg"') == 1
     assert 'class="bnav-active-bg" aria-hidden="true"' in html
-    assert 'aria-label="Accueil"' in html
-    assert 'aria-label="Pronos"' in html
-    assert 'aria-label="Classement"' in html
-    assert 'aria-label="Profil"' in html
-    assert 'aria-label="Bonus"' in html
-    assert "bnav-label" not in html
+    # Labels visibles (lisibilité pour un public non technique) : le texte
+    # sert de nom accessible, pas d'aria-label redondant.
+    assert html.count('class="bnav-label"') == 5
+    for label in ("Accueil", "Pronos", "Classement", "Profil", "Bonus"):
+        assert '<span class="bnav-label">%s</span>' % label in html
+    assert not re.search(r"<a [^>]*aria-label=", html)
 
 
 def test_mobile_nav_has_no_active_pill_on_contextual_page():
