@@ -2370,17 +2370,46 @@ function initDepartmentRanking() {
   }
 }
 
-/* Le filtre actif d'une rangée scrollable doit toujours rester visible. */
+/* L'élément actif d'une rangée scrollable doit toujours rester visible. */
+function keepScrollableActiveVisible(scroller, active) {
+  if (!scroller || !active) return;
+  window.requestAnimationFrame(function() {
+    var scrollerRect = scroller.getBoundingClientRect();
+    var activeRect = active.getBoundingClientRect();
+    var margin = Math.max(16, Math.round(scroller.clientWidth * 0.08));
+    var fullyVisible =
+      activeRect.left >= scrollerRect.left + margin &&
+      activeRect.right <= scrollerRect.right - margin;
+    if (fullyVisible) return;
+
+    var targetLeft = scroller.scrollLeft +
+      (activeRect.left - scrollerRect.left) -
+      ((scroller.clientWidth - activeRect.width) / 2);
+    targetLeft = Math.max(targetLeft, 0);
+
+    if (typeof scroller.scrollTo === 'function') {
+      try {
+        scroller.scrollTo({ left: targetLeft, behavior: 'auto' });
+      } catch (e) {
+        scroller.scrollLeft = targetLeft;
+      }
+    } else {
+      scroller.scrollLeft = targetLeft;
+    }
+  });
+}
+
+function initPronoTabs() {
+  var tabs = document.querySelector('[data-prono-tabs]');
+  if (!tabs) return;
+  keepScrollableActiveVisible(tabs, tabs.querySelector('.on'));
+}
+
 function initRankingFilters() {
   var filters = document.querySelector('[data-ranking-filters]');
   if (!filters) return;
   var active = filters.querySelector('[data-ranking-filter-active]');
-  if (!active) return;
-  var left = active.offsetLeft;
-  var right = left + active.offsetWidth;
-  if (left < filters.scrollLeft || right > filters.scrollLeft + filters.clientWidth) {
-    active.scrollIntoView({ block: 'nearest', inline: 'center' });
-  }
+  keepScrollableActiveVisible(filters, active);
 }
 
 /* ---- Compteur animé pour les points gagnés ---- */
@@ -2879,6 +2908,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initCompactCards();
   initTrophyCarousel();
   initDepartmentRanking();
+  initPronoTabs();
   initRankingFilters();
   initStoryPlayer();
   initConfettiTriggers();
