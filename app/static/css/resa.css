@@ -17,6 +17,7 @@
   --sh-focus: 0 0 0 3px rgba(211,69,13,.15);
   --bnav-height: 60px;
   --bnav-edge: max(10px, env(safe-area-inset-bottom));
+  --topnav-h: 58px; /* hauteur du top-nav desktop, sert d'offset aux stickies */
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -3377,16 +3378,18 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 @media (min-width: 768px) {
   .page-wrap {
     padding-bottom: 0;
-    padding-top: 60px;
+    padding-top: calc(var(--topnav-h) + 2px);
     box-shadow: var(--sh2);
   }
   .page-wrap.wide { max-width: 760px; }
+  /* Le top-nav est fixed : le page-head sticky doit s'arrêter dessous, pas à 0 */
+  .page-head { top: var(--topnav-h); }
   .bnav { display: none; }
   .top-nav {
     position: fixed; top: 0; left: 0; right: 0; z-index: 20;
     display: flex; align-items: center; gap: 6px;
     padding: 0 max(24px, calc(50% - 380px));
-    height: 58px;
+    height: var(--topnav-h);
     background: linear-gradient(to bottom, rgba(255,253,250,.94), rgba(255,253,250,.82));
     -webkit-backdrop-filter: blur(14px) saturate(160%);
     backdrop-filter: blur(14px) saturate(160%);
@@ -3420,7 +3423,8 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
   }
   .top-nav .sp { margin-left: auto; }
   .kpis { grid-template-columns: repeat(2, 1fr); }
-  .prediction-card { scroll-margin-top: 138px; }
+  /* Fallback sans JS : top-nav (58) + page-head pronos stické (~122) + marge */
+  .prediction-card { scroll-margin-top: 196px; }
 
   /* Pronos en deux colonnes sur desktop, bandeaux et séparateurs pleine largeur */
   .predictions-page {
