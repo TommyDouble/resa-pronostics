@@ -2407,6 +2407,92 @@ label.admin-deadline-row:hover {
 .funlist .it .ico { font-size: 15px; width: 20px; text-align: center; }
 .funlist .it .v { margin-left: auto; font-family: var(--display); font-weight: 800; }
 
+/* ---- Profile point journal ---- */
+.point-journal-head {
+  padding: 10px 12px 3px;
+}
+.point-journal-list {
+  display: flex;
+  flex-direction: column;
+}
+.point-journal-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  color: inherit;
+  text-decoration: none;
+  border-top: 1px solid var(--line);
+}
+.point-journal-row:first-child { border-top: none; }
+.point-journal-row:hover { background: rgba(211,69,13,.05); }
+.point-journal-kind {
+  width: 72px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: var(--n100);
+  color: var(--n600);
+  font-family: var(--display);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+}
+.point-journal-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.point-journal-main b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.point-journal-main small,
+.point-journal-main time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--n600);
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+.point-journal-main time { color: var(--n400); }
+.point-journal-points {
+  min-width: 50px;
+  padding: 5px 7px;
+  border-radius: 8px;
+  background: var(--n100);
+  color: var(--n600);
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+  white-space: nowrap;
+}
+.point-journal-row.tone-pos .point-journal-points {
+  background: var(--primary-l);
+  color: var(--primary-d);
+}
+.point-journal-row.tone-neg .point-journal-points {
+  background: #FBE6E6;
+  color: var(--error);
+}
+@media (max-width: 420px) {
+  .point-journal-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+  .point-journal-kind {
+    grid-column: 1 / -1;
+    width: auto;
+    justify-self: start;
+  }
+}
+
 /* ---- Autocomplete ---- */
 .autocomplete-list {
   position: absolute; z-index: 100;

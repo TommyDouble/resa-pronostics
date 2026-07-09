@@ -313,6 +313,186 @@ def _zero_points_reason(prediction: dict | None, match: dict) -> str:
     return "Mauvaise issue"
 
 
+def _points_tone(points: int) -> str:
+    if points > 0:
+        return "pos"
+    if points < 0:
+        return "neg"
+    return "zero"
+
+
+def _prediction_score_display(match: dict) -> str:
+    s1, s2 = match.get("exact_score_team1"), match.get("exact_score_team2")
+    if s1 is None or s2 is None:
+        return _prediction_label(match)
+    label = f"{s1}-{s2}"
+    if match.get("phase") != "group":
+        qualifier = match.get("qualifier_prediction")
+        if qualifier not in ("team1", "team2"):
+            qualifier = "team1" if s1 > s2 else "team2" if s2 > s1 else None
+        if qualifier in ("team1", "team2"):
+            team = match["team1_name"] if qualifier == "team1" else match["team2_name"]
+            label = f"{label}, {team} qualifiée"
+    return label
+
+
+def _point_journal_match_detail(match: dict) -> str:
+    parts = [f"Prono {_prediction_score_display(match)}"]
+    result = result_full_label(match)
+    if result:
+        parts.append(f"résultat {result}")
+    tier = _prediction_tier(match, match)
+    if tier == "exact":
+        parts.append("score exact")
+    elif tier == "correct":
+        parts.append("bon résultat")
+    else:
+        parts.append(_zero_points_reason(match, match).lower())
+    return " · ".join(parts)
+
+
+async def _build_point_journal(db, participant_id: int, token: str, limit: int = 10) -> list[dict]:
+    """Derniers mouvements lisibles qui expliquent le total du participant.
+
+    Matchs : valeur courante. Bonus/pré-tournoi : événements de delta quand ils
+    existent, avec fallback sur la valeur courante pour les 0 pt ou données
+    historiques sans event.
+    """
+    items: list[dict] = []
+
+    match_rows = await db.execute(
+        """SELECT m.id AS match_id, m.team1_name, m.team2_name, m.phase,
+                  m.match_date, m.kickoff_time,
+                  m.score_team1, m.score_team2, m.final_score_team1, m.final_score_team2,
+                  m.result, m.qualifier_winner,
+                  pr.prediction, pr.exact_score_team1, pr.exact_score_team2,
+                  pr.qualifier_prediction,
+                  COALESCE(s.points, 0) AS points
+           FROM predictions pr
+           JOIN matches m ON m.id = pr.match_id
+           LEFT JOIN scores s ON s.match_id = pr.match_id AND s.participant_id = pr.participant_id
+           WHERE pr.participant_id=? AND m.result IS NOT NULL
+           ORDER BY m.match_date DESC, m.kickoff_time DESC
+           LIMIT ?""",
+        (participant_id, limit * 2),
+    )
+    for row in await match_rows.fetchall():
+        match = dict(row)
+        points = int(match.get("points") or 0)
+        items.append({
+            "type": "match",
+            "title": f"{match['team1_name']} - {match['team2_name']}",
+            "detail": _point_journal_match_detail(match),
+            "points": points,
+            "occurred_at": f"{match['match_date']}T{match['kickoff_time']}",
+            "href": f"/p/{token}/match/{match['match_id']}",
+            "tone": _points_tone(points),
+        })
+
+    event_rows = await db.execute(
+        """SELECT id, source, source_key, delta, occurred_at
+           FROM scoring_point_events
+           WHERE participant_id=?
+           ORDER BY datetime(occurred_at) DESC, id DESC""",
+        (participant_id,),
+    )
+    events = [dict(r) for r in await event_rows.fetchall()]
+    event_keys = {(r["source"], str(r["source_key"])) for r in events}
+
+    bonus_ids = sorted({str(r["source_key"]) for r in events if r["source"] == "bonus"})
+    pt_keys = sorted({str(r["source_key"]) for r in events if r["source"] == "pre_tournament"})
+    bonus_titles: dict[str, str] = {}
+    pt_titles: dict[str, str] = {}
+    if bonus_ids:
+        placeholders = ",".join("?" for _ in bonus_ids)
+        rows = await db.execute(
+            f"SELECT id, question_text FROM bonus_questions WHERE id IN ({placeholders})",
+            [int(x) for x in bonus_ids],
+        )
+        for r in await rows.fetchall():
+            title, prompt = _bonus_title_prompt(r["question_text"])
+            bonus_titles[str(r["id"])] = title or prompt or "Question bonus"
+    if pt_keys:
+        placeholders = ",".join("?" for _ in pt_keys)
+        rows = await db.execute(
+            f"SELECT key, label FROM pre_tournament_questions WHERE key IN ({placeholders})",
+            pt_keys,
+        )
+        pt_titles = {r["key"]: r["label"] for r in await rows.fetchall()}
+
+    for event in events:
+        source = event["source"]
+        key = str(event["source_key"])
+        points = int(event["delta"] or 0)
+        if source == "bonus":
+            title = bonus_titles.get(key, "Question bonus")
+            detail = "Correction bonus" if points < 0 else "Résultat bonus"
+            href = f"/p/{token}/bonus#bonus-q-{key}"
+        else:
+            title = pt_titles.get(key, "Question pré-tournoi")
+            detail = "Correction pré-tournoi" if points < 0 else "Résultat pré-tournoi"
+            href = f"/p/{token}/pre-tournoi#pt-{key}"
+        items.append({
+            "type": source,
+            "title": title,
+            "detail": detail,
+            "points": points,
+            "occurred_at": str(event["occurred_at"]).replace(" ", "T"),
+            "href": href,
+            "tone": _points_tone(points),
+        })
+
+    fallback_rows = await db.execute(
+        """SELECT bq.id, bq.question_text, s.points, s.calculated_at
+           FROM scores s
+           JOIN bonus_questions bq ON bq.id = s.bonus_question_id
+           WHERE s.participant_id=? AND s.bonus_question_id IS NOT NULL""",
+        (participant_id,),
+    )
+    for row in await fallback_rows.fetchall():
+        r = dict(row)
+        key = str(r["id"])
+        if ("bonus", key) in event_keys:
+            continue
+        title, prompt = _bonus_title_prompt(r["question_text"])
+        points = int(r["points"] or 0)
+        items.append({
+            "type": "bonus",
+            "title": title or prompt or "Question bonus",
+            "detail": "Résultat bonus",
+            "points": points,
+            "occurred_at": str(r["calculated_at"]).replace(" ", "T"),
+            "href": f"/p/{token}/bonus#bonus-q-{key}",
+            "tone": _points_tone(points),
+        })
+
+    pt_fallback_rows = await db.execute(
+        """SELECT ps.question_key, pq.label, ps.points, ps.calculated_at
+           FROM pre_tournament_scores ps
+           JOIN pre_tournament_questions pq ON pq.key = ps.question_key
+           WHERE ps.participant_id=?""",
+        (participant_id,),
+    )
+    for row in await pt_fallback_rows.fetchall():
+        r = dict(row)
+        key = str(r["question_key"])
+        if ("pre_tournament", key) in event_keys:
+            continue
+        points = int(r["points"] or 0)
+        items.append({
+            "type": "pre_tournament",
+            "title": r["label"],
+            "detail": "Résultat pré-tournoi",
+            "points": points,
+            "occurred_at": str(r["calculated_at"]).replace(" ", "T"),
+            "href": f"/p/{token}/pre-tournoi#pt-{key}",
+            "tone": _points_tone(points),
+        })
+
+    items.sort(key=lambda item: item["occurred_at"], reverse=True)
+    return items[:limit]
+
+
 def _resolve_team_label(raw: str, by_number: dict[int, tuple[str, str]]) -> str:
     """« Vainqueur M83 » → « Vainqueur Brésil-France » via les équipes du match source.
 
@@ -1700,6 +1880,7 @@ async def own_profile(
         ctx = await _get_participant_context(token, db, "profil")
         p = ctx["participant"]
         profile_data = await _build_profile(p["id"], db)
+        profile_data["point_journal"] = await _build_point_journal(db, p["id"], token)
         ctx.update({
             "profile": profile_data,
             "is_own": True,

@@ -220,8 +220,29 @@
   </div>
   {% endif %}
 
-  <!-- Last 5 matches -->
-  {% if profile.last5 %}
+  <!-- Journal des points -->
+  {% if is_own and profile.point_journal %}
+  <div class="card p0 point-journal" data-point-journal>
+    <div class="point-journal-head">
+      <div class="lbl">Mes derniers points</div>
+    </div>
+    <div class="point-journal-list">
+      {% for item in profile.point_journal %}
+      <a class="point-journal-row tone-{{ item.tone }}" href="{{ item.href }}">
+        <span class="point-journal-kind">
+          {% if item.type == 'match' %}Match{% elif item.type == 'bonus' %}Bonus{% else %}Pré-tournoi{% endif %}
+        </span>
+        <span class="point-journal-main">
+          <b>{{ item.title }}</b>
+          <small>{{ item.detail }}</small>
+          <time data-local-utc="{{ item.occurred_at|utc_iso }}">{{ item.occurred_at|local_datetime }}</time>
+        </span>
+        <span class="point-journal-points">{% if item.points > 0 %}+{{ item.points }}{% else %}{{ item.points }}{% endif %} pt{{ 's' if item.points > 1 or item.points < -1 else '' }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% elif not is_own and profile.last5 %}
   <div class="card p0">
     <div style="padding:9px 12px 2px;"><div class="lbl">5 derniers matchs</div></div>
     <table class="tbl">
