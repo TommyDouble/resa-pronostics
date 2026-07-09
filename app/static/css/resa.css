@@ -19,6 +19,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+[hidden] { display: none !important; }
 a:focus-visible,
 button:focus-visible,
 summary:focus-visible {
@@ -74,6 +75,12 @@ body {
 }
 .page-head .sub1 { font-size: 12.5px; color: var(--n600); }
 .page-head .sp { margin-left: auto; }
+.page-head .home-greeting {
+  font-family: var(--sketch);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
 
 /* ---- Page content ---- */
 .page-content {
@@ -868,6 +875,11 @@ body.bonus-stack-open {
 .banner.acc { background: var(--primary-l); color: var(--primary-d); border: 1px solid rgba(211,69,13,.25); }
 .banner.red { background: #FBE6E6; color: var(--error); border: 1px solid rgba(220,38,38,.25); }
 .banner.soft { background: var(--n50); color: var(--n600); border: 1px solid var(--line); }
+.banner.payment-reminder {
+  background: #FFF8E1;
+  border-left: 3px solid var(--warning);
+  color: #92400E;
+}
 .banner .cd { margin-left: auto; font-family: var(--display); font-weight: 800; }
 .home-cta {
   display: flex;
@@ -2695,6 +2707,30 @@ label.admin-deadline-row:hover {
   justify-content: center;
   padding: 5px 8px;
   font-size: 15px;
+}
+.push-promo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.push-promo-icon {
+  flex: none;
+  font-size: 18px;
+}
+.push-promo-status {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.push-promo-toggle {
+  white-space: nowrap;
+}
+.push-ios-help {
+  margin-top: 10px;
+}
+.push-settings-toggle {
+  margin-top: 8px;
 }
 
 /* ---- Ligne rival (mini classement) ---- */
