@@ -7,7 +7,7 @@
 <div class="page-head">
   <div class="row1">
     <div>
-      <h1 style="font-family:var(--sketch);font-size:26px;font-weight:700;">
+      <h1 class="home-greeting">
         Salut {{ greeting_name }} 👋
       </h1>
       <div class="sub1">
@@ -23,7 +23,7 @@
   {% include "partials/_story.html" %}
 
   {% if not participant.has_paid %}
-  <div class="banner" style="background:#FFF8E1;border-left:3px solid #F59E0B;color:#92400E;">
+  <div class="banner payment-reminder">
     <span>💳</span> Participation 10 € à remettre à l'organisateur — indispensable pour toucher tes gains.
   </div>
   {% endif %}
@@ -224,16 +224,16 @@
     </div>
   </div>
 
-  <div class="card" data-push-card data-push-promo style="display:none;">
-    <div style="display:flex;align-items:center;gap:10px;">
-      <span style="font-size:18px;">🔔</span>
-      <p class="muted" style="flex:1;margin:0;font-size:13px;line-height:1.4;" data-push-status>
+  <div class="card push-promo-card" data-push-card data-push-promo hidden>
+    <div class="push-promo-row">
+      <span class="push-promo-icon">🔔</span>
+      <p class="muted push-promo-status" data-push-status>
         Active les notifications pour ne rater aucun match ni question bonus.
       </p>
-      <button type="button" class="btn sm" data-push-toggle style="display:none;white-space:nowrap;">Activer</button>
+      <button type="button" class="btn sm push-promo-toggle" data-push-toggle hidden>Activer</button>
       <button type="button" class="btn ghost sm" data-push-dismiss title="Ne plus afficher">✕</button>
     </div>
-    <div class="banner soft" data-push-ios-help style="display:none;margin-top:10px;">
+    <div class="banner soft push-ios-help" data-push-ios-help hidden>
       <span>📲</span>
       <span>Sur iPhone : <b>Partager</b> → « <b>Sur l'écran d'accueil</b> », puis ouvre l'app depuis l'icône pour activer les notifications.</span>
     </div>

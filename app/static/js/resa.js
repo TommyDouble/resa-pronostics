@@ -2049,6 +2049,10 @@ function initPush() {
   var token = document.body.dataset.token;
   if (!token || !('serviceWorker' in navigator)) return;
 
+  function setHidden(el, hidden) {
+    if (el) el.hidden = hidden;
+  }
+
   function urlBase64ToUint8Array(base64String) {
     var padding = '='.repeat((4 - base64String.length % 4) % 4);
     var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -2084,24 +2088,24 @@ function initPush() {
     if (dismissBtn) {
       dismissBtn.addEventListener('click', function() {
         localStorage.setItem('pushPromoDismissed', '1');
-        card.style.display = 'none';
+        setHidden(card, true);
       });
     }
 
     if (!supported) {
       // iPhone hors app installée: guider vers l'installation.
       if (isIOS && !standalone) {
-        card.style.display = '';
-        if (iosHelp) iosHelp.style.display = '';
+        setHidden(card, false);
+        setHidden(iosHelp, false);
       }
       return;
     }
 
     function render(sub) {
-      card.style.display = '';
-      if (isPromo && sub) { card.style.display = 'none'; return; }
+      setHidden(card, false);
+      if (isPromo && sub) { setHidden(card, true); return; }
       if (toggleBtn) {
-        toggleBtn.style.display = '';
+        setHidden(toggleBtn, false);
         toggleBtn.textContent = sub ? 'Désactiver les notifications' : (isPromo ? 'Activer' : 'Activer les notifications');
       }
       if (statusEl && !isPromo) {

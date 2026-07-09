@@ -7,3 +7,35 @@
 <div class="av c{{ ((pid - 1) % 8) + 1 }}" {% if size %}style="width:{{ size }}px;height:{{ size }}px;{% if font %}font-size:{{ font }}px;{% endif %}"{% endif %}>{{ initials or name[:2].upper() }}</div>
 {%- endif -%}
 {%- endmacro %}
+
+{% macro participant_nav(token, active_nav, pending_bonus=0, variant='mobile') -%}
+{%- set bonus_count = pending_bonus|default(0)|int -%}
+{%- set is_mobile = variant == 'mobile' -%}
+{%- set nav_items = [
+  {'key': 'home', 'label': 'Accueil', 'href': '/p/' ~ token, 'icon': 'ic-home', 'mobile': true, 'desktop': true},
+  {'key': 'pronos', 'label': 'Pronos', 'href': '/p/' ~ token ~ '/pronos', 'icon': 'ic-pronos', 'mobile': true, 'desktop': true},
+  {'key': 'rank', 'label': 'Classement', 'href': '/p/' ~ token ~ '/classement', 'icon': 'ic-rank', 'mobile': true, 'desktop': true},
+  {'key': 'profil', 'label': 'Profil', 'href': '/p/' ~ token ~ '/profil', 'icon': 'ic-user', 'mobile': true, 'desktop': true},
+  {'key': 'bonus', 'label': 'Bonus', 'href': '/p/' ~ token ~ '/bonus', 'icon': 'ic-bonus', 'mobile': true, 'desktop': true},
+  {'key': 'rules', 'label': 'Règlement', 'href': '/p/' ~ token ~ '/reglement', 'icon': '', 'mobile': false, 'desktop': true}
+] -%}
+{%- if is_mobile -%}
+<nav class="bnav" aria-label="Navigation principale">
+  {%- for item in nav_items if item.mobile %}
+  <a href="{{ item.href }}" class="{{ 'on' if active_nav == item.key else '' }}"{% if active_nav == item.key %} aria-current="page"{% endif %}>
+    <span class="nicon-wrap{% if item.key == 'bonus' and bonus_count > 0 %} bdg{% endif %}"><i class="nicon {{ item.icon }}"></i></span>
+    <span>{{ item.label }}</span>
+  </a>
+  {%- endfor %}
+</nav>
+{%- else -%}
+<nav class="top-nav" id="top-nav" aria-label="Navigation principale">
+  <div class="brand">RESA <b>Pronos</b></div>
+  {%- for item in nav_items if item.desktop %}
+  {%- set is_active = active_nav == item.key -%}
+  {%- set has_bonus_badge = item.key == 'bonus' and bonus_count > 0 -%}
+  <a href="{{ item.href }}" class="{{ 'on' if is_active else '' }}{{ ' ' if is_active and has_bonus_badge else '' }}{{ 'bdg-link' if has_bonus_badge else '' }}"{% if is_active %} aria-current="page"{% endif %}>{{ item.label }}</a>
+  {%- endfor %}
+</nav>
+{%- endif -%}
+{%- endmacro %}
