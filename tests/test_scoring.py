@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 
 from app.scoring import (
     answers_match,
@@ -402,6 +403,34 @@ class TestClosestPodiumBonusPoints:
 
         assert standings["invalid_actual"] is True
         assert standings["groups"] == []
+
+    def test_minute_notation_uses_added_time_as_real_minutes(self):
+        standings = closest_bonus_standings(
+            5,
+            "120.01",
+            [
+                self.answer(1, "119"),
+                self.answer(2, "120.03"),
+                self.answer(3, "120.04"),
+            ],
+            {
+                "award_mode": "podium_custom",
+                "tie_policy": "full_dense",
+                "rank_points": [5, 3, 1],
+                "minute_notation": True,
+            },
+        )
+
+        assert standings["actual"] == Decimal("121")
+        assert [group["distance"] for group in standings["groups"]] == [
+            Decimal("2"),
+            Decimal("3"),
+        ]
+        assert [group["points"] for group in standings["groups"]] == [5, 3]
+        assert {
+            answer["participant_id"]
+            for answer in standings["groups"][0]["participants"]
+        } == {1, 2}
 
     def test_legacy_config_infers_fun_balanced_preset(self):
         config = normalize_closest_config(
