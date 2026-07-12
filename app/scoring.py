@@ -624,6 +624,25 @@ def format_minute_notation(value) -> str:
     return f"{minute}+{added}" if added else minute
 
 
+def _parse_closest_value(value, minute_notation: bool = False) -> Decimal | None:
+    """Parse a closest-answer value in the unit used to measure its distance.
+
+    Minute notation is stored as a decimal solely to preserve its structure
+    (``120+3`` -> ``120.03``). For scoring, added time represents real minutes,
+    so the same value must be compared as minute 123.
+    """
+    if not minute_notation:
+        return parse_bonus_number(value)
+
+    minute, added = split_minute_notation(value)
+    if not minute:
+        return None
+    try:
+        return Decimal(minute) + Decimal(added or "0")
+    except InvalidOperation:
+        return None
+
+
 def _row_get(row, key, default=None):
     if isinstance(row, dict):
         return row.get(key, default)
@@ -757,8 +776,8 @@ def _closest_group_points(rank: int, tie_size: int, rank_points: list[int], tie_
 
 def closest_bonus_standings(points_value: int, correct_answer, answers, scoring_config=None) -> dict:
     """Rank numeric bonus answers by distance from the official answer."""
-    actual = parse_bonus_number(correct_answer)
     config = normalize_closest_config(points_value, scoring_config)
+    actual = _parse_closest_value(correct_answer, config["minute_notation"])
     standings = {
         "actual": actual,
         "groups": [],
@@ -773,7 +792,9 @@ def closest_bonus_standings(points_value: int, correct_answer, answers, scoring_
 
     by_distance = {}
     for ans in answers:
-        predicted = parse_bonus_number(_row_get(ans, "answer"))
+        predicted = _parse_closest_value(
+            _row_get(ans, "answer"), config["minute_notation"]
+        )
         if predicted is None:
             standings["invalid"].append(ans)
             continue
