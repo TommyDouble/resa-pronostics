@@ -172,8 +172,25 @@ _SCOPE_POINTS = {
     """,
     "bonus": """
         COALESCE((SELECT SUM(s.points) FROM scores s
-                  WHERE s.participant_id = p.id AND s.bonus_question_id IS NOT NULL), 0)
-          + COALESCE((SELECT SUM(ps.points) FROM pre_tournament_scores ps WHERE ps.participant_id = p.id), 0)
+                  JOIN bonus_questions bq ON bq.id = s.bonus_question_id
+                  WHERE s.participant_id = p.id
+                    AND bq.is_published = 1
+                    AND datetime(bq.deadline) <= datetime('now')
+                    AND s.id = (
+                        SELECT MAX(latest.id) FROM scores latest
+                        WHERE latest.participant_id = s.participant_id
+                          AND latest.bonus_question_id = s.bonus_question_id
+                    )), 0)
+          + COALESCE((SELECT SUM(ps.points)
+                      FROM pre_tournament_scores ps
+                      JOIN pre_tournament_questions ptq ON ptq.key = ps.question_key
+                      WHERE ps.participant_id = p.id
+                        AND ptq.is_enabled = 1
+                        AND datetime(COALESCE(
+                            (SELECT value FROM app_settings
+                             WHERE key='pre_tournament_deadline'),
+                            '1970-01-01T00:00:00'
+                        )) <= datetime('now')), 0)
     """,
     # Classement « fin de phase de groupes » servant de base à la remontada:
     # matchs de groupes + pré-tournoi + bonus publiés avant la phase finale.
@@ -802,11 +819,24 @@ def closest_bonus_standings(points_value: int, correct_answer, answers, scoring_
             standings["invalid"].append(ans)
             continue
         distance = abs(predicted - actual)
-        by_distance.setdefault(distance, []).append(ans)
+        by_distance.setdefault(distance, []).append((predicted, ans))
 
     better_count = 0
     for group_index, distance in enumerate(sorted(by_distance), start=1):
-        participants = by_distance[distance]
+        predictions = by_distance[distance]
+        participants = [ans for _, ans in predictions]
+        answer_groups = []
+        answer_group_by_value = {}
+        for predicted, ans in predictions:
+            answer_group = answer_group_by_value.get(predicted)
+            if answer_group is None:
+                answer_group = {
+                    "answer": _row_get(ans, "answer"),
+                    "participants": [],
+                }
+                answer_group_by_value[predicted] = answer_group
+                answer_groups.append(answer_group)
+            answer_group["participants"].append(ans)
         rank = group_index if config["tie_policy"] == "full_dense" else better_count + 1
         points = _closest_group_points(
             rank,
@@ -819,6 +849,7 @@ def closest_bonus_standings(points_value: int, correct_answer, answers, scoring_
             "distance": distance,
             "points": points,
             "participants": participants,
+            "answer_groups": answer_groups,
         })
         better_count += len(participants)
     return standings

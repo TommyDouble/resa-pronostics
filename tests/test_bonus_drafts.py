@@ -1,5 +1,6 @@
 from html import unescape
 import json
+import re
 import uuid
 
 from app.database import ensure_bonus_question_drafts, get_db
@@ -268,6 +269,14 @@ def test_admin_can_configure_closest_points_and_preview_standings(admin_client):
         assert "Classement de cette question" in fragment
         assert "#1" in fragment and "Alice Closest" in fragment
         assert "#2" in fragment and "Bob Closest" in fragment and "Carla Closest" in fragment
+        ranking_rows = [
+            re.sub(r"<[^>]+>", " ", row)
+            for row in re.findall(r"<tr>(.*?)</tr>", fragment, flags=re.DOTALL)
+        ]
+        bob_row = next(row for row in ranking_rows if "Bob Closest" in row)
+        carla_row = next(row for row in ranking_rows if "Carla Closest" in row)
+        assert "#2" in bob_row and "59" in bob_row and "Carla Closest" not in bob_row
+        assert "#2" in carla_row and "61" in carla_row and "Bob Closest" not in carla_row
         assert "Winner takes all" in fragment
     finally:
         _delete_bonus(question["id"])

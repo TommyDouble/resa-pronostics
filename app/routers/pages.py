@@ -1608,6 +1608,160 @@ async def _sporting_day_match_details(db, day: str) -> list[dict]:
     return matches
 
 
+BONUS_RANKING_PHASE_ORDER = list(reversed(BONUS_HUB_PHASE_ORDER))
+
+
+async def _load_bonus_ranking_breakdowns(
+    db, participant_ids, now: str
+) -> dict[int, dict]:
+    """Explain every participant's Bonus total with two batch score reads.
+
+    Every globally resolved, published question is included for every ranked
+    participant. Missing answers therefore appear explicitly as 0 pt instead
+    of disappearing from the explanation.
+    """
+    participant_ids = list(participant_ids)
+    if not participant_ids:
+        return {}
+
+    question_rows = await db.execute(
+        """SELECT bq.id, bq.phase, bq.question_text, bq.deadline
+           FROM bonus_questions bq
+           WHERE bq.is_published = 1
+             AND datetime(bq.deadline) <= datetime(?)
+             AND (
+                 bq.correct_answer IS NOT NULL
+                 OR EXISTS (
+                     SELECT 1 FROM scores resolved_score
+                     WHERE resolved_score.bonus_question_id = bq.id
+                 )
+             )
+           ORDER BY bq.deadline, bq.id""",
+        (now,),
+    )
+    classic_questions = []
+    for row in await question_rows.fetchall():
+        question = dict(row)
+        title, prompt = _bonus_title_prompt(question["question_text"])
+        classic_questions.append({
+            "source": "bonus",
+            "key": question["id"],
+            "phase": question["phase"],
+            "label": title or prompt,
+            "description": prompt if title else "",
+            "sort_key": (1, question["deadline"], question["id"]),
+        })
+
+    pt_questions = []
+    pt_deadline = await get_pre_tournament_deadline(db)
+    if pt_deadline <= now:
+        pt_rows = await db.execute(
+            """SELECT ptq.key, ptq.label, ptq.sort_order
+               FROM pre_tournament_questions ptq
+               WHERE ptq.is_enabled = 1
+                 AND (
+                     ptq.correct_answer IS NOT NULL
+                     OR EXISTS (
+                         SELECT 1 FROM pre_tournament_scores resolved_score
+                         WHERE resolved_score.question_key = ptq.key
+                     )
+                 )
+               ORDER BY ptq.sort_order, ptq.key"""
+        )
+        pt_questions = [
+            {
+                "source": "pre_tournament",
+                "key": row["key"],
+                "phase": "pre_tournament",
+                "label": row["label"],
+                "description": "",
+                "sort_key": (0, row["sort_order"], row["key"]),
+            }
+            for row in await pt_rows.fetchall()
+        ]
+
+    questions = classic_questions + pt_questions
+    points_by_item = {}
+    participant_marks = ",".join("?" for _ in participant_ids)
+    classic_ids = [question["key"] for question in classic_questions]
+    if classic_ids:
+        question_marks = ",".join("?" for _ in classic_ids)
+        score_rows = await db.execute(
+            f"""SELECT s.participant_id, s.bonus_question_id, s.points
+                FROM scores s
+                WHERE s.participant_id IN ({participant_marks})
+                  AND s.bonus_question_id IN ({question_marks})
+                  AND s.id = (
+                      SELECT MAX(latest.id)
+                      FROM scores latest
+                      WHERE latest.participant_id = s.participant_id
+                        AND latest.bonus_question_id = s.bonus_question_id
+                  )""",
+            (*participant_ids, *classic_ids),
+        )
+        for row in await score_rows.fetchall():
+            points_by_item[(row["participant_id"], "bonus", row["bonus_question_id"])] = (
+                row["points"] or 0
+            )
+
+    pt_keys = [question["key"] for question in pt_questions]
+    if pt_keys:
+        key_marks = ",".join("?" for _ in pt_keys)
+        score_rows = await db.execute(
+            f"""SELECT participant_id, question_key, points
+                FROM pre_tournament_scores
+                WHERE participant_id IN ({participant_marks})
+                  AND question_key IN ({key_marks})""",
+            (*participant_ids, *pt_keys),
+        )
+        for row in await score_rows.fetchall():
+            points_by_item[(row["participant_id"], "pre_tournament", row["question_key"])] = (
+                row["points"] or 0
+            )
+
+    phase_rank = {
+        phase: index for index, phase in enumerate(BONUS_RANKING_PHASE_ORDER)
+    }
+    breakdowns = {}
+    for participant_id in participant_ids:
+        by_phase = {}
+        for question in questions:
+            points = points_by_item.get(
+                (participant_id, question["source"], question["key"]), 0
+            )
+            by_phase.setdefault(question["phase"], []).append({
+                "source": question["source"],
+                "key": question["key"],
+                "label": question["label"],
+                "description": question["description"],
+                "points": points,
+                "sort_key": question["sort_key"],
+            })
+        phases = []
+        for phase in sorted(
+            by_phase,
+            key=lambda key: phase_rank.get(key, len(phase_rank)),
+        ):
+            entries = sorted(by_phase[phase], key=lambda item: item["sort_key"])
+            for entry in entries:
+                entry.pop("sort_key", None)
+            phases.append({
+                "phase": phase,
+                "label": (
+                    "Pré-tournoi"
+                    if phase == "pre_tournament"
+                    else PHASE_LABELS.get(phase, phase)
+                ),
+                "points": sum(entry["points"] for entry in entries),
+                "questions": entries,
+            })
+        breakdowns[participant_id] = {
+            "total_points": sum(phase["points"] for phase in phases),
+            "phases": phases,
+        }
+    return breakdowns
+
+
 @router.get("/p/{token}/classement", response_class=HTMLResponse)
 async def ranking_page(
     request: Request,
@@ -1633,6 +1787,7 @@ async def ranking_page(
         carousel_items: list[dict] = []
         badges_by_participant: dict[int, list[dict]] = {}
         knockout_started = False
+        bonus_breakdowns = {}
         if view == "remontada":
             rankings = await get_remontada(db)
             ko_row = await db.execute(
@@ -1643,6 +1798,10 @@ async def ranking_page(
             departments = await get_department_rankings(db)
         else:
             rankings = await get_rankings(db, scope=view)
+            if view == "bonus":
+                bonus_breakdowns = await _load_bonus_ranking_breakdowns(
+                    db, (row["id"] for row in rankings), _now_utc()
+                )
             if view == "general":
                 evo = await get_rank_evolution(db)
                 evolution = evo["deltas"]
@@ -1662,6 +1821,9 @@ async def ranking_page(
             r["evolution"] = evolution.get(r["id"])
             r["is_climber"] = r["id"] in climber_ids
             r["badges"] = badges_by_participant.get(r["id"], [])
+            r["bonus_breakdown"] = bonus_breakdowns.get(
+                r["id"], {"total_points": 0, "phases": []}
+            )
         prize_info = await get_prize_info(db)
         my_department = (p.get("department") or "").strip() or "Sans département"
         department_names = {d["department"] for d in departments}
@@ -2419,18 +2581,27 @@ async def _load_bonus_questions(db, participant_id: int, now: str, *, only_pendi
                   ba.answer,
                   ba.submitted_at as answered_at,
                   s.points,
-                  s.calculated_at as scored_at
+                  s.calculated_at as scored_at,
+                  (SELECT MAX(result_score.calculated_at)
+                   FROM scores result_score
+                   WHERE result_score.bonus_question_id = bq.id) as result_version
            FROM bonus_questions bq
            LEFT JOIN bonus_answers ba
              ON ba.question_id = bq.id AND ba.participant_id = ?
            LEFT JOIN scores s
              ON s.bonus_question_id = bq.id AND s.participant_id = ?
+            AND s.id = (
+                SELECT MAX(latest.id)
+                FROM scores latest
+                WHERE latest.bonus_question_id = bq.id
+                  AND latest.participant_id = ?
+            )
            WHERE bq.is_published=1
            ORDER BY
              CASE WHEN bq.deadline > ? THEN 0 ELSE 1 END,
              bq.deadline ASC,
              bq.id ASC""",
-        (participant_id, participant_id, now),
+        (participant_id, participant_id, participant_id, now),
     )
     bonus_questions = []
     pending_count = 0
@@ -2439,6 +2610,10 @@ async def _load_bonus_questions(db, participant_id: int, now: str, *, only_pendi
         q["is_open"] = q["deadline"] > now
         q["has_answer"] = q["answer"] is not None
         q["has_score"] = q["points"] is not None
+        q["is_resolved"] = (
+            not q["is_open"]
+            and (q["correct_answer"] is not None or q["result_version"] is not None)
+        )
         q["can_edit"] = q["is_open"] and not q["has_score"]
         q["question_title"], q["question_prompt"] = _bonus_title_prompt(q["question_text"])
         q["answer_min"] = None
@@ -2590,7 +2765,11 @@ async def _load_bonus_peer_answers(db, questions, participant_id: int):
     Ne requête que les questions verrouillées : une question ouverte ne peut
     jamais voir ses réponses tierces chargées ni exposées au template.
     """
-    locked = {q["id"]: q for q in questions if not q["is_open"]}
+    locked = {
+        q["id"]: q
+        for q in questions
+        if not q["is_open"] and not q["is_resolved"]
+    }
     if not locked:
         return {}
     placeholders = ",".join("?" for _ in locked)
@@ -2652,6 +2831,94 @@ async def _load_bonus_peer_answers(db, questions, participant_id: int):
     }
 
 
+async def _load_bonus_score_breakdowns(db, questions):
+    """All scored answers for questions whose result is visible.
+
+    Positive scorers and zero-point answers are returned separately, grouped
+    by answer. The list is exhaustive: every participant is named exactly
+    once. Open and unscored questions are excluded before the query so no
+    result can leak early.
+    """
+    resolved = {
+        q["id"]: q
+        for q in questions
+        if not q["is_open"] and q["is_resolved"]
+    }
+    if not resolved:
+        return {}
+
+    placeholders = ",".join("?" for _ in resolved)
+    rows = await db.execute(
+        f"""SELECT ba.question_id, ba.participant_id, ba.answer,
+                   COALESCE(NULLIF(p.nickname, ''), p.name) as name,
+                   s.points
+            FROM bonus_answers ba
+            JOIN participants p ON p.id = ba.participant_id
+            JOIN scores s ON s.bonus_question_id = ba.question_id
+                         AND s.participant_id = ba.participant_id
+                         AND s.id = (
+                             SELECT MAX(latest.id)
+                             FROM scores latest
+                             WHERE latest.bonus_question_id = ba.question_id
+                               AND latest.participant_id = ba.participant_id
+                         )
+            WHERE ba.question_id IN ({placeholders})
+              AND p.is_confirmed = 1 AND p.is_admin = 0
+            ORDER BY s.points DESC, name COLLATE NOCASE ASC""",
+        tuple(resolved),
+    )
+
+    by_question = {
+        qid: {"positive": [], "zero": []}
+        for qid in resolved
+    }
+    group_by_question = {
+        qid: {"positive": {}, "zero": {}}
+        for qid in resolved
+    }
+    for row in await rows.fetchall():
+        q = resolved[row["question_id"]]
+        if q["answer_type"] == "multi_choice":
+            display = format_team_list(row["answer"])
+            answer_key = display
+        elif q["answer_type"] == "number_multi":
+            display = format_number_multi(
+                row["answer"], _bonus_options_list(q["options"])
+            )
+            answer_key = display
+        elif q["answer_type"] == "number" and q["minute_notation"]:
+            display = format_minute_notation(row["answer"])
+            answer_key = split_minute_notation(row["answer"])
+        elif q["answer_type"] == "number":
+            display = row["answer"]
+            answer_key = parse_bonus_number(row["answer"])
+            if answer_key is None:
+                answer_key = display
+        else:
+            display = row["answer"]
+            answer_key = display
+
+        bucket = "positive" if row["points"] > 0 else "zero"
+        key = (row["points"], answer_key)
+        group = group_by_question[row["question_id"]][bucket].get(key)
+        if group is None:
+            group = {"display": display, "points": row["points"], "names": []}
+            group_by_question[row["question_id"]][bucket][key] = group
+            by_question[row["question_id"]][bucket].append(group)
+        group["names"].append({
+            "name": row["name"],
+            "participant_id": row["participant_id"],
+        })
+    for breakdown in by_question.values():
+        breakdown["positive"].sort(
+            key=lambda group: (-group["points"], str(group["display"]).casefold())
+        )
+        breakdown["zero"].sort(
+            key=lambda group: str(group["display"]).casefold()
+        )
+    return by_question
+
+
 def _bonus_hub_status(item: dict) -> str:
     """Statut hub d'une question bonus ou de la carte pré-tournoi.
 
@@ -2660,7 +2927,7 @@ def _bonus_hub_status(item: dict) -> str:
     """
     if item.get("is_open"):
         return "open"
-    if item.get("has_score"):
+    if item.get("is_resolved", item.get("has_score")):
         return "resolved"
     return "waiting"
 
@@ -2671,15 +2938,18 @@ def _sanitize_open_bonus_item(item: dict) -> dict:
     Copie défensive — les données du loader (et la base) restent intactes."""
     if (
         not item.get("has_score")
+        and not item.get("is_resolved")
         and not item.get("correct_answer")
         and not item.get("correct_answer_display")
     ):
         return item
     safe = dict(item)
     safe["has_score"] = False
+    safe["is_resolved"] = False
     safe["points"] = None
     safe["correct_answer"] = None
     safe["correct_answer_display"] = None
+    safe.pop("score_breakdown", None)
     return safe
 
 
@@ -2694,6 +2964,16 @@ def _pt_has_answer(key: str, pt: dict) -> bool:
         return (
             bool(str(pt.get("winner") or "").strip())
             and bool(str(pt.get("finalist") or "").strip())
+        )
+    return _pt_value_filled(key, pt.get(key))
+
+
+def _pt_has_any_answer(key: str, pt: dict) -> bool:
+    """Whether a stored value exists, even if a two-pick answer is partial."""
+    if key == "finalist":
+        return any(
+            bool(str(pt.get(field) or "").strip())
+            for field in ("winner", "finalist")
         )
     return _pt_value_filled(key, pt.get(key))
 
@@ -2803,17 +3083,88 @@ async def _load_pre_tournament_peer_trends(db, pt_status: dict, participant_id: 
     }
 
 
+async def _load_pre_tournament_score_breakdowns(
+    db, pt_status: dict, resolved_keys
+) -> dict:
+    """Exhaustive positive/zero groups for visible pre-tournament results."""
+    resolved_keys = set(resolved_keys)
+    if pt_status["open"] or not resolved_keys:
+        return {}
+
+    placeholders = ",".join("?" for _ in resolved_keys)
+    rows = await db.execute(
+        f"""SELECT pts.question_key, pts.participant_id, pts.points,
+                   ptp.winner, ptp.finalist, ptp.top_scorer,
+                   ptp.revelation, ptp.total_goals,
+                   COALESCE(NULLIF(p.nickname, ''), p.name) as name
+            FROM pre_tournament_scores pts
+            JOIN pre_tournament_predictions ptp
+              ON ptp.participant_id = pts.participant_id
+            JOIN participants p ON p.id = pts.participant_id
+            WHERE pts.question_key IN ({placeholders})
+              AND p.is_confirmed = 1 AND p.is_admin = 0
+            ORDER BY pts.points DESC, name COLLATE NOCASE ASC""",
+        tuple(resolved_keys),
+    )
+
+    by_key = {
+        key: {"positive": [], "zero": []}
+        for key in resolved_keys
+    }
+    groups_by_key = {
+        key: {"positive": {}, "zero": {}}
+        for key in resolved_keys
+    }
+    for row in await rows.fetchall():
+        key = row["question_key"]
+        prediction = dict(row)
+        if not _pt_has_any_answer(key, prediction):
+            continue
+        if key == "finalist":
+            pair = sorted(
+                str(value).strip()
+                for value in (prediction["winner"], prediction["finalist"])
+                if str(value or "").strip()
+            )
+            display = " + ".join(pair)
+        else:
+            display = _pt_answer_display(key, prediction)
+        bucket = "positive" if row["points"] > 0 else "zero"
+        group_key = (row["points"], display)
+        group = groups_by_key[key][bucket].get(group_key)
+        if group is None:
+            group = {"display": display, "points": row["points"], "names": []}
+            groups_by_key[key][bucket][group_key] = group
+            by_key[key][bucket].append(group)
+        group["names"].append({
+            "name": row["name"],
+            "participant_id": row["participant_id"],
+        })
+    for breakdown in by_key.values():
+        breakdown["positive"].sort(
+            key=lambda group: (-group["points"], str(group["display"]).casefold())
+        )
+        breakdown["zero"].sort(
+            key=lambda group: str(group["display"]).casefold()
+        )
+    return by_key
+
+
 def _build_pre_tournament_bonus_cards(
     token: str,
     pt_status: dict,
     questions: list,
     score_by_key: dict,
     peer_trends: dict | None = None,
+    score_breakdowns: dict | None = None,
+    result_versions: dict | None = None,
 ) -> list:
     """Build one display card per enabled pre-tournament question for /bonus."""
     pt = pt_status.get("pt") or {}
     question_map = {q["key"]: q for q in questions}
     peer_trends = peer_trends or {}
+    score_breakdowns = score_breakdowns or {}
+    result_versions = result_versions or {}
     cards = []
     for q in questions:
         key = q["key"]
@@ -2832,7 +3183,16 @@ def _build_pre_tournament_bonus_cards(
             "points": score["points"] if score else None,
             "has_score": score is not None,
             "scored_at": score["calculated_at"] if score else None,
-            "has_answer": _pt_has_answer(key, pt),
+            "result_version": result_versions.get(key),
+            "is_resolved": (
+                not pt_status["open"]
+                and (q.get("correct_answer") is not None or key in result_versions)
+            ),
+            "has_answer": (
+                _pt_has_answer(key, pt)
+                if pt_status["open"]
+                else _pt_has_any_answer(key, pt)
+            ),
             "is_open": pt_status["open"],
             "complete": pt_status["complete"],
             "deadline": pt_status["deadline"],
@@ -2840,6 +3200,8 @@ def _build_pre_tournament_bonus_cards(
         }
         if key in peer_trends:
             card["peer_trend"] = peer_trends[key]
+        if key in score_breakdowns:
+            card["score_breakdown"] = score_breakdowns[key]
         cards.append(card)
     return cards
 
@@ -2931,9 +3293,12 @@ def _apply_new_result_flags(hub: dict, views: dict) -> list:
     new_items = []
     for group in hub["resolved"]["groups"]:
         for item in group["entries"]:
+            if not item.get("has_answer") and not item.get("has_score"):
+                item["is_new_result"] = False
+                continue
             source, source_key = _bonus_result_identity(item)
             seen_version = views.get((source, source_key))
-            current_version = item.get("scored_at") or ""
+            current_version = item.get("result_version") or item.get("scored_at") or ""
             item["is_new_result"] = seen_version is None or seen_version != current_version
             if item["is_new_result"]:
                 new_items.append(item)
@@ -3017,9 +3382,15 @@ async def _mark_bonus_results_seen(db, participant_id: int, hub: dict) -> None:
     ne doivent jamais dépendre de cet appel. N'écrit jamais pour hub["open"]/["waiting"]."""
     now = _now_utc()
     rows = [
-        (participant_id, *_bonus_result_identity(item), item.get("scored_at") or "", now)
+        (
+            participant_id,
+            *_bonus_result_identity(item),
+            item.get("result_version") or item.get("scored_at") or "",
+            now,
+        )
         for group in hub["resolved"]["groups"]
         for item in group["entries"]
+        if item.get("has_answer") or item.get("has_score")
     ]
     if not rows:
         return
@@ -3043,13 +3414,18 @@ async def bonus_page(request: Request, token: str):
         now = _now_utc()
         bonus_questions, pending_count = await _load_bonus_questions(db, p["id"], now)
         peer_answers = await _load_bonus_peer_answers(db, bonus_questions, p["id"])
+        score_breakdowns = await _load_bonus_score_breakdowns(db, bonus_questions)
         for q in bonus_questions:
             if not q["is_open"]:
                 q["peer_answers"] = peer_answers.get(q["id"], {"preview": [], "remaining": []})
+            if q["id"] in score_breakdowns:
+                q["score_breakdown"] = score_breakdowns[q["id"]]
         pt_status = await _pt_status(db, p["id"])
         pt_score_rows = await db.execute(
-            """SELECT question_key, points, calculated_at
-               FROM pre_tournament_scores WHERE participant_id=?""",
+            """SELECT pts.question_key, pts.points, pts.calculated_at
+               FROM pre_tournament_scores pts
+               JOIN pre_tournament_questions ptq ON ptq.key = pts.question_key
+               WHERE pts.participant_id=? AND ptq.is_enabled=1""",
             (p["id"],),
         )
         raw_pt_scores = {
@@ -3065,21 +3441,51 @@ async def bonus_page(request: Request, token: str):
             visible_pt_points = raw_pt_points
             visible_pt_scored = bool(raw_pt_scores)
         bq_score_row = await db.execute(
-            """SELECT COALESCE(SUM(points), 0) as total FROM scores
-               WHERE participant_id=? AND bonus_question_id IS NOT NULL""",
-            (p["id"],),
+            """SELECT COALESCE(SUM(s.points), 0) as total
+               FROM scores s
+               JOIN bonus_questions bq ON bq.id = s.bonus_question_id
+               WHERE s.participant_id=?
+                 AND bq.is_published=1
+                 AND datetime(bq.deadline) <= datetime(?)
+                 AND s.id = (
+                     SELECT MAX(latest.id)
+                     FROM scores latest
+                     WHERE latest.participant_id = s.participant_id
+                       AND latest.bonus_question_id = s.bonus_question_id
+                 )""",
+            (p["id"], now),
         )
         bonus_questions_points = (await bq_score_row.fetchone())["total"]
         pt_cards = []
         if pt_status["question_count"] > 0:
             pt_questions = await get_pre_tournament_questions(db)
+            pt_version_rows = await db.execute(
+                """SELECT question_key, MAX(calculated_at) AS result_version
+                   FROM pre_tournament_scores
+                   GROUP BY question_key"""
+            )
+            pt_result_versions = {
+                row["question_key"]: row["result_version"]
+                for row in await pt_version_rows.fetchall()
+            }
+            pt_resolved_keys = {
+                question["key"]
+                for question in pt_questions
+                if question.get("correct_answer") is not None
+                or question["key"] in pt_result_versions
+            }
             pt_peer_trends = await _load_pre_tournament_peer_trends(db, pt_status, p["id"])
+            pt_score_breakdowns = await _load_pre_tournament_score_breakdowns(
+                db, pt_status, pt_resolved_keys
+            )
             pt_cards = _build_pre_tournament_bonus_cards(
                 token,
                 pt_status,
                 pt_questions,
                 visible_pt_scores,
                 pt_peer_trends,
+                pt_score_breakdowns,
+                pt_result_versions,
             )
         phase_labels = {"pre_tournament": "Pré-tournoi", **PHASE_LABELS}
         total_bonus_points = bonus_questions_points + visible_pt_points

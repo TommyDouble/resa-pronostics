@@ -431,6 +431,14 @@ class TestClosestPodiumBonusPoints:
             answer["participant_id"]
             for answer in standings["groups"][0]["participants"]
         } == {1, 2}
+        assert [
+            [answer["participant_id"] for answer in answer_group["participants"]]
+            for answer_group in standings["groups"][0]["answer_groups"]
+        ] == [[1], [2]]
+        assert [
+            answer_group["answer"]
+            for answer_group in standings["groups"][0]["answer_groups"]
+        ] == ["119", "120.03"]
 
     def test_legacy_config_infers_fun_balanced_preset(self):
         config = normalize_closest_config(

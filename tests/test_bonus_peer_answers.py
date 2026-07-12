@@ -18,6 +18,7 @@ Depuis B7a.1 :
   groupes hors aperçu, pour ne pas dupliquer le top 3 déjà visible.
 """
 import json
+import re
 import uuid
 
 from app.database import get_db
@@ -117,6 +118,19 @@ def _seed_answer(question_id, participant_id, answer):
     run(_create())
 
 
+def _seed_score(question_id, participant_id, points):
+    async def _create():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO scores (participant_id, bonus_question_id, points)
+                   VALUES (?, ?, ?)""",
+                (participant_id, question_id, points),
+            )
+            await db.commit()
+
+    run(_create())
+
+
 def _cleanup(question_ids, participant_ids=()):
     async def _clean():
         async with get_db() as db:
@@ -185,6 +199,187 @@ def test_locked_question_shows_peer_answers(client, participant):
         assert "· toi" in card
     finally:
         _cleanup([question_id], colleagues)
+
+
+def test_resolved_question_shows_scorers_once_and_zero_scores_collapsed(
+    client, participant
+):
+    question_id = _seed_question(
+        "Question gagnants visibles (peer-test) ?", deadline=_PAST_DEADLINE
+    )
+    colleagues = []
+    scored_answers = [
+        ("Aline Gagnante", "France", 5),
+        ("Basile Gagnant", "Brésil", 3),
+        ("Chloé Sans Point", "Espagne", 0),
+    ]
+    for name, answer, points in scored_answers:
+        colleague_id = _seed_participant(name)
+        colleagues.append(colleague_id)
+        _seed_answer(question_id, colleague_id, answer)
+        _seed_score(question_id, colleague_id, points)
+    _seed_answer(question_id, participant["id"], "Espagne")
+    _seed_score(question_id, participant["id"], 0)
+
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        card = _card_html(html, "Question gagnants visibles (peer-test) ?")
+
+        assert "data-bonus-score-breakdown" in card
+        assert "Tendance collègues" not in card
+        assert "Qui a marqué des points ?" in card
+        assert "France" in card and "+5 pts" in card
+        assert "Aline Gagnante" in card
+        assert "Brésil" in card and "+3 pts" in card
+        assert "Basile Gagnant" in card
+        assert "data-bonus-zero-scores" in card
+        assert "Voir 2 participants à 0 pt" in card
+        assert "Espagne" in card and "Chloé Sans Point" in card
+        zero_tag_start = card.index("data-bonus-zero-scores")
+        zero_tag = card[card.rfind("<details", 0, zero_tag_start):card.index(">", zero_tag_start)]
+        assert " open" not in zero_tag
+        # Aucun participant n'est répété dans un second bloc de tendances.
+        assert card.count("Aline Gagnante") == 1
+        assert card.count("Basile Gagnant") == 1
+        assert card.count("Chloé Sans Point") == 1
+    finally:
+        _cleanup([question_id], colleagues)
+
+
+def test_resolved_question_is_visible_to_participant_without_answer_or_score(
+    client, participant
+):
+    question_id = _seed_question(
+        "Question résolue visible par tous (peer-test) ?", deadline=_PAST_DEADLINE
+    )
+    colleague_id = _seed_participant("Aline Résultat Global")
+    _seed_answer(question_id, colleague_id, "France")
+    _seed_score(question_id, colleague_id, 5)
+
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        card = _card_html(html, "Question résolue visible par tous (peer-test) ?")
+
+        assert "data-bonus-score-breakdown" in card
+        assert "Tendance collègues" not in card
+        assert "Aline Résultat Global" in card
+        assert "+5 pts" in card
+        assert "0 pt" in card  # score personnel affiché dans l'en-tête
+        assert 'data-bonus-section="resolved"' in html
+    finally:
+        _cleanup([question_id], [colleague_id])
+
+
+def test_resolved_numeric_answers_merge_equivalent_values(client, participant):
+    question_id = _seed_question(
+        "Question nombres équivalents (peer-test) ?",
+        deadline=_PAST_DEADLINE,
+        answer_type="number",
+        options=None,
+    )
+    colleagues = []
+    for name, answer in (("Alice Nombre Trois", "3"), ("Basile Nombre Trois", "3,0")):
+        colleague_id = _seed_participant(name)
+        colleagues.append(colleague_id)
+        _seed_answer(question_id, colleague_id, answer)
+        _seed_score(question_id, colleague_id, 5)
+
+    try:
+        card = _card_html(
+            client.get(f"/p/{participant['token']}/bonus").text,
+            "Question nombres équivalents (peer-test) ?",
+        )
+        assert len(re.findall(r'class="pg-outcome">3(?:[.,]0)?</span>', card)) == 1
+        assert card.count("Alice Nombre Trois") == 1
+        assert card.count("Basile Nombre Trois") == 1
+        assert "Tendance collègues" not in card
+    finally:
+        _cleanup([question_id], colleagues)
+
+
+def test_resolved_minute_answers_keep_symmetric_values_separate(client, participant):
+    question_id = _seed_question(
+        "Question minutes symétriques (peer-test) ?",
+        deadline=_PAST_DEADLINE,
+        answer_type="number",
+        options=None,
+    )
+
+    async def _minute_config():
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE bonus_questions
+                   SET scoring_mode='closest_podium',
+                       scoring_config=?
+                   WHERE id=?""",
+                (json.dumps({
+                    "award_mode": "podium_custom",
+                    "tie_policy": "full_dense",
+                    "rank_points": [5, 3, 1],
+                    "minute_notation": True,
+                }), question_id),
+            )
+            await db.commit()
+
+    run(_minute_config())
+    colleagues = []
+    for name, answer in (("Alice Minute 119", "119"), ("Basile Minute 120+3", "120.03")):
+        colleague_id = _seed_participant(name)
+        colleagues.append(colleague_id)
+        _seed_answer(question_id, colleague_id, answer)
+        _seed_score(question_id, colleague_id, 1)
+
+    try:
+        card = _card_html(
+            client.get(f"/p/{participant['token']}/bonus").text,
+            "Question minutes symétriques (peer-test) ?",
+        )
+        assert len(re.findall(r'class="pg-outcome">119</span>', card)) == 1
+        assert len(re.findall(r'class="pg-outcome">120\+3</span>', card)) == 1
+        assert card.count("Alice Minute 119") == 1
+        assert card.count("Basile Minute 120+3") == 1
+    finally:
+        _cleanup([question_id], colleagues)
+
+
+def test_resolved_question_uses_latest_duplicate_score_once(client, participant):
+    question_id = _seed_question(
+        "Question correction score dupliqué (peer-test) ?", deadline=_PAST_DEADLINE
+    )
+    colleague_id = _seed_participant("Alice Score Corrigé")
+    _seed_answer(question_id, colleague_id, "France")
+    _seed_score(question_id, colleague_id, 5)
+    _seed_score(question_id, colleague_id, 0)
+
+    try:
+        card = _card_html(
+            client.get(f"/p/{participant['token']}/bonus").text,
+            "Question correction score dupliqué (peer-test) ?",
+        )
+        assert card.count("Alice Score Corrigé") == 1
+        assert "+5 pts" not in card
+        assert "Voir 1 participant à 0 pt" in card
+    finally:
+        _cleanup([question_id], [colleague_id])
+
+
+def test_open_question_never_shows_score_breakdown(client, participant):
+    question_id = _seed_question(
+        "Question gagnants encore secrets (peer-test) ?", deadline=_FUTURE_DEADLINE
+    )
+    colleague_id = _seed_participant("Gagnant Encore Secret")
+    _seed_answer(question_id, colleague_id, "réponse-gagnante-secrète")
+    _seed_score(question_id, colleague_id, 5)
+    _seed_score(question_id, participant["id"], 0)
+
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        card = _card_html(html, "Question gagnants encore secrets (peer-test) ?")
+        assert "data-bonus-score-breakdown" not in card
+        assert "Gagnant Encore Secret" not in html
+        assert "réponse-gagnante-secrète" not in html
+    finally:
+        _cleanup([question_id], [colleague_id])
 
 
 def test_locked_question_no_answers_empty_state(client, participant):
