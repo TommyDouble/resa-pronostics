@@ -183,6 +183,76 @@ QUARTER_LATEST_GOAL_HELP = (
     "distinct."
 )
 
+SEMIFINAL_STARS_TEXT = (
+    "Les quatre têtes d'affiche — Lesquelles de ces stars marqueront au moins "
+    "un but pendant leur demi-finale ?"
+)
+SEMIFINAL_HALFTIME_TEXT = (
+    "Round d'observation — Dans quelle(s) demi-finale(s) le score sera-t-il "
+    "à égalité à la mi-temps ?"
+)
+SEMIFINAL_FRANCE_SPAIN_LEGACY_TEXT = (
+    "Jamais deux sans trois ? — L'Espagne a remporté ses deux dernières "
+    "demi-finales officielles contre la France : 2–1 à l'Euro 2024 et 5–4 "
+    "en Ligue des Nations 2025. Les deux équipes avaient marqué. Quel "
+    "scénario verra-t-on cette fois ?"
+)
+SEMIFINAL_FRANCE_SPAIN_TEXT = (
+    "Jamais deux sans trois ? — L'Espagne a remporté ses deux dernières "
+    "demi-finales officielles contre la France : 2–1 à l'Euro 2024 et 5–4 "
+    "en Ligue des Nations 2025. Chaque équipe avait marqué au moins un but. "
+    "Quel scénario verra-t-on cette fois ?"
+)
+SEMIFINAL_STARS_OPTIONS = [
+    "Kylian Mbappé",
+    "Lamine Yamal",
+    "Harry Kane",
+    "Lionel Messi",
+    "Aucun des quatre — à cocher seul",
+]
+SEMIFINAL_HALFTIME_OPTIONS = [
+    "Les deux demi-finales",
+    "France–Espagne seulement",
+    "Angleterre–Argentine seulement",
+    "Aucune des deux",
+]
+SEMIFINAL_FRANCE_SPAIN_LEGACY_OPTIONS = [
+    "Espagne qualifiée + les deux équipes marquent",
+    "Espagne qualifiée + les deux équipes ne marquent pas",
+    "France qualifiée + les deux équipes marquent",
+    "France qualifiée + les deux équipes ne marquent pas",
+]
+SEMIFINAL_FRANCE_SPAIN_OPTIONS = [
+    "Espagne qualifiée + chaque équipe marque au moins un but",
+    "Espagne qualifiée + au moins une des deux équipes ne marque pas",
+    "France qualifiée + chaque équipe marque au moins un but",
+    "France qualifiée + au moins une des deux équipes ne marque pas",
+]
+SEMIFINAL_STARS_CONFIG = {"error_step": 1}
+SEMIFINAL_STARS_HELP = (
+    "Coche tous les joueurs que tu vois marquer. Si aucun des quatre ne marque, "
+    "coche uniquement « Aucun des quatre ». Le temps réglementaire et la "
+    "prolongation sont inclus, les tirs au but sont exclus. Seul le buteur "
+    "officiel FIFA compte : un but officiellement attribué contre son camp ne "
+    "compte pour aucun des quatre. Barème : 4 points pour la sélection exacte, "
+    "puis −1 point par joueur coché à tort ou oublié, sans descendre sous 0."
+)
+SEMIFINAL_HALFTIME_HELP = (
+    "On relève le score au coup de sifflet de la mi-temps, temps additionnel "
+    "inclus. Un score de 0–0 est une égalité. Barème : 3 points pour l'option "
+    "exacte, 0 sinon."
+)
+SEMIFINAL_FRANCE_SPAIN_HELP = (
+    "La qualification inclut la prolongation et une éventuelle séance de tirs "
+    "au but. « Chaque équipe marque » signifie que la France ET l'Espagne "
+    "inscrivent chacune au moins un but. Dans le cas contraire — 0–0, 1–0, "
+    "0–1, etc. — choisis l'option « au moins une des deux équipes ne marque "
+    "pas ». Les buts inscrits pendant le temps réglementaire et la prolongation "
+    "comptent, ceux d'une séance de tirs au but ne comptent pas. Un but contre "
+    "son camp compte pour l'équipe qui en bénéficie ; un but annulé ne compte "
+    "pas. Barème : 3 points pour l'option exacte, 0 sinon."
+)
+
 
 async def _normalize_existing_participant_names(db):
     rows = await db.execute("SELECT id, name, first_name, last_name FROM participants")
@@ -667,6 +737,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await ensure_round_of_32_bonus_drafts(db)
         await ensure_round_of_16_bonus_drafts(db)
         await ensure_quarter_bonus_drafts(db)
+        await ensure_semifinal_bonus_questions(db)
 
         # Les anciens brouillons comptent désormais comme des réponses valides.
         await db.execute(
@@ -1242,6 +1313,174 @@ async def ensure_quarter_bonus_drafts(db):
                 draft["help_text"],
                 0,
                 quarter_deadline,
+            ),
+        )
+
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
+async def _migrate_semifinal_france_spain_wording(db):
+    """Clarifie le scénario BTTS sans perdre les réponses déjà enregistrées."""
+    row = await (await db.execute(
+        "SELECT id FROM bonus_questions WHERE question_text=?",
+        (SEMIFINAL_FRANCE_SPAIN_LEGACY_TEXT,),
+    )).fetchone()
+    if not row:
+        return
+
+    question_id = row["id"]
+    for old_answer, new_answer in zip(
+        SEMIFINAL_FRANCE_SPAIN_LEGACY_OPTIONS,
+        SEMIFINAL_FRANCE_SPAIN_OPTIONS,
+    ):
+        await db.execute(
+            """UPDATE bonus_answers
+               SET answer=?
+               WHERE question_id=? AND answer=?""",
+            (new_answer, question_id, old_answer),
+        )
+        await db.execute(
+            """UPDATE bonus_questions
+               SET correct_answer=?
+               WHERE id=? AND correct_answer=?""",
+            (new_answer, question_id, old_answer),
+        )
+    await db.execute(
+        """UPDATE bonus_questions
+           SET question_text=?, options=?, help_text=?
+           WHERE id=?""",
+        (
+            SEMIFINAL_FRANCE_SPAIN_TEXT,
+            json.dumps(SEMIFINAL_FRANCE_SPAIN_OPTIONS, ensure_ascii=False),
+            SEMIFINAL_FRANCE_SPAIN_HELP,
+            question_id,
+        ),
+    )
+
+
+async def _migrate_semifinal_questions_to_drafts(db):
+    """Réduit les barèmes et remet les questions existantes en brouillon."""
+    updates = [
+        (
+            4,
+            json.dumps(
+                SEMIFINAL_STARS_CONFIG,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            SEMIFINAL_STARS_HELP,
+            SEMIFINAL_STARS_TEXT,
+        ),
+        (3, None, SEMIFINAL_HALFTIME_HELP, SEMIFINAL_HALFTIME_TEXT),
+        (3, None, SEMIFINAL_FRANCE_SPAIN_HELP, SEMIFINAL_FRANCE_SPAIN_TEXT),
+    ]
+    for points_value, scoring_config, help_text, question_text in updates:
+        await db.execute(
+            """UPDATE bonus_questions
+               SET points_value=?, scoring_config=?, help_text=?, is_published=0
+               WHERE question_text=?""",
+            (points_value, scoring_config, help_text, question_text),
+        )
+
+
+async def ensure_semifinal_bonus_questions(db):
+    """Prépare en brouillon les trois questions bonus des demi-finales 2026.
+
+    La deadline suit le premier match de la phase présent dans le calendrier
+    applicatif (`matches`) : coup d'envoi moins une minute. Le seed est
+    idempotent ; ses migrations conservent les réponses déjà enregistrées.
+    """
+    key = "bonus_questions_semi_2026_v3"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    await _migrate_semifinal_france_spain_wording(db)
+    await _migrate_semifinal_questions_to_drafts(db)
+
+    semifinal_deadline = await _deadline_before_first_phase_match(
+        db,
+        "semi",
+        "2026-07-14T18:59:00",
+    )
+    questions = [
+        {
+            "question_text": SEMIFINAL_STARS_TEXT,
+            "answer_type": "multi_choice",
+            "options": json.dumps(SEMIFINAL_STARS_OPTIONS, ensure_ascii=False),
+            "points_value": 4,
+            "scoring_mode": "multi_select",
+            "scoring_config": json.dumps(
+                SEMIFINAL_STARS_CONFIG,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            "help_text": SEMIFINAL_STARS_HELP,
+        },
+        {
+            "question_text": SEMIFINAL_HALFTIME_TEXT,
+            "answer_type": "choice",
+            "options": json.dumps(SEMIFINAL_HALFTIME_OPTIONS, ensure_ascii=False),
+            "points_value": 3,
+            "scoring_mode": "exact",
+            "scoring_config": None,
+            "help_text": SEMIFINAL_HALFTIME_HELP,
+        },
+        {
+            "question_text": SEMIFINAL_FRANCE_SPAIN_TEXT,
+            "answer_type": "choice",
+            "options": json.dumps(SEMIFINAL_FRANCE_SPAIN_OPTIONS, ensure_ascii=False),
+            "points_value": 3,
+            "scoring_mode": "exact",
+            "scoring_config": None,
+            "help_text": SEMIFINAL_FRANCE_SPAIN_HELP,
+        },
+    ]
+    for question in questions:
+        existing = await (await db.execute(
+            "SELECT id FROM bonus_questions WHERE question_text=?",
+            (question["question_text"],),
+        )).fetchone()
+        if existing:
+            await db.execute(
+                """UPDATE bonus_questions
+                   SET phase='semi', answer_type=?, options=?, points_value=?,
+                       scoring_mode=?, scoring_config=?, help_text=?,
+                       is_published=0, deadline=?
+                   WHERE id=?
+                     AND id NOT IN (SELECT question_id FROM bonus_answers)""",
+                (
+                    question["answer_type"],
+                    question["options"],
+                    question["points_value"],
+                    question["scoring_mode"],
+                    question["scoring_config"],
+                    question["help_text"],
+                    semifinal_deadline,
+                    existing["id"],
+                ),
+            )
+            continue
+        await db.execute(
+            """INSERT INTO bonus_questions
+               (question_text, phase, answer_type, options, points_value,
+                correct_answer, scoring_mode, scoring_config, help_text,
+                is_published, deadline)
+               VALUES (?, 'semi', ?, ?, ?, NULL, ?, ?, ?, 0, ?)""",
+            (
+                question["question_text"],
+                question["answer_type"],
+                question["options"],
+                question["points_value"],
+                question["scoring_mode"],
+                question["scoring_config"],
+                question["help_text"],
+                semifinal_deadline,
             ),
         )
 
