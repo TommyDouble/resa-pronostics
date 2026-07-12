@@ -579,17 +579,19 @@
         </thead>
         <tbody>
           {% for group in standing.groups %}
+          {% for answer_group in group.answer_groups %}
           <tr>
             <td class="s">#{{ group.rank }}</td>
-            <td>{{ group.participants[0].answer_display or group.participants[0].answer }}</td>
+            <td>{{ answer_group.participants[0].answer_display or answer_group.answer }}</td>
             <td>{{ group.distance }}</td>
             <td class="s">{{ group.points }}</td>
             <td>
-              {% for p in group.participants %}
+              {% for p in answer_group.participants %}
                 <span class="chip gr" style="margin:2px 4px 2px 0;">{{ p.participant_name }}</span>
               {% endfor %}
             </td>
           </tr>
+          {% endfor %}
           {% endfor %}
         </tbody>
       </table>

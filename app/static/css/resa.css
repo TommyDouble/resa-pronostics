@@ -1599,6 +1599,81 @@ img.av { object-fit: cover; display: block; }
   margin-left: 32px;
   border-left: 1.5px solid var(--n300);
 }
+
+/* ---- Explication du classement Bonus ---- */
+.bonus-rank-detail:not(:last-child) { border-bottom: 1px solid var(--line); }
+.bonus-rank-summary {
+  border-bottom: none;
+  cursor: pointer;
+  list-style: none;
+}
+.bonus-rank-summary::-webkit-details-marker { display: none; }
+.bonus-rank-summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.bonus-rank-detail[open] > .bonus-rank-summary {
+  border-bottom: 1px solid var(--line);
+  background: var(--n50);
+}
+.bonus-rank-detail[open] > .bonus-rank-summary.me { background: var(--primary-l); }
+.bonus-rank-detail[open] > .bonus-rank-summary .department-chevron {
+  color: var(--primary);
+  transform: rotate(180deg);
+}
+.bonus-rank-summary .sc.zero { color: var(--n500); }
+.bonus-rank-body {
+  padding: 10px 12px 12px 42px;
+  background: var(--paper2);
+}
+.bonus-rank-phase + .bonus-rank-phase { margin-top: 12px; }
+.bonus-rank-phase-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.bonus-rank-questions {
+  margin-top: 6px;
+  margin-left: 5px;
+  border-left: 1.5px solid var(--n300);
+}
+.bonus-rank-question {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 6px 0 6px 10px;
+  border-bottom: 1px solid rgba(231,225,214,.78);
+  font-size: 12px;
+  line-height: 1.25;
+}
+.bonus-rank-question:last-child { border-bottom: none; }
+.bonus-rank-question span { font-weight: 650; }
+.bonus-rank-question small {
+  display: block;
+  margin-top: 2px;
+  color: var(--n600);
+  font-size: 10px;
+}
+.bonus-rank-question strong {
+  color: var(--success);
+  font-family: var(--display);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.bonus-rank-question strong.zero { color: var(--n500); }
+.bonus-rank-empty { padding: 6px 0; font-size: 12px; }
+.bonus-rank-profile {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 750;
+}
 .department-member {
   min-height: 40px;
   gap: 8px;
@@ -3475,6 +3550,23 @@ hr.dashed { border: none; border-top: 1px dashed var(--n300); margin: 4px 0; }
 /* ---- Pronostics groupés par score (page détail) ---- */
 .pred-groups { display: flex; flex-direction: column; gap: 10px; }
 .pred-groups-head { display: flex; flex-direction: column; gap: 8px; }
+.bonus-zero-scores > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--n50);
+  cursor: pointer;
+  font-size: 12px;
+  list-style: none;
+}
+.bonus-zero-scores > summary::-webkit-details-marker { display: none; }
+.bonus-zero-scores[open] > summary .department-chevron { transform: rotate(180deg); }
+.bonus-zero-groups { padding-top: 8px; }
 .tier-stats { display: flex; gap: 6px; flex-wrap: wrap; }
 .pgroup {
   background: var(--paper);

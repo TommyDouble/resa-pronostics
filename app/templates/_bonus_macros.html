@@ -4,7 +4,7 @@
    portant display/count/percentage/has_me/example_names/remaining_names. #}
 {% macro render_peer_trend(trend, token) -%}
 {% set peer_total = (trend.preview + trend.remaining) | map(attribute='count') | sum %}
-<div class="pred-groups" style="margin-bottom:12px;">
+<div class="pred-groups" style="margin-bottom:12px;" data-bonus-peer-trend>
   <div class="pred-groups-head">
     <div class="lbl">Tendance collègues</div>
     {% if peer_total %}
@@ -69,6 +69,54 @@
 </div>
 {%- endmacro %}
 
+{% macro render_score_breakdown(breakdown, token) -%}
+<div class="pred-groups" style="margin-bottom:12px;" data-bonus-score-breakdown>
+  <div class="pred-groups-head">
+    <div class="lbl">Qui a marqué des points ?</div>
+  </div>
+  {% for g in breakdown.positive %}
+  <section class="pgroup">
+    <header class="pgroup-head">
+      <span class="pg-outcome">{{ g.display }}</span>
+      <span class="chip ok">+{{ g.points }} pt{{ 's' if g.points != 1 else '' }}</span>
+    </header>
+    <div class="pgroup-names">
+      {% for pa in g.names %}
+      <a class="pname" href="/p/{{ token }}/profil/{{ pa.participant_id }}">{{ pa.name }}</a>
+      {% endfor %}
+    </div>
+  </section>
+  {% else %}
+  <div class="muted" style="font-size:12px;">Personne n'a marqué de point.</div>
+  {% endfor %}
+  {% if breakdown.zero %}
+  {% set zero_count = namespace(value=0) %}
+  {% for g in breakdown.zero %}{% set zero_count.value = zero_count.value + g.names|length %}{% endfor %}
+  <details class="bonus-zero-scores" data-bonus-zero-scores>
+    <summary class="muted">
+      Voir {{ zero_count.value }} participant{{ 's' if zero_count.value != 1 else '' }} à 0 pt
+      <span class="department-chevron" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="pred-groups bonus-zero-groups">
+      {% for g in breakdown.zero %}
+      <section class="pgroup">
+        <header class="pgroup-head">
+          <span class="pg-outcome">{{ g.display }}</span>
+          <span class="chip gr">0 pt</span>
+        </header>
+        <div class="pgroup-names">
+          {% for pa in g.names %}
+          <a class="pname" href="/p/{{ token }}/profil/{{ pa.participant_id }}">{{ pa.name }}</a>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+</div>
+{%- endmacro %}
+
 {% macro bonus_question_card(q, token, phase_labels, mode='page', index=1, total=1) -%}
 {% set is_stack = mode == 'stack' %}
 <div class="{% if is_stack %}bonus-stack-card{% if index == 1 %} is-active{% elif index == 2 %} is-next{% endif %}{% else %}card bonus-question-card{% if q.is_new_result %} is-new-result{% endif %}{% endif %}"
@@ -76,8 +124,8 @@
   <div class="bonus-q-meta">
     <span class="chip acc tip" tabindex="0" data-tip="Points attribués selon le barème de la question.">{{ phase_labels.get(q.phase, q.phase) }} · {{ q.points_label or (q.points_value ~ ' pts') }}</span>
     {% if not is_stack %}
-      {% if q.has_score %}
-        <span class="chip {{ 'ok' if q.points > 0 else 'lock' }}">{{ q.points }} pt{{ 's' if q.points != 1 else '' }}</span>
+      {% if q.is_resolved %}
+        <span class="chip {{ 'ok' if (q.points or 0) > 0 else 'lock' }}">{{ q.points or 0 }} pt{{ 's' if (q.points or 0) != 1 else '' }}</span>
       {% elif q.can_edit and q.has_answer %}
         <span class="chip ok">Réponse enregistrée</span>
       {% elif q.can_edit %}
@@ -131,13 +179,15 @@
   </div>
   {% endif %}
 
-  {% if q.has_score and q.correct_answer and not is_stack %}
+  {% if q.is_resolved and q.correct_answer and not is_stack %}
   <div class="muted" style="font-size:12px;margin-bottom:12px;">
     Réponse correcte : <b style="color:var(--n900);">{{ q.correct_answer_display or q.correct_answer }}</b>
   </div>
   {% endif %}
 
-  {% if not is_stack and q.peer_answers is defined %}
+  {% if not is_stack and q.score_breakdown is defined %}
+  {{ render_score_breakdown(q.score_breakdown, token) }}
+  {% elif not is_stack and q.peer_answers is defined %}
   {{ render_peer_trend(q.peer_answers, token) }}
   {% endif %}
 
@@ -215,7 +265,7 @@
   </form>
   {% elif q.has_answer and not is_stack %}
   <div class="muted" style="font-size:12px;">
-    {% if q.has_score %}
+    {% if q.is_resolved %}
       Points attribués — la réponse reste visible.
     {% else %}
       Deadline dépassée — la réponse n'est plus modifiable.
@@ -237,8 +287,8 @@
       {% else %}
         <span class="chip warn">À répondre</span>
       {% endif %}
-    {% elif item.has_score %}
-      <span class="chip {{ 'ok' if item.points > 0 else 'lock' }}">{{ item.points }} pt{{ 's' if item.points != 1 else '' }}</span>
+    {% elif item.is_resolved %}
+      <span class="chip {{ 'ok' if (item.points or 0) > 0 else 'lock' }}">{{ item.points or 0 }} pt{{ 's' if (item.points or 0) != 1 else '' }}</span>
     {% elif item.has_answer %}
       <span class="chip gr">Verrouillée</span>
     {% else %}
@@ -269,13 +319,15 @@
   </div>
   {% endif %}
 
-  {% if item.has_score and item.correct_answer_display %}
+  {% if item.is_resolved and item.correct_answer_display %}
   <div class="muted" style="font-size:12px;margin-bottom:12px;">
     Réponse correcte : <b style="color:var(--n900);">{{ item.correct_answer_display }}</b>
   </div>
   {% endif %}
 
-  {% if item.peer_trend is defined %}
+  {% if item.score_breakdown is defined %}
+  {{ render_score_breakdown(item.score_breakdown, token) }}
+  {% elif item.peer_trend is defined %}
   {{ render_peer_trend(item.peer_trend, token) }}
   {% endif %}
 

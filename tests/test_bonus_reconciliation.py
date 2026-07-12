@@ -25,33 +25,49 @@ def _seed_bonus_and_pretournament(participant_id, *, bonus_points, pretournament
                 (participant_id, pretournament_points),
             )
             await db.commit()
+            return question_id
 
-    run(_seed())
+    return run(_seed())
+
+
+def _cleanup(participant_id, question_id):
+    async def _clean():
+        async with get_db() as db:
+            await db.execute("DELETE FROM bonus_questions WHERE id=?", (question_id,))
+            await db.execute(
+                "DELETE FROM pre_tournament_scores WHERE participant_id=? AND question_key='revelation'",
+                (participant_id,),
+            )
+            await db.commit()
+
+    run(_clean())
 
 
 def test_bonus_page_shows_total_reconciliation(client, participant):
-    _seed_bonus_and_pretournament(
+    question_id = _seed_bonus_and_pretournament(
         participant["id"], bonus_points=6, pretournament_points=4
     )
+    try:
+        response = client.get(f"/p/{participant['token']}/bonus")
+        assert response.status_code == 200
+        html = response.text
 
-    response = client.get(f"/p/{participant['token']}/bonus")
-    assert response.status_code == 200
-    html = response.text
+        assert "Total bonus : 10 pts" in html
+        # Le résumé (PR B6) n'affiche plus le split "Questions bonus / Pré-tournoi" :
+        # le pré-tournoi est une phase bonus parmi d'autres dans le détail par phase.
+        assert "Questions bonus : 6 pts" not in html
+        assert "Phase de groupes : 6 pts" in html
+        assert "Pré-tournoi : 4 pts" in html
 
-    assert "Total bonus : 10 pts" in html
-    # Le résumé (PR B6) n'affiche plus le split "Questions bonus / Pré-tournoi" :
-    # le pré-tournoi est une phase bonus parmi d'autres dans le détail par phase.
-    assert "Questions bonus : 6 pts" not in html
-    assert "Phase de groupes : 6 pts" in html
-    assert "Pré-tournoi : 4 pts" in html
-
-    # Le total affiché doit rester cohérent avec le périmètre "bonus" du classement
-    # (questions bonus + pré-tournoi), sans devenir un nouveau calcul parallèle.
-    rankings = run(get_rankings(scope="bonus"))
-    ranking_total = next(
-        r["total_points"] for r in rankings if r["id"] == participant["id"]
-    )
-    assert ranking_total == 10
+        # Le total affiché doit rester cohérent avec le périmètre "bonus" du classement
+        # (questions bonus + pré-tournoi), sans devenir un nouveau calcul parallèle.
+        rankings = run(get_rankings(scope="bonus"))
+        ranking_total = next(
+            r["total_points"] for r in rankings if r["id"] == participant["id"]
+        )
+        assert ranking_total == 10
+    finally:
+        _cleanup(participant["id"], question_id)
 
 
 def test_bonus_page_reconciliation_handles_zero_points(client, participant):
@@ -61,8 +77,9 @@ def test_bonus_page_reconciliation_handles_zero_points(client, participant):
 
     assert "Total bonus : 0 pt" in html
     assert "Questions bonus : 0 pt" not in html
-    # Rien de résolu encore : aucun détail par phase, message d'attente générique.
-    assert "Aucun point bonus calculé pour l'instant." in html
+    # Les résultats sont désormais globaux : même sans score personnel, les
+    # phases déjà résolues peuvent apparaître avec un sous-total de 0.
+    assert "data-bonus-phase-breakdown" in html
 
 
 def test_bonus_ranking_tab_does_not_imply_bonus_only(client, participant):

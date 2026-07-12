@@ -13,6 +13,7 @@ from app.routers.pages import (
     _bonus_item_needs_answer,
     _build_bonus_hub,
     _build_bonus_situation,
+    _load_pre_tournament_score_breakdowns,
 )
 from tests.conftest import run
 
@@ -354,6 +355,114 @@ def test_pt_card_resolved_with_points_in_subtotal(client, participant):
         _cleanup(pt_scores_participant=participant["id"])
 
 
+def test_pt_resolved_card_shows_scorers_once_and_zero_scores_collapsed(client, participant):
+    colleague_id = _seed_participant("Aline Championne Pré-tournoi")
+    _seed_pt_prediction(participant["id"], winner="Brésil")
+    _seed_pt_prediction(colleague_id, winner="France")
+    _seed_pt_score(participant["id"], "winner", 0)
+    _seed_pt_score(colleague_id, "winner", 8)
+    old_answer = _set_pt_correct_answer("winner", "France")
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        resolved_html = _section_html(html, "resolved")
+        winner_card = _pt_card_html(resolved_html, "winner")
+
+        assert "data-bonus-score-breakdown" in winner_card
+        assert "Tendance collègues" not in winner_card
+        assert "Qui a marqué des points ?" in winner_card
+        assert "France" in winner_card and "+8 pts" in winner_card
+        assert winner_card.count("Aline Championne Pré-tournoi") == 1
+        assert "data-bonus-zero-scores" in winner_card
+        assert "Voir 1 participant à 0 pt" in winner_card
+        assert "Brésil" in winner_card and "Test User" in winner_card
+    finally:
+        _set_pt_correct_answer("winner", old_answer)
+        _cleanup(
+            participant_ids=[colleague_id],
+            pt_scores_participant=participant["id"],
+            pt_prediction_participant=participant["id"],
+        )
+
+
+def test_pt_score_breakdown_handles_partial_finalists_drafts_and_empty_answers(client):
+    first = _seed_participant("Alice Finalistes Ordre A")
+    second = _seed_participant("Basile Finalistes Ordre B")
+    partial = _seed_participant("Chloé Pré-tournoi Partiel")
+    draft = _seed_participant("Dario Ancien Brouillon")
+    _seed_pt_prediction(first, winner="France", finalist="Brésil")
+    _seed_pt_prediction(second, winner="Brésil", finalist="France")
+    _seed_pt_prediction(partial, winner="France", finalist="", revelation="")
+    _seed_pt_prediction(draft, winner="France", finalist="Brésil")
+
+    async def _mark_draft():
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE pre_tournament_predictions SET submitted=0 WHERE participant_id=?",
+                (draft,),
+            )
+            await db.commit()
+
+    run(_mark_draft())
+    _seed_pt_score(first, "finalist", 7)
+    _seed_pt_score(second, "finalist", 7)
+    _seed_pt_score(partial, "finalist", 7)
+    _seed_pt_score(draft, "finalist", 7)
+    _seed_pt_score(partial, "revelation", 0)
+
+    async def _breakdown():
+        async with get_db() as db:
+            return await _load_pre_tournament_score_breakdowns(
+                db,
+                {"open": False},
+                {"finalist", "revelation"},
+            )
+
+    try:
+        breakdown = run(_breakdown())
+        finalist_groups = breakdown["finalist"]["positive"]
+        assert len(finalist_groups) == 2
+        pair_group = next(
+            group for group in finalist_groups
+            if group["display"] == "Brésil + France"
+        )
+        assert {name["name"] for name in pair_group["names"]} == {
+            "Alice Finalistes Ordre A",
+            "Basile Finalistes Ordre B",
+            "Dario Ancien Brouillon",
+        }
+        partial_group = next(
+            group for group in finalist_groups
+            if group["display"] == "France"
+        )
+        assert [name["name"] for name in partial_group["names"]] == [
+            "Chloé Pré-tournoi Partiel"
+        ]
+        assert breakdown["finalist"]["zero"] == []
+        assert breakdown["revelation"]["positive"] == []
+        assert breakdown["revelation"]["zero"] == []
+    finally:
+        _cleanup(participant_ids=[first, second, partial, draft])
+
+
+def test_pt_partial_finalist_resolved_card_shows_recorded_pick(client, participant):
+    _seed_pt_prediction(participant["id"], winner="France", finalist="")
+    _seed_pt_score(participant["id"], "finalist", 7)
+    try:
+        html = client.get(f"/p/{participant['token']}/bonus").text
+        resolved_html = _section_html(html, "resolved")
+        card = _pt_card_html(resolved_html, "finalist")
+
+        assert "7 pts" in card
+        assert "Ta réponse : <b>France</b>" in card
+        assert "Deadline dépassée — aucune réponse enregistrée" not in card
+        assert card.count("Test User") == 1
+    finally:
+        _cleanup(
+            pt_scores_participant=participant["id"],
+            pt_prediction_participant=participant["id"],
+        )
+
+
 def test_pt_card_open_when_deadline_future(client, participant):
     old_deadline = _set_pt_deadline(_FUTURE)
     try:
@@ -414,17 +523,18 @@ def test_pt_card_open_hides_accidental_score_and_correct_answer(client, particip
     try:
         html = client.get(f"/p/{participant['token']}/bonus").text
         open_html = _section_html(html, "open")
+        winner_card = _pt_card_html(open_html, "winner")
         assert 'data-bonus-pt-key="winner"' in open_html
         assert "secret-champion-b5" not in html
-        assert "Réponse correcte" not in html
-        assert "3 pt" not in html
+        assert "Réponse correcte" not in winner_card
+        assert "3 pt" not in winner_card
         assert "Pré-tournoi : 3 pts" not in html
         assert "Total bonus : 3 pts" not in html
         assert "Total bonus : 0 pt" in html
         # Le détail par phase ne doit jamais lister le pré-tournoi tant qu'aucun
         # point n'est visible (score accidentel en base non pris en compte).
         assert 'data-bonus-phase-row="pre_tournament"' not in html
-        assert "Aucun point bonus calculé pour l'instant." in html
+        assert "data-bonus-phase-breakdown" in html
         if 'data-bonus-section="resolved"' in html:
             assert 'data-bonus-pt-key="winner"' not in _section_html(html, "resolved")
     finally:
@@ -527,11 +637,11 @@ def test_summary_counters_and_locked_labels(client, participant):
     assert "data-bonus-counters" in html
     assert "à répondre ·" in html
     # Le résumé (PR B6) n'affiche plus le split Questions bonus / Pré-tournoi,
-    # seulement le total unique + le détail par phase (vide ici, rien résolu).
+    # seulement le total unique + le détail des phases résolues globalement.
     assert "Total bonus :" in html
     assert "Questions bonus :" not in html
     assert "data-bonus-situation" in html
-    assert "Aucun point bonus calculé pour l'instant." in html
+    assert "data-bonus-phase-breakdown" in html
 
 
 def test_open_scored_question_stays_private(client, participant):

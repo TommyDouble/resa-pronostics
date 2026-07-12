@@ -182,7 +182,7 @@
   </div>
   {% endif %}
 
-  {% if rankings|length >= 3 %}
+  {% if rankings|length >= 3 and view != 'bonus' %}
   <div class="podium">
     {% for pos in [1, 0, 2] %}
     {% set r = rankings[pos] %}
@@ -227,6 +227,47 @@
     </div>
     {% endif %}
     {% for r in rankings %}
+    {% if view == 'bonus' %}
+    <details class="bonus-rank-detail" name="bonus-ranking" data-bonus-rank-detail data-participant-id="{{ r.id }}">
+      <summary class="rrow bonus-rank-summary {{ 'me' if r.is_me else '' }}"
+               aria-label="{{ r.name }} · {{ r.total_points }} point{{ 's' if r.total_points != 1 else '' }} bonus · ouvrir le détail">
+        <span class="rk">{{ r.rank }}</span>
+        {{ avatar(r.avatar_path, r.name, r.id) }}
+        <div class="nm">
+          <span class="nm-line">{{ balogun_name(r.name, r.real_name) }}{% for b in r.badges[:2] %}<span class="mini-badge rar-{{ b.rarity }} tip" tabindex="0" data-tip="{{ b.label }}{% if b.detail_label %} · {{ b.detail_label }}{% endif %} — {{ b.caption }}"><img src="/static/img/trophies/noto/{{ b.icon_key }}.svg" alt="" aria-hidden="true"></span>{% endfor %}{% if r.badges|length > 2 %}<span class="mini-badge-more tip" tabindex="0" data-tip="{{ r.badges[2:]|map(attribute='label')|join(', ') }}">+{{ r.badges|length - 2 }}</span>{% endif %}</span>
+          <small>{% if r.is_me %}c’est toi · {% endif %}voir le détail du score</small>
+        </div>
+        <span class="sc {{ 'zero' if r.total_points == 0 }}">{{ r.total_points }}<small> pts</small></span>
+        <span class="department-chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="bonus-rank-body">
+        {% for phase in r.bonus_breakdown.phases %}
+        <section class="bonus-rank-phase" data-bonus-rank-phase="{{ phase.phase }}">
+          <div class="bonus-rank-phase-head">
+            <span>{{ phase.label }}</span>
+            <span class="chip {{ 'ok' if phase.points > 0 else 'gr' }}">{{ '+' if phase.points > 0 else '' }}{{ phase.points }} pt{{ 's' if phase.points != 1 else '' }}</span>
+          </div>
+          <div class="bonus-rank-questions">
+            {% for question in phase.questions %}
+            <div class="bonus-rank-question" data-bonus-rank-question="{{ question.source }}:{{ question.key }}">
+              <div>
+                <span>{{ question.label }}</span>
+                {% if question.description %}<small>{{ question.description }}</small>{% endif %}
+              </div>
+              <strong class="{{ 'zero' if question.points == 0 }}">{{ '+' if question.points > 0 else '' }}{{ question.points }} pt{{ 's' if question.points != 1 else '' }}</strong>
+            </div>
+            {% endfor %}
+          </div>
+        </section>
+        {% else %}
+        <div class="muted bonus-rank-empty">Aucun résultat bonus disponible.</div>
+        {% endfor %}
+        <a class="bonus-rank-profile" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}?return_view=bonus">
+          Voir le profil{% if not r.is_me %} de {{ r.name }}{% endif %}
+        </a>
+      </div>
+    </details>
+    {% else %}
     <a class="rrow {{ 'me' if r.is_me else '' }} {{ 'climber' if r.is_climber else '' }}" href="/p/{{ token }}/profil{{ '' if r.is_me else '/' ~ r.id }}?return_view={{ view }}">
       <span class="rk">{{ r.rank }}</span>
       {{ avatar(r.avatar_path, r.name, r.id) }}
@@ -249,6 +290,7 @@
       {% endif %}
       <span class="sc">{{ r.total_points }}<small> pts</small></span>
     </a>
+    {% endif %}
     {% else %}
     <div style="padding:24px;text-align:center;color:var(--n600);">
       <p style="font-family:var(--sketch);font-size:20px;">Aucun score encore.</p>
