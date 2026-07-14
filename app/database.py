@@ -230,12 +230,17 @@ SEMIFINAL_FRANCE_SPAIN_OPTIONS = [
 ]
 SEMIFINAL_STARS_CONFIG = {"error_step": 1}
 SEMIFINAL_STARS_HELP = (
-    "Coche tous les joueurs que tu vois marquer. Si aucun des quatre ne marque, "
-    "coche uniquement « Aucun des quatre ». Le temps réglementaire et la "
-    "prolongation sont inclus, les tirs au but sont exclus. Seul le buteur "
-    "officiel FIFA compte : un but officiellement attribué contre son camp ne "
-    "compte pour aucun des quatre. Barème : 4 points pour la sélection exacte, "
-    "puis −1 point par joueur coché à tort ou oublié, sans descendre sous 0."
+    "Coche tous les joueurs que tu penses voir marquer. Si tu penses qu'aucun "
+    "des quatre ne marquera, coche uniquement « Aucun des quatre ». Tu gagnes "
+    "4 points si ta sélection est entièrement correcte. Sinon, tu perds 1 "
+    "point pour chaque différence avec le résultat : un joueur oublié, un "
+    "joueur coché à tort, ou l'option « Aucun des quatre » cochée à tort. Le "
+    "score ne peut pas descendre sous 0. Exemple : si Mbappé et Messi marquent, "
+    "les cocher tous les deux rapporte 4 points ; n'en cocher qu'un rapporte "
+    "3 points ; répondre « Aucun des quatre » rapporte 1 point. Les buts "
+    "pendant le temps réglementaire et la prolongation comptent, mais pas les "
+    "tirs au but. Un but officiellement attribué contre son camp ne compte "
+    "pour aucun des quatre."
 )
 SEMIFINAL_HALFTIME_HELP = (
     "On relève le score au coup de sifflet de la mi-temps, temps additionnel "
@@ -1386,6 +1391,25 @@ async def _migrate_semifinal_questions_to_drafts(db):
         )
 
 
+async def _migrate_semifinal_stars_help(db):
+    """Clarifie une fois le barème, y compris sur une question déjà créée."""
+    key = "bonus_questions_semi_2026_stars_help_v2"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    await db.execute(
+        "UPDATE bonus_questions SET help_text=? WHERE question_text=?",
+        (SEMIFINAL_STARS_HELP, SEMIFINAL_STARS_TEXT),
+    )
+    await db.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
 async def ensure_semifinal_bonus_questions(db):
     """Prépare en brouillon les trois questions bonus des demi-finales 2026.
 
@@ -1393,6 +1417,8 @@ async def ensure_semifinal_bonus_questions(db):
     applicatif (`matches`) : coup d'envoi moins une minute. Le seed est
     idempotent ; ses migrations conservent les réponses déjà enregistrées.
     """
+    await _migrate_semifinal_stars_help(db)
+
     key = "bonus_questions_semi_2026_v3"
     done = await (await db.execute(
         "SELECT 1 FROM app_settings WHERE key=?", (key,)
