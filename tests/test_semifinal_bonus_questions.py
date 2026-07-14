@@ -168,6 +168,48 @@ def test_semifinal_star_scoring_awards_partial_credit_and_handles_none():
     assert none_score == {4: 4}
 
 
+def test_semifinal_star_help_is_migrated_after_the_original_seed():
+    async def _migrate_in_memory():
+        async with aiosqlite.connect(":memory:") as db:
+            await _create_semifinal_memory_schema(db)
+            await db.execute(
+                """INSERT INTO bonus_questions
+                   (question_text, phase, answer_type, options, points_value,
+                    correct_answer, scoring_mode, scoring_config, help_text,
+                    is_published, deadline)
+                   VALUES (?, 'semi', 'multi_choice', ?, 4, NULL,
+                           'multi_select', ?, 'Ancien tooltip', 1,
+                           '2026-07-14T18:59:00')""",
+                (
+                    SEMIFINAL_STARS_TEXT,
+                    json.dumps(SEMIFINAL_STARS_OPTIONS, ensure_ascii=False),
+                    json.dumps(SEMIFINAL_STARS_CONFIG),
+                ),
+            )
+            await db.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, 'done')",
+                ("bonus_questions_semi_2026_v3",),
+            )
+
+            await ensure_semifinal_bonus_questions(db)
+
+            question = await (await db.execute(
+                """SELECT help_text, is_published FROM bonus_questions
+                   WHERE question_text=?""",
+                (SEMIFINAL_STARS_TEXT,),
+            )).fetchone()
+            marker = await (await db.execute(
+                """SELECT value FROM app_settings
+                   WHERE key='bonus_questions_semi_2026_stars_help_v2'"""
+            )).fetchone()
+            return dict(question), marker
+
+    question, marker = run(_migrate_in_memory())
+    assert question["help_text"] == SEMIFINAL_STARS_HELP
+    assert question["is_published"] == 1
+    assert marker is not None
+
+
 def test_semifinal_wording_migration_preserves_existing_answers():
     async def _migrate_in_memory():
         async with aiosqlite.connect(":memory:") as db:
