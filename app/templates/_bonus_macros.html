@@ -239,7 +239,7 @@
     <div class="bonus-choice-list">
       {% for opt in q.options | fromjson %}
       <label>
-        <input type="checkbox" name="answer" value="{{ opt }}" {{ 'checked' if opt in q.answer_set else '' }}>
+        <input type="checkbox" name="answer" value="{{ opt }}" {{ 'checked' if opt in q.answer_set else '' }}{% if opt in q.all_or_nothing_options %} data-all-or-nothing-answer="1"{% endif %}>
         <span>{{ opt }}</span>
       </label>
       {% endfor %}

@@ -51,6 +51,7 @@ from app.scoring import (
     format_team_list,
     get_rankings,
     normalize_closest_config,
+    normalize_multi_select_config,
     normalize_number_multi_config,
     parse_bonus_number,
     parse_number_multi,
@@ -2556,11 +2557,32 @@ async def update_bonus_question(
             _flash(request, "Ajoute au moins deux options de réponse.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)
         if answer_type == "multi_choice":
-            scoring_config = json.dumps({"error_step": 2}, ensure_ascii=False)
+            if (
+                existing["answer_type"] == "multi_choice"
+                and existing["scoring_config"]
+            ):
+                scoring_config = existing["scoring_config"]
+            else:
+                scoring_config = json.dumps({"error_step": 2}, ensure_ascii=False)
             # Réponse correcte = cases cochées (plusieurs valeurs "correct_answer").
             form = await request.form()
             valid_options = set(json.loads(options)) if options else set()
             selected = [v for v in form.getlist("correct_answer") if v in valid_options]
+            selected_set = set(selected)
+            all_or_nothing = (
+                selected_set
+                & normalize_multi_select_config(scoring_config)[
+                    "all_or_nothing_options"
+                ]
+            )
+            if all_or_nothing and len(selected_set) > 1:
+                option = sorted(all_or_nothing)[0].split(" — ", 1)[0]
+                _flash(
+                    request,
+                    f"L'option « {option} » doit être cochée seule.",
+                    "err",
+                )
+                return RedirectResponse("/admin/bonus", status_code=303)
             correct_answer = json.dumps(selected, ensure_ascii=False) if selected else ""
         elif answer_type == "number_multi":
             option_list = json.loads(options) if options else []
