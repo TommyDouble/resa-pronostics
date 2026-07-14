@@ -67,6 +67,7 @@ from app.scoring import (
     is_match_prediction_correct,
     is_match_score_exact,
     normalize_closest_config,
+    normalize_multi_select_config,
     normalize_number_multi_config,
     parse_bonus_number,
     parse_number_multi,
@@ -2629,9 +2630,15 @@ async def _load_bonus_questions(db, participant_id: int, now: str, *, only_pendi
         except Exception:
             opts = []
         if q["answer_type"] == "multi_choice":
+            multi_select_config = normalize_multi_select_config(
+                q.get("scoring_config")
+            )
             q["answer_set"] = parse_team_set(q["answer"])
             q["answer_display"] = format_team_list(q["answer"])
             q["correct_answer_display"] = format_team_list(q["correct_answer"])
+            q["all_or_nothing_options"] = multi_select_config[
+                "all_or_nothing_options"
+            ]
             q["locked_teams"] = set()
             q["points_label"] = f"{q['points_value']} pts"
         elif q["answer_type"] == "number_multi":
@@ -3538,6 +3545,20 @@ async def submit_bonus(request: Request, token: str, question_id: int):
             selected = [v for v in form.getlist("answer") if v in options]
             if not selected:
                 raise HTTPException(400, "Coche au moins une équipe")
+            multi_select_config = normalize_multi_select_config(
+                q["scoring_config"]
+            )
+            selected_set = set(selected)
+            all_or_nothing = (
+                selected_set
+                & multi_select_config["all_or_nothing_options"]
+            )
+            if all_or_nothing and len(selected_set) > 1:
+                option = sorted(all_or_nothing)[0].split(" — ", 1)[0]
+                raise HTTPException(
+                    400,
+                    f"L'option « {option} » doit être cochée seule",
+                )
             answer = json.dumps(selected, ensure_ascii=False)
         elif q["answer_type"] == "number_multi":
             options = json.loads(q["options"]) if q["options"] else []

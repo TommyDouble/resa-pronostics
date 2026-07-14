@@ -1100,6 +1100,29 @@ function initBonusForms() {
       nmRefresh();
     }
 
+    var multiChoiceAnswers = Array.prototype.slice.call(
+      form.querySelectorAll('input[type="checkbox"][name="answer"]')
+    );
+    var allOrNothingAnswers = multiChoiceAnswers.filter(function(input) {
+      return input.hasAttribute('data-all-or-nothing-answer');
+    });
+    if (allOrNothingAnswers.length) {
+      multiChoiceAnswers.forEach(function(input) {
+        input.addEventListener('change', function() {
+          if (!input.checked) return;
+          if (input.hasAttribute('data-all-or-nothing-answer')) {
+            multiChoiceAnswers.forEach(function(other) {
+              if (other !== input) other.checked = false;
+            });
+            return;
+          }
+          allOrNothingAnswers.forEach(function(exclusive) {
+            exclusive.checked = false;
+          });
+        });
+      });
+    }
+
     form.addEventListener('submit', function(e) {
       function submitStackIfNeeded() {
         if (!form.hasAttribute('data-bonus-stack-form') || !window.RESABonusStack) {

@@ -13,6 +13,7 @@ from app.database import (
     SEMIFINAL_HALFTIME_TEXT,
     SEMIFINAL_STARS_CONFIG,
     SEMIFINAL_STARS_HELP,
+    SEMIFINAL_STARS_NONE_OPTION,
     SEMIFINAL_STARS_OPTIONS,
     SEMIFINAL_STARS_TEXT,
     ensure_semifinal_bonus_questions,
@@ -48,7 +49,8 @@ def _ensure_semifinal_questions():
                    WHERE key IN (
                      'bonus_questions_semi_2026_v1',
                      'bonus_questions_semi_2026_v2',
-                     'bonus_questions_semi_2026_v3'
+                     'bonus_questions_semi_2026_v3',
+                     'bonus_questions_semi_2026_stars_all_or_nothing_v1'
                    )"""
             )
             await ensure_semifinal_bonus_questions(db)
@@ -147,7 +149,13 @@ def test_semifinal_star_scoring_awards_partial_credit_and_handles_none():
         },
         {
             "participant_id": 4,
-            "answer": json.dumps(["Aucun des quatre — à cocher seul"]),
+            "answer": json.dumps([SEMIFINAL_STARS_NONE_OPTION]),
+        },
+        {
+            "participant_id": 5,
+            "answer": json.dumps(
+                [SEMIFINAL_STARS_NONE_OPTION, "Kylian Mbappé"]
+            ),
         },
     ]
 
@@ -157,18 +165,18 @@ def test_semifinal_star_scoring_awards_partial_credit_and_handles_none():
         answers,
         SEMIFINAL_STARS_CONFIG,
     )
-    assert scores == {1: 4, 2: 3, 3: 2, 4: 1}
+    assert scores == {1: 4, 2: 3, 3: 2, 4: 0, 5: 0}
 
-    none_score = multi_select_bonus_points(
+    no_scorer_scores = multi_select_bonus_points(
         4,
-        json.dumps(["Aucun des quatre — à cocher seul"]),
-        [answers[3]],
+        json.dumps([SEMIFINAL_STARS_NONE_OPTION]),
+        [answers[1], answers[3]],
         SEMIFINAL_STARS_CONFIG,
     )
-    assert none_score == {4: 4}
+    assert no_scorer_scores == {2: 3, 4: 4}
 
 
-def test_semifinal_star_help_is_migrated_after_the_original_seed():
+def test_semifinal_star_rule_is_migrated_after_the_original_seed():
     async def _migrate_in_memory():
         async with aiosqlite.connect(":memory:") as db:
             await _create_semifinal_memory_schema(db)
@@ -183,7 +191,7 @@ def test_semifinal_star_help_is_migrated_after_the_original_seed():
                 (
                     SEMIFINAL_STARS_TEXT,
                     json.dumps(SEMIFINAL_STARS_OPTIONS, ensure_ascii=False),
-                    json.dumps(SEMIFINAL_STARS_CONFIG),
+                    json.dumps({"error_step": 1}),
                 ),
             )
             await db.execute(
@@ -194,20 +202,88 @@ def test_semifinal_star_help_is_migrated_after_the_original_seed():
             await ensure_semifinal_bonus_questions(db)
 
             question = await (await db.execute(
-                """SELECT help_text, is_published FROM bonus_questions
+                """SELECT scoring_config, help_text, is_published
+                   FROM bonus_questions
                    WHERE question_text=?""",
                 (SEMIFINAL_STARS_TEXT,),
             )).fetchone()
-            marker = await (await db.execute(
+            help_marker = await (await db.execute(
                 """SELECT value FROM app_settings
                    WHERE key='bonus_questions_semi_2026_stars_help_v2'"""
             )).fetchone()
-            return dict(question), marker
+            scoring_marker = await (await db.execute(
+                """SELECT value FROM app_settings
+                   WHERE key=
+                     'bonus_questions_semi_2026_stars_all_or_nothing_v1'"""
+            )).fetchone()
+            return dict(question), help_marker, scoring_marker
 
-    question, marker = run(_migrate_in_memory())
+    question, help_marker, scoring_marker = run(_migrate_in_memory())
+    assert json.loads(question["scoring_config"]) == SEMIFINAL_STARS_CONFIG
     assert question["help_text"] == SEMIFINAL_STARS_HELP
     assert question["is_published"] == 1
-    assert marker is not None
+    assert help_marker is not None
+    assert scoring_marker is not None
+
+
+def test_semifinal_none_option_is_exclusive_in_form_and_server(
+    client,
+    admin_client,
+    participant,
+):
+    _ensure_semifinal_questions()
+    stars = next(
+        question
+        for question in _semifinal_questions()
+        if question["question_text"] == SEMIFINAL_STARS_TEXT
+    )
+
+    response = admin_client.post(
+        f"/admin/bonus/{stars['id']}/update",
+        data={
+            "question_text": SEMIFINAL_STARS_TEXT,
+            "phase": "semi",
+            "answer_type": "multi_choice",
+            "points_value": "4",
+            "deadline": "2030-07-14T19:00",
+            "options_text": "\n".join(SEMIFINAL_STARS_OPTIONS),
+            "is_published": "1",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    stars = next(
+        question
+        for question in _semifinal_questions()
+        if question["question_text"] == SEMIFINAL_STARS_TEXT
+    )
+    assert json.loads(stars["scoring_config"]) == SEMIFINAL_STARS_CONFIG
+
+    page = client.get(f"/p/{participant['token']}/bonus")
+    assert page.status_code == 200
+    option_position = page.text.index(
+        f'value="{SEMIFINAL_STARS_NONE_OPTION}"'
+    )
+    option_input = page.text[option_position:page.text.index(">", option_position)]
+    assert 'data-all-or-nothing-answer="1"' in option_input
+
+    response = client.post(
+        f"/p/{participant['token']}/bonus/{stars['id']}",
+        data={
+            "answer": [SEMIFINAL_STARS_NONE_OPTION, "Kylian Mbappé"],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    assert "doit être cochée seule" in response.text
+
+    response = client.post(
+        f"/p/{participant['token']}/bonus/{stars['id']}",
+        data={"answer": SEMIFINAL_STARS_NONE_OPTION},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
 
 
 def test_semifinal_wording_migration_preserves_existing_answers():
@@ -328,9 +404,10 @@ def test_existing_published_semifinal_questions_become_drafts_without_losing_ans
     assert {question["is_published"] for question in questions} == {0}
     by_text = {question["question_text"]: question for question in questions}
     assert by_text[SEMIFINAL_STARS_TEXT]["points_value"] == 4
-    assert json.loads(by_text[SEMIFINAL_STARS_TEXT]["scoring_config"]) == {
-        "error_step": 1
-    }
+    assert (
+        json.loads(by_text[SEMIFINAL_STARS_TEXT]["scoring_config"])
+        == SEMIFINAL_STARS_CONFIG
+    )
     assert by_text[SEMIFINAL_HALFTIME_TEXT]["points_value"] == 3
     assert by_text[SEMIFINAL_FRANCE_SPAIN_TEXT]["points_value"] == 3
 

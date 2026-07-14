@@ -52,6 +52,32 @@ def test_custom_error_step():
     assert multi_select_bonus_points(6, CORRECT, answers, cfg) == {1: 3}
 
 
+def test_all_or_nothing_option_scores_only_when_exact_and_selected_alone():
+    option = "Aucune équipe"
+    cfg = json.dumps({
+        "error_step": 1,
+        "all_or_nothing_options": [option],
+    })
+    answers = _answers({
+        1: [option],
+        2: ["Sénégal"],
+        3: [option, "Sénégal"],
+    })
+
+    assert multi_select_bonus_points(
+        4,
+        json.dumps([option]),
+        answers,
+        cfg,
+    ) == {1: 4, 2: 3, 3: 0}
+    assert multi_select_bonus_points(
+        4,
+        json.dumps(["Sénégal"]),
+        answers,
+        cfg,
+    ) == {1: 0, 2: 4, 3: 0}
+
+
 def test_parse_and_format_helpers():
     assert parse_team_set(CORRECT) == {"Sénégal", "Égypte", "Côte d'Ivoire"}
     assert parse_team_set("Ghana") == {"Ghana"}

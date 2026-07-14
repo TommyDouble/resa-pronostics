@@ -1006,27 +1006,50 @@ def number_multi_bonus_points(points_value: int, correct_answer, answers, scorin
     return scores
 
 
-def multi_select_bonus_points(points_value: int, correct_answer, answers, scoring_config=None) -> dict[int, int]:
-    """Points for a multi-choice bonus question (e.g. "which teams qualify?").
-
-    Each error costs ``error_step`` points (default 2), floored at 0. An error is
-    a team checked by mistake OR a correct team forgotten — i.e. the size of the
-    symmetric difference between the participant's set and the correct set.
-    """
-    correct_set = parse_team_set(correct_answer)
+def normalize_multi_select_config(scoring_config=None) -> dict:
+    """Return the error step and any exclusive all-or-nothing answers."""
     step = 2
+    all_or_nothing_options = set()
     if scoring_config:
         try:
             cfg = json.loads(scoring_config) if isinstance(scoring_config, str) else scoring_config
-            if isinstance(cfg, dict) and cfg.get("error_step"):
-                step = max(int(cfg["error_step"]), 1)
+            if isinstance(cfg, dict):
+                if cfg.get("error_step"):
+                    step = max(int(cfg["error_step"]), 1)
+                all_or_nothing_options = parse_team_set(
+                    cfg.get("all_or_nothing_options")
+                )
         except (TypeError, ValueError):
             step = 2
+            all_or_nothing_options = set()
+    return {
+        "error_step": step,
+        "all_or_nothing_options": all_or_nothing_options,
+    }
+
+
+def multi_select_bonus_points(points_value: int, correct_answer, answers, scoring_config=None) -> dict[int, int]:
+    """Points for a multi-choice bonus question (e.g. "which teams qualify?").
+
+    Each ordinary error costs ``error_step`` points (default 2), floored at 0.
+    Options listed in ``all_or_nothing_options`` only score when selected alone
+    and exactly correct. When the correct answer is such an option, ordinary
+    guesses are compared with an empty correct set so only named mistakes count.
+    """
+    correct_set = parse_team_set(correct_answer)
+    config = normalize_multi_select_config(scoring_config)
+    step = config["error_step"]
+    all_or_nothing_options = config["all_or_nothing_options"]
+    ordinary_correct_set = correct_set - all_or_nothing_options
     scores = {}
     for ans in answers:
         pid = _row_get(ans, "participant_id")
         given = parse_team_set(_row_get(ans, "answer"))
-        errors = len(given ^ correct_set)
+        if given & all_or_nothing_options:
+            is_exact_single_option = len(given) == 1 and given == correct_set
+            scores[pid] = int(points_value) if is_exact_single_option else 0
+            continue
+        errors = len(given ^ ordinary_correct_set)
         scores[pid] = max(int(points_value) - step * errors, 0)
     return scores
 

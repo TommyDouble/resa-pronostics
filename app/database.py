@@ -203,12 +203,13 @@ SEMIFINAL_FRANCE_SPAIN_TEXT = (
     "en Ligue des Nations 2025. Chaque équipe avait marqué au moins un but. "
     "Quel scénario verra-t-on cette fois ?"
 )
+SEMIFINAL_STARS_NONE_OPTION = "Aucun des quatre — à cocher seul"
 SEMIFINAL_STARS_OPTIONS = [
     "Kylian Mbappé",
     "Lamine Yamal",
     "Harry Kane",
     "Lionel Messi",
-    "Aucun des quatre — à cocher seul",
+    SEMIFINAL_STARS_NONE_OPTION,
 ]
 SEMIFINAL_HALFTIME_OPTIONS = [
     "Les deux demi-finales",
@@ -228,19 +229,23 @@ SEMIFINAL_FRANCE_SPAIN_OPTIONS = [
     "France qualifiée + chaque équipe marque au moins un but",
     "France qualifiée + au moins une des deux équipes ne marque pas",
 ]
-SEMIFINAL_STARS_CONFIG = {"error_step": 1}
+SEMIFINAL_STARS_CONFIG = {
+    "error_step": 1,
+    "all_or_nothing_options": [SEMIFINAL_STARS_NONE_OPTION],
+}
 SEMIFINAL_STARS_HELP = (
     "Coche tous les joueurs que tu penses voir marquer. Si tu penses qu'aucun "
-    "des quatre ne marquera, coche uniquement « Aucun des quatre ». Tu gagnes "
-    "4 points si ta sélection est entièrement correcte. Sinon, tu perds 1 "
-    "point pour chaque différence avec le résultat : un joueur oublié, un "
-    "joueur coché à tort, ou l'option « Aucun des quatre » cochée à tort. Le "
-    "score ne peut pas descendre sous 0. Exemple : si Mbappé et Messi marquent, "
-    "les cocher tous les deux rapporte 4 points ; n'en cocher qu'un rapporte "
-    "3 points ; répondre « Aucun des quatre » rapporte 1 point. Les buts "
-    "pendant le temps réglementaire et la prolongation comptent, mais pas les "
-    "tirs au but. Un but officiellement attribué contre son camp ne compte "
-    "pour aucun des quatre."
+    "des quatre ne marquera, choisis uniquement « Aucun des quatre ». Cette "
+    "réponse fonctionne en tout ou rien : elle rapporte 4 points si aucun ne "
+    "marque, mais 0 dès qu'au moins l'un des quatre marque. Pour une sélection "
+    "de joueurs, tu gagnes 4 points si elle est entièrement correcte. Sinon, "
+    "tu perds 1 point par joueur oublié ou coché à tort, sans descendre sous "
+    "0. Exemple : si Mbappé et Messi marquent, les cocher tous les deux "
+    "rapporte 4 points ; n'en cocher qu'un rapporte 3 points ; répondre "
+    "« Aucun des quatre » rapporte 0 point. Les buts pendant le temps "
+    "réglementaire et la prolongation comptent, mais pas les tirs au but. Un "
+    "but officiellement attribué contre son camp ne compte pour aucun des "
+    "quatre."
 )
 SEMIFINAL_HALFTIME_HELP = (
     "On relève le score au coup de sifflet de la mi-temps, temps additionnel "
@@ -1410,6 +1415,35 @@ async def _migrate_semifinal_stars_help(db):
     )
 
 
+async def _migrate_semifinal_stars_all_or_nothing(db):
+    """Applique une fois la règle tout-ou-rien à l'option « Aucun »."""
+    key = "bonus_questions_semi_2026_stars_all_or_nothing_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    await db.execute(
+        """UPDATE bonus_questions
+           SET scoring_config=?, help_text=?
+           WHERE question_text=?""",
+        (
+            json.dumps(
+                SEMIFINAL_STARS_CONFIG,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            SEMIFINAL_STARS_HELP,
+            SEMIFINAL_STARS_TEXT,
+        ),
+    )
+    await db.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
 async def ensure_semifinal_bonus_questions(db):
     """Prépare en brouillon les trois questions bonus des demi-finales 2026.
 
@@ -1418,6 +1452,7 @@ async def ensure_semifinal_bonus_questions(db):
     idempotent ; ses migrations conservent les réponses déjà enregistrées.
     """
     await _migrate_semifinal_stars_help(db)
+    await _migrate_semifinal_stars_all_or_nothing(db)
 
     key = "bonus_questions_semi_2026_v3"
     done = await (await db.execute(
