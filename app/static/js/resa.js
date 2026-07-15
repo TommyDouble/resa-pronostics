@@ -614,6 +614,57 @@ function initWinnerFinalistGuard() {
   });
 }
 
+/* ---- Admin: two actual finalists, independently from the champion ---- */
+function initFinalistAnswersGuard() {
+  document.querySelectorAll('[data-finalist-answers]').forEach(function(group) {
+    var first = group.querySelector('select[name="finalist_1"]');
+    var second = group.querySelector('select[name="finalist_2"]');
+    var form = group.closest('form');
+    if (!first || !second || !form) return;
+    var winner = form.querySelector('select[name="winner"]');
+    var errorBox = form.querySelector('[data-finalist-answers-error]');
+
+    function invalid() {
+      return (!!first.value !== !!second.value) ||
+        (first.value && first.value === second.value);
+    }
+
+    function sync() {
+      Array.prototype.forEach.call(first.options, function(opt) {
+        opt.disabled = !!opt.value && opt.value === second.value;
+      });
+      Array.prototype.forEach.call(second.options, function(opt) {
+        opt.disabled = !!opt.value && opt.value === first.value;
+      });
+      if (winner) {
+        var completePair = first.value && second.value;
+        Array.prototype.forEach.call(winner.options, function(opt) {
+          opt.disabled = !!opt.value && !!completePair &&
+            opt.value !== first.value && opt.value !== second.value;
+        });
+        if (completePair && winner.value &&
+            winner.value !== first.value && winner.value !== second.value) {
+          winner.value = '';
+        }
+      }
+      if (errorBox) errorBox.style.display = 'none';
+    }
+
+    [first, second].forEach(function(select) {
+      select.addEventListener('change', sync);
+    });
+    form.addEventListener('submit', function(event) {
+      if (!invalid()) return;
+      event.preventDefault();
+      if (errorBox) {
+        errorBox.style.display = 'block';
+        errorBox.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    });
+    sync();
+  });
+}
+
 /* ---- Top scorer combobox (1200+ players) ---- */
 function initScorerCombos() {
   var dataEl = document.getElementById('scorer-data');
@@ -2922,6 +2973,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initPhaseFilter();
   initStepper('goals-stepper', 50, 300);
   initWinnerFinalistGuard();
+  initFinalistAnswersGuard();
   initScorerCombos();
   initBonusStack();
   initAdminMobileMenu();

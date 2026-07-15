@@ -107,10 +107,10 @@ class TestWinnerFinalistGuard:
 
 
 class TestAdminAnswers:
-    def test_guard_same_winner_finalist(self, admin_client):
+    def test_guard_same_finalists(self, admin_client):
         response = admin_client.post(
             "/admin/pre-tournoi/reponses",
-            data={"winner": "Espagne", "finalist": "Espagne"},
+            data={"finalist_1": "Espagne", "finalist_2": "Espagne"},
             follow_redirects=False,
         )
         assert response.status_code == 303
@@ -123,7 +123,88 @@ class TestAdminAnswers:
                 return {r["key"]: r["correct_answer"] for r in await rows.fetchall()}
 
         answers = run(_answers())
-        assert answers["winner"] != "Espagne"
+        assert answers["finalist"] != '["Espagne", "Espagne"]'
+
+    def test_finalists_can_be_scored_before_winner(self, admin_client, participant):
+        set_deadline_future()
+        admin_client.post(
+            f"/p/{participant['token']}/pre-tournoi",
+            data={
+                "winner": "Argentine",
+                "finalist": "France",
+                "top_scorer": "",
+                "revelation": "",
+                "total_goals": "0",
+            },
+            follow_redirects=False,
+        )
+
+        response = admin_client.post(
+            "/admin/pre-tournoi/reponses",
+            data={
+                "winner": "",
+                "finalist_1": "Argentine",
+                "finalist_2": "France",
+                "top_scorer": "",
+                "revelation": "",
+                "total_goals": "",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+
+        rankings = run(get_rankings())
+        me = next(r for r in rankings if r["id"] == participant["id"])
+        assert me["total_points"] == 14
+
+        async def _scores():
+            async with get_db() as db:
+                rows = await db.execute(
+                    "SELECT question_key, points FROM pre_tournament_scores WHERE participant_id=?",
+                    (participant["id"],),
+                )
+                return {r["question_key"]: r["points"] for r in await rows.fetchall()}
+
+        scores = run(_scores())
+        assert scores["finalist"] == 14
+        assert "winner" not in scores
+
+        admin_client.post(
+            "/admin/pre-tournoi/reponses",
+            data={
+                "winner": "Argentine",
+                "finalist_1": "Argentine",
+                "finalist_2": "France",
+                "top_scorer": "",
+                "revelation": "",
+                "total_goals": "",
+            },
+            follow_redirects=False,
+        )
+        rankings = run(get_rankings())
+        me = next(r for r in rankings if r["id"] == participant["id"])
+        assert me["total_points"] == 22
+
+    def test_winner_must_be_one_of_saved_finalists(self, admin_client):
+        response = admin_client.post(
+            "/admin/pre-tournoi/reponses",
+            data={
+                "winner": "Brésil",
+                "finalist_1": "Argentine",
+                "finalist_2": "France",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+
+        async def _winner_answer():
+            async with get_db() as db:
+                row = await db.execute(
+                    "SELECT correct_answer FROM pre_tournament_questions WHERE key='winner'"
+                )
+                return (await row.fetchone())["correct_answer"]
+
+        assert run(_winner_answer()) != "Brésil"
 
     def test_answers_scored_into_rankings(self, admin_client, participant):
         set_deadline_future()
@@ -146,7 +227,8 @@ class TestAdminAnswers:
             "/admin/pre-tournoi/reponses",
             data={
                 "winner": "Argentine",
-                "finalist": "France",
+                "finalist_1": "Argentine",
+                "finalist_2": "France",
                 "top_scorer": scorer,
                 "revelation": "Japon",
                 "total_goals": "152",
@@ -178,7 +260,7 @@ class TestAdminAnswers:
         assert row["submitted"] == 1
         admin_client.post(
             "/admin/pre-tournoi/reponses",
-            data={"winner": "Argentine", "finalist": "", "top_scorer": "",
+            data={"winner": "Argentine", "finalist_1": "", "finalist_2": "", "top_scorer": "",
                   "revelation": "", "total_goals": ""},
             follow_redirects=False,
         )
@@ -206,7 +288,8 @@ class TestAdminAnswers:
             "/admin/pre-tournoi/reponses",
             data={
                 "winner": "Argentine",
-                "finalist": "France",
+                "finalist_1": "Argentine",
+                "finalist_2": "France",
                 "top_scorer": "",
                 "revelation": "",
                 "total_goals": "",

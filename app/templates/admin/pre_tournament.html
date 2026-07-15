@@ -37,9 +37,37 @@
         data-confirm-danger
         {% endif %}
         style="display:flex;flex-direction:column;gap:10px;">
+    <div>
+      <div class="lbl" style="margin-bottom:5px;">① Finalistes</div>
+      <div class="muted" style="font-size:11px;margin-bottom:6px;">
+        Encode les deux équipes dès qu'elles sont connues. Le vainqueur peut être enregistré séparément plus tard.
+      </div>
+      <div class="grid2 stack-sm" data-finalist-answers>
+        <div class="field">
+          <select name="finalist_1" id="answer-finalist-1">
+            <option value="">— Premier finaliste —</option>
+            {% for team in teams %}
+            <option value="{{ team }}" {{ 'selected' if finalist_answers|length > 0 and finalist_answers[0] == team else '' }}>{{ team }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <select name="finalist_2" id="answer-finalist-2">
+            <option value="">— Deuxième finaliste —</option>
+            {% for team in teams %}
+            <option value="{{ team }}" {{ 'selected' if finalist_answers|length > 1 and finalist_answers[1] == team else '' }}>{{ team }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="muted err-hint" data-finalist-answers-error style="display:none;font-size:11px;margin-top:4px;color:var(--error);">
+        Les deux finalistes doivent être renseignés et différents.
+      </div>
+      {% if hits.finalist %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.finalist.winners }}/{{ hits.finalist.scored }} participants ont au moins un finaliste correct.</div>{% endif %}
+    </div>
     <div class="grid2 stack-sm">
       <div>
-        <div class="lbl" style="margin-bottom:5px;">① Champion du Monde</div>
+        <div class="lbl" style="margin-bottom:5px;">② Champion du Monde</div>
         <div class="field">
           <select name="winner" id="answer-winner">
             <option value="">— Pas encore connu —</option>
@@ -50,20 +78,8 @@
         </div>
         {% if hits.winner %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.winner.winners }}/{{ hits.winner.scored }} participants l'avaient.</div>{% endif %}
       </div>
-      <div>
-        <div class="lbl" style="margin-bottom:5px;">② Autre finaliste</div>
-        <div class="field">
-          <select name="finalist" id="answer-finalist">
-            <option value="">— Pas encore connu —</option>
-            {% for team in teams %}
-            <option value="{{ team }}" {{ 'selected' if answers.finalist == team else '' }}>{{ team }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="muted err-hint" id="winner-finalist-error" style="display:none;font-size:11px;margin-top:4px;color:var(--error);">
-          L'autre finaliste doit être différent du champion.
-        </div>
-        {% if hits.finalist %}<div class="muted" style="font-size:11px;margin-top:4px;">{{ hits.finalist.winners }}/{{ hits.finalist.scored }} participants ont au moins un finaliste correct.</div>{% endif %}
+      <div class="muted" style="font-size:11px;align-self:end;padding-bottom:8px;">
+        Le champion est validé indépendamment. S'ils sont déjà encodés, il doit être l'un des deux finalistes.
       </div>
     </div>
     <div class="grid2 stack-sm">

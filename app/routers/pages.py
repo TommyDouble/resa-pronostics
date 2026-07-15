@@ -72,6 +72,7 @@ from app.scoring import (
     normalize_multi_select_config,
     normalize_number_multi_config,
     parse_bonus_number,
+    parse_finalist_answers,
     parse_number_multi,
     parse_team_set,
     predicted_match_winner,
@@ -3079,9 +3080,11 @@ def _pt_answer_display(key: str, pt: dict) -> str:
 def _pt_correct_answer_display(key: str, question_map: dict) -> str:
     question = question_map.get(key) or {}
     if key == "finalist":
-        return _pt_pair_display(
-            (question_map.get("winner") or {}).get("correct_answer"),
-            question.get("correct_answer"),
+        return format_team_list(
+            parse_finalist_answers(
+                question.get("correct_answer"),
+                (question_map.get("winner") or {}).get("correct_answer"),
+            )
         )
     if key == "revelation":
         return format_team_list(question.get("correct_answer"))

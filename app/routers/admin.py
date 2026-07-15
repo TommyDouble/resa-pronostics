@@ -54,6 +54,7 @@ from app.scoring import (
     normalize_multi_select_config,
     normalize_number_multi_config,
     parse_bonus_number,
+    parse_finalist_answers,
     parse_number_multi,
     parse_revelation_winners,
     parse_team_set,
@@ -1693,6 +1694,9 @@ async def pre_tournament_admin(request: Request):
         )
         hits = {r["question_key"]: dict(r) for r in await hits_rows.fetchall()}
     answers = {q["key"]: q.get("correct_answer") or "" for q in questions}
+    finalist_answers = sorted(
+        parse_finalist_answers(answers.get("finalist"), answers.get("winner"))
+    )
     # The révélation answer is a JSON list of winning outsiders (ties allowed).
     revelation_winners = sorted(parse_revelation_winners(answers.get("revelation")))
     return templates.TemplateResponse(request, "admin/pre_tournament.html", {
@@ -1706,6 +1710,7 @@ async def pre_tournament_admin(request: Request):
         "teams": TEAMS_48,
         "outsiders": OUTSIDERS,
         "revelation_winners": revelation_winners,
+        "finalist_answers": finalist_answers,
         "scorer_options": get_scorer_options(),
         "answers": answers,
         "hits": hits,
@@ -1716,23 +1721,36 @@ async def pre_tournament_admin(request: Request):
 async def update_pre_tournament_answers(
     request: Request,
     winner: str = Form(default=""),
-    finalist: str = Form(default=""),
+    finalist_1: str = Form(default=""),
+    finalist_2: str = Form(default=""),
     top_scorer: str = Form(default=""),
     revelation: list[str] = Form(default=[]),
     total_goals: str = Form(default=""),
 ):
     await require_admin(request)
     winner = winner.strip()
-    finalist = finalist.strip()
+    finalist_1 = finalist_1.strip()
+    finalist_2 = finalist_2.strip()
     top_scorer = top_scorer.strip()
     # Several outsiders may win on a tie (same furthest stage reached).
     revelation_winners = [r.strip() for r in revelation if r.strip()]
     total_goals = total_goals.strip()
 
-    if winner and finalist and winner == finalist:
-        _flash(request, "Le champion et l'autre finaliste ne peuvent pas être identiques.", "err")
+    if bool(finalist_1) != bool(finalist_2):
+        _flash(request, "Encode les deux finalistes, ou laisse les deux champs vides.", "err")
         return RedirectResponse("/admin/pre-tournoi", status_code=303)
-    for team_value, label in ((winner, "champion"), (finalist, "autre finaliste")):
+    if finalist_1 and finalist_1 == finalist_2:
+        _flash(request, "Les deux finalistes doivent être différents.", "err")
+        return RedirectResponse("/admin/pre-tournoi", status_code=303)
+    finalists = {finalist_1, finalist_2} - {""}
+    if winner and finalists and winner not in finalists:
+        _flash(request, "Le champion doit être l'un des deux finalistes.", "err")
+        return RedirectResponse("/admin/pre-tournoi", status_code=303)
+    for team_value, label in (
+        (winner, "champion"),
+        (finalist_1, "premier finaliste"),
+        (finalist_2, "deuxième finaliste"),
+    ):
         if team_value and team_value not in TEAMS_48:
             _flash(request, f"Équipe inconnue pour {label} : {team_value}.", "err")
             return RedirectResponse("/admin/pre-tournoi", status_code=303)
@@ -1750,10 +1768,13 @@ async def update_pre_tournament_answers(
             _flash(request, "Le total de buts doit être un nombre entier.", "err")
             return RedirectResponse("/admin/pre-tournoi", status_code=303)
 
+    finalist_value = (
+        json.dumps(sorted(finalists), ensure_ascii=False) if finalists else None
+    )
     revelation_value = json.dumps(revelation_winners, ensure_ascii=False) if revelation_winners else None
     incoming = {
         "winner": winner or None,
-        "finalist": finalist or None,
+        "finalist": finalist_value,
         "top_scorer": top_scorer or None,
         "revelation": revelation_value,
         "total_goals": total_goals or None,
