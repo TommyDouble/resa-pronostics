@@ -30,7 +30,10 @@ from app.pre_tournament import (
     get_pre_tournament_questions,
     pt_filled_keys,
 )
-from app.scoring import get_sporting_day_states
+from app.scoring import (
+    get_sporting_day_states,
+    sync_finalized_ranking_update_history,
+)
 from app.timeutils import (
     DISPLAY_TZ,
     format_sporting_day_fr,
@@ -237,19 +240,35 @@ async def _job_daily_recap(db, now_local: datetime):
     if now_local.hour < RECAP_FROM_HOUR:
         return
     day_row = await db.execute(
-        "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
+        "SELECT MAX(update_day) AS day FROM ranking_update_day_evolutions"
     )
     ref = (await day_row.fetchone())["day"]
+    use_update_day = bool(ref)
+    if not ref:
+        day_row = await db.execute(
+            "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
+        )
+        ref = (await day_row.fetchone())["day"]
     if not ref:
         return
-    evo_rows = await db.execute(
-        """SELECT e.*, COALESCE(NULLIF(p.nickname, ''), p.name) AS display_name
-           FROM sporting_day_rank_evolutions e
-           JOIN participants p ON p.id=e.participant_id
-           WHERE e.sporting_day=?
-           ORDER BY e.rank_after, e.points_after DESC, display_name""",
-        (ref,),
-    )
+    if use_update_day:
+        evo_rows = await db.execute(
+            """SELECT e.*, COALESCE(NULLIF(p.nickname, ''), p.name) AS display_name
+               FROM ranking_update_day_evolutions e
+               JOIN participants p ON p.id=e.participant_id
+               WHERE e.update_day=?
+               ORDER BY e.rank_after, e.points_after DESC, display_name""",
+            (ref,),
+        )
+    else:
+        evo_rows = await db.execute(
+            """SELECT e.*, COALESCE(NULLIF(p.nickname, ''), p.name) AS display_name
+               FROM sporting_day_rank_evolutions e
+               JOIN participants p ON p.id=e.participant_id
+               WHERE e.sporting_day=?
+               ORDER BY e.rank_after, e.points_after DESC, display_name""",
+            (ref,),
+        )
     evolution_rows = [dict(r) for r in await evo_rows.fetchall()]
     if not evolution_rows:
         return
@@ -283,6 +302,11 @@ async def run_pending_notifications(now_local: datetime | None = None):
         now_local = now_utc().astimezone(DISPLAY_TZ)
     now_iso = now_utc_iso()
     async with get_db() as db:
+        finalized = await sync_finalized_ranking_update_history(db)
+        if finalized:
+            from app.trophies import refresh_trophy_awards
+            await refresh_trophy_awards(db)
+            await db.commit()
         await _job_pre_tournament_reminder(db, now_iso)
         await _job_bonus_reminders(db, now_iso)
         await _job_morning_encoding_reminder(db, now_local)

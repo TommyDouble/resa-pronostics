@@ -532,6 +532,44 @@ CREATE TABLE IF NOT EXISTS scoring_point_events (
 CREATE INDEX IF NOT EXISTS idx_scoring_point_events_participant
   ON scoring_point_events(participant_id);
 
+CREATE TABLE IF NOT EXISTS ranking_update_events (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  source            TEXT    NOT NULL CHECK(source IN ('match','bonus','pre_tournament')),
+  source_key        TEXT    NOT NULL,
+  update_day        TEXT    NOT NULL,
+  state_fingerprint TEXT,
+  occurred_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ranking_update_events_day
+  ON ranking_update_events(update_day, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_ranking_update_events_source
+  ON ranking_update_events(source, source_key, id);
+
+CREATE TABLE IF NOT EXISTS ranking_update_deltas (
+  event_id       INTEGER NOT NULL REFERENCES ranking_update_events(id) ON DELETE CASCADE,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  delta          INTEGER NOT NULL,
+  PRIMARY KEY (event_id, participant_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ranking_update_deltas_participant
+  ON ranking_update_deltas(participant_id);
+
+CREATE TABLE IF NOT EXISTS ranking_update_day_evolutions (
+  update_day     TEXT    NOT NULL,
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  points_before  INTEGER NOT NULL,
+  day_points     INTEGER NOT NULL,
+  points_after   INTEGER NOT NULL,
+  rank_before    INTEGER NOT NULL,
+  rank_after     INTEGER NOT NULL,
+  delta          INTEGER NOT NULL,
+  is_climber     INTEGER NOT NULL DEFAULT 0,
+  finalized_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (update_day, participant_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ranking_update_evo_climber
+  ON ranking_update_day_evolutions(update_day, is_climber);
+
 CREATE TABLE IF NOT EXISTS trophy_awards (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
@@ -539,6 +577,7 @@ CREATE TABLE IF NOT EXISTS trophy_awards (
   tier           TEXT    NOT NULL DEFAULT '_',
   detail         TEXT    NOT NULL DEFAULT '',
   sporting_day   TEXT,
+  published_update_day TEXT,
   awarded_at     TEXT    NOT NULL DEFAULT (datetime('now')),
   UNIQUE(participant_id, trophy_key, detail)
 );
@@ -592,6 +631,13 @@ CREATE INDEX IF NOT EXISTS idx_bonus_result_views_participant
                 await db.execute(f"ALTER TABLE news_items ADD COLUMN {column}")
             except Exception:
                 pass
+
+        try:
+            await db.execute(
+                "ALTER TABLE trophy_awards ADD COLUMN published_update_day TEXT"
+            )
+        except Exception:
+            pass
 
         prediction_columns = [
             "qualifier_prediction TEXT CHECK(qualifier_prediction IN ('team1','team2') OR qualifier_prediction IS NULL)",
@@ -766,6 +812,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await _backfill_trophy_awards(db)
         await _cleanup_journee_parfaite_awards(db)
         await _migrate_backfill_scoring_point_events(db)
+        await _migrate_ranking_update_events(db)
         await db.commit()
 
 
@@ -1696,6 +1743,186 @@ async def _migrate_backfill_scoring_point_events(db):
         "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
         (key,),
     )
+
+
+async def _migrate_ranking_update_events(db):
+    """Construit le journal unifié sans réécrire l'ancien historique.
+
+    Les événements bonus/pré-tournoi sont repris exactement depuis leur ledger
+    signé. Un rapprochement avec les scores courants répare aussi un ledger
+    partiel (cas observé : bonus scoré mais flèches restées sur la veille).
+    Pour les matchs, dont les anciennes corrections ne sont pas historisées,
+    seule la fenêtre d'actualisation la plus récente est reconstruite.
+    """
+    key = "migr_ranking_update_events_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    from app.timeutils import sporting_day_for_timestamp
+
+    async def insert_event(source, source_key, occurred_at, fingerprint, deltas):
+        cursor = await db.execute(
+            """INSERT INTO ranking_update_events
+               (source, source_key, update_day, state_fingerprint, occurred_at)
+               VALUES (?,?,?,?,?)""",
+            (
+                source,
+                str(source_key),
+                sporting_day_for_timestamp(occurred_at),
+                fingerprint,
+                occurred_at,
+            ),
+        )
+        rows = [
+            (cursor.lastrowid, participant_id, delta)
+            for participant_id, delta in deltas.items()
+            if delta
+        ]
+        if rows:
+            await db.executemany(
+                """INSERT INTO ranking_update_deltas
+                   (event_id, participant_id, delta) VALUES (?,?,?)""",
+                rows,
+            )
+
+    # Reprise exacte de l'ancien ledger, groupée par recalcul/source.
+    legacy_rows = await db.execute(
+        """SELECT source, source_key, participant_id, delta, occurred_at
+           FROM scoring_point_events
+           ORDER BY datetime(occurred_at), id"""
+    )
+    grouped = {}
+    for row in await legacy_rows.fetchall():
+        group_key = (row["source"], str(row["source_key"]), row["occurred_at"])
+        deltas = grouped.setdefault(group_key, {})
+        deltas[row["participant_id"]] = deltas.get(row["participant_id"], 0) + row["delta"]
+    for (source, source_key, occurred_at), deltas in grouped.items():
+        await insert_event(
+            source, source_key, occurred_at,
+            f"legacy:{source}:{source_key}:{occurred_at}", deltas,
+        )
+
+    async def reconcile_current(source, rows):
+        current = {}
+        calculated_at = {}
+        for row in rows:
+            source_key = str(row["source_key"])
+            current.setdefault(source_key, {})[row["participant_id"]] = row["points"]
+            calculated_at[source_key] = max(
+                calculated_at.get(source_key, ""), row["calculated_at"]
+            )
+
+        balances_rows = await db.execute(
+            """SELECT e.source_key, d.participant_id, SUM(d.delta) AS points
+               FROM ranking_update_events e
+               JOIN ranking_update_deltas d ON d.event_id=e.id
+               WHERE e.source=?
+               GROUP BY e.source_key, d.participant_id""",
+            (source,),
+        )
+        balances = {}
+        for row in await balances_rows.fetchall():
+            balances.setdefault(str(row["source_key"]), {})[row["participant_id"]] = row["points"]
+
+        event_rows = await db.execute(
+            "SELECT DISTINCT source_key FROM ranking_update_events WHERE source=?",
+            (source,),
+        )
+        known_sources = {str(row["source_key"]) for row in await event_rows.fetchall()}
+
+        for source_key, points in current.items():
+            ledger = balances.get(source_key, {})
+            participants = set(points) | set(ledger)
+            missing = {
+                participant_id: points.get(participant_id, 0) - ledger.get(participant_id, 0)
+                for participant_id in participants
+            }
+            missing = {pid: delta for pid, delta in missing.items() if delta}
+            # L'événement maître est nécessaire même si tout le monde marque 0.
+            if missing or source_key not in known_sources:
+                occurred_at = calculated_at[source_key]
+                await insert_event(
+                    source, source_key, occurred_at,
+                    f"reconciled:{source}:{source_key}:{occurred_at}", missing,
+                )
+
+    bonus_rows = await db.execute(
+        """SELECT CAST(bonus_question_id AS TEXT) AS source_key,
+                  participant_id, points, calculated_at
+           FROM scores WHERE bonus_question_id IS NOT NULL"""
+    )
+    await reconcile_current("bonus", await bonus_rows.fetchall())
+
+    pre_rows = await db.execute(
+        """SELECT question_key AS source_key, participant_id, points, calculated_at
+           FROM pre_tournament_scores"""
+    )
+    await reconcile_current("pre_tournament", await pre_rows.fetchall())
+
+    # Les scores de match ne conservent que leur dernière valeur : on limite la
+    # reconstruction à la fenêtre la plus récente, sans inventer l'historique.
+    match_rows = await db.execute(
+        """SELECT CAST(match_id AS TEXT) AS source_key, participant_id,
+                  points, calculated_at
+           FROM scores WHERE match_id IS NOT NULL"""
+    )
+    matches = [dict(row) for row in await match_rows.fetchall()]
+    event_day_row = await db.execute(
+        "SELECT MAX(update_day) AS update_day FROM ranking_update_events"
+    )
+    event_day = (await event_day_row.fetchone())["update_day"] or ""
+    match_day = max(
+        (sporting_day_for_timestamp(row["calculated_at"]) for row in matches),
+        default="",
+    )
+    recent_day = max(event_day, match_day)
+    by_match = {}
+    match_time = {}
+    for row in matches:
+        if sporting_day_for_timestamp(row["calculated_at"]) != recent_day:
+            continue
+        source_key = row["source_key"]
+        by_match.setdefault(source_key, {})[row["participant_id"]] = row["points"]
+        match_time[source_key] = max(match_time.get(source_key, ""), row["calculated_at"])
+    for source_key, points in by_match.items():
+        exists = await (await db.execute(
+            """SELECT 1 FROM ranking_update_events
+               WHERE source='match' AND source_key=? AND update_day=?""",
+            (source_key, recent_day),
+        )).fetchone()
+        if not exists:
+            await insert_event(
+                "match", source_key, match_time[source_key],
+                f"reconciled:match:{source_key}:{match_time[source_key]}", points,
+            )
+
+    if not recent_day:
+        from app.timeutils import current_sporting_day
+        recent_day = current_sporting_day()
+    await db.execute(
+        """INSERT INTO app_settings (key, value) VALUES ('ranking_update_cutover_day', ?)
+           ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+        (recent_day,),
+    )
+    await db.execute(
+        """UPDATE trophy_awards SET published_update_day=?
+           WHERE published_update_day IS NULL AND sporting_day=?""",
+        (recent_day, recent_day),
+    )
+
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+    from app.scoring import sync_finalized_ranking_update_history
+    changed = await sync_finalized_ranking_update_history(db)
+    if changed:
+        from app.trophies import refresh_trophy_awards
+        await refresh_trophy_awards(db)
 
 
 async def _cleanup_journee_parfaite_awards(db):

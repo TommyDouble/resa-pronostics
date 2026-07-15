@@ -1,9 +1,15 @@
 """Score calculation logic per spec."""
+import hashlib
 import json
 from decimal import Decimal, InvalidOperation
 
 from app.database import get_db
-from app.timeutils import sporting_day, sporting_day_for_timestamp
+from app.timeutils import (
+    current_sporting_day,
+    now_utc_iso,
+    sporting_day,
+    sporting_day_for_timestamp,
+)
 
 
 def parse_team_set(value) -> set:
@@ -129,6 +135,12 @@ async def recalculate_match_scores(match_id: int):
 
         match_dict = dict(match)
 
+        old_rows = await db.execute(
+            "SELECT participant_id, points FROM scores WHERE match_id=?",
+            (match_id,),
+        )
+        old_points = {row["participant_id"]: row["points"] for row in await old_rows.fetchall()}
+
         # Get all predictions for this match
         rows = await db.execute(
             "SELECT * FROM predictions WHERE match_id = ?", (match_id,)
@@ -139,16 +151,36 @@ async def recalculate_match_scores(match_id: int):
         await db.execute("DELETE FROM scores WHERE match_id = ?", (match_id,))
 
         # Insert new scores
+        new_points = {}
         for pred in predictions:
             pred_dict = dict(pred)
             points = calculate_match_score(pred_dict, match_dict)
+            new_points[pred_dict["participant_id"]] = points
             await db.execute(
                 """INSERT INTO scores (participant_id, match_id, points)
                    VALUES (?, ?, ?)""",
                 (pred_dict["participant_id"], match_id, points),
             )
 
+        await _record_ranking_update_event(
+            db,
+            "match",
+            str(match_id),
+            old_points,
+            new_points,
+            {
+                "result": match_dict.get("result"),
+                "score_team1": match_dict.get("score_team1"),
+                "score_team2": match_dict.get("score_team2"),
+                "final_score_team1": match_dict.get("final_score_team1"),
+                "final_score_team2": match_dict.get("final_score_team2"),
+                "qualifier_winner": match_dict.get("qualifier_winner"),
+                "weight": match_dict.get("weight"),
+            },
+        )
+
         await sync_finalized_evolution_history(db, from_day=sporting_day(match_dict))
+        await sync_finalized_ranking_update_history(db)
         from app.trophies import refresh_trophy_awards
         await refresh_trophy_awards(db)
         await db.commit()
@@ -345,6 +377,106 @@ def _ranks_from_points(points_by_id: dict[int, int]) -> dict[int, int]:
     }
 
 
+def _ranking_state_fingerprint(payload: dict) -> str:
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+async def _record_ranking_update_event(
+    db,
+    source: str,
+    source_key: str,
+    old_points: dict[int, int],
+    new_points: dict[int, int],
+    state: dict,
+    *,
+    occurred_at: str | None = None,
+) -> int | None:
+    """Journalise une publication de scoring et ses variations réelles.
+
+    Le premier événement d'une source existe même avec 0 point partout afin
+    qu'un bonus seul puisse ouvrir une actualisation. Une nouvelle sauvegarde
+    sans aucun changement de points est ignorée si la source a déjà été publiée.
+    """
+    participants = set(old_points) | set(new_points)
+    deltas = {
+        pid: new_points.get(pid, 0) - old_points.get(pid, 0)
+        for pid in participants
+    }
+    deltas = {pid: delta for pid, delta in deltas.items() if delta}
+    fingerprint = _ranking_state_fingerprint({
+        "source": source,
+        "source_key": str(source_key),
+        "state": state,
+        "points": sorted((int(pid), points) for pid, points in new_points.items()),
+    })
+    previous = await (await db.execute(
+        """SELECT id, state_fingerprint FROM ranking_update_events
+           WHERE source=? AND source_key=? ORDER BY id DESC LIMIT 1""",
+        (source, str(source_key)),
+    )).fetchone()
+    if previous and (
+        previous["state_fingerprint"] == fingerprint or not deltas
+    ):
+        return None
+
+    timestamp = occurred_at or now_utc_iso()
+    cursor = await db.execute(
+        """INSERT INTO ranking_update_events
+           (source, source_key, update_day, state_fingerprint, occurred_at)
+           VALUES (?,?,?,?,?)""",
+        (
+            source,
+            str(source_key),
+            sporting_day_for_timestamp(timestamp),
+            fingerprint,
+            timestamp,
+        ),
+    )
+    if deltas:
+        await db.executemany(
+            """INSERT INTO ranking_update_deltas
+               (event_id, participant_id, delta) VALUES (?,?,?)""",
+            [(cursor.lastrowid, pid, delta) for pid, delta in deltas.items()],
+        )
+    return cursor.lastrowid
+
+
+async def _ranking_update_points_by_day(db) -> dict[str, dict[int, int]]:
+    rows = await db.execute(
+        """SELECT e.update_day, d.participant_id, SUM(d.delta) AS points
+           FROM ranking_update_events e
+           JOIN ranking_update_deltas d ON d.event_id=e.id
+           GROUP BY e.update_day, d.participant_id"""
+    )
+    result: dict[str, dict[int, int]] = {}
+    for row in await rows.fetchall():
+        result.setdefault(row["update_day"], {})[row["participant_id"]] = row["points"]
+    return result
+
+
+async def get_ranking_update_day_states(db) -> dict[str, dict]:
+    """Journées d'actualisation 9 h–8 h 59, indépendantes des kickoffs."""
+    rows = await db.execute(
+        """SELECT update_day, source, source_key
+           FROM ranking_update_events ORDER BY update_day, id"""
+    )
+    states = {}
+    for row in await rows.fetchall():
+        bucket = states.setdefault(row["update_day"], {
+            "day": row["update_day"],
+            "sources": {"match": set(), "bonus": set(), "pre_tournament": set()},
+        })
+        bucket["sources"][row["source"]].add(str(row["source_key"]))
+    today = current_sporting_day()
+    for bucket in states.values():
+        bucket["finalized"] = bucket["day"] < today
+        bucket["source_counts"] = {
+            source: len(keys) for source, keys in bucket["sources"].items()
+        }
+    return states
+
+
 async def get_sporting_day_states(db) -> dict[str, dict]:
     """Journées groupées selon la fenêtre locale 9 h–8 h 59.
 
@@ -418,7 +550,9 @@ async def _scoring_points_by_day(db) -> dict[str, dict[int, int]]:
 
 
 def _evolution_payload(current: list, day_points: dict[int, int], day: str,
-                       status: str, match_count: int, encoded_count: int) -> dict:
+                       status: str, match_count: int, encoded_count: int,
+                       source_counts: dict | None = None,
+                       is_update_day: bool = False) -> dict:
     after_points = {r["id"]: r["total_points"] for r in current}
     before_points = {
         pid: points - day_points.get(pid, 0) for pid, points in after_points.items()
@@ -432,6 +566,8 @@ def _evolution_payload(current: list, day_points: dict[int, int], day: str,
         "status": status,
         "match_count": match_count,
         "encoded_count": encoded_count,
+        "source_counts": source_counts or {},
+        "is_update_day": is_update_day,
         "ranks_before": before_ranks,
         "ranks_after": after_ranks,
         "points_before": before_points,
@@ -441,18 +577,37 @@ def _evolution_payload(current: list, day_points: dict[int, int], day: str,
 
 
 async def get_rank_evolution(db) -> dict:
-    """Évolution live de la dernière journée sportive ayant un résultat.
+    """Évolution live de la dernière journée d'actualisation.
 
-    Tant que la journée suivante n'a aucun résultat, la dernière évolution
-    finalisée reste visible. Dès le premier encodage, la nouvelle journée prend
-    le relais et ses deltas deviennent cumulatifs.
+    Dès qu'un match, bonus ou résultat pré-tournoi est publié, sa fenêtre
+    d'encodage prend le relais. Le modèle historique par kickoff reste un repli
+    pour les bases/tests qui ne possèdent encore aucun événement unifié.
     """
     empty = {
         "deltas": {}, "day": None, "status": None,
         "match_count": 0, "encoded_count": 0,
+        "source_counts": {}, "is_update_day": False,
         "ranks_before": {}, "ranks_after": {}, "points_before": {},
         "points_after": {}, "day_points": {},
     }
+    update_states = await get_ranking_update_day_states(db)
+    if update_states:
+        day = max(update_states)
+        state = update_states[day]
+        points_by_day = await _ranking_update_points_by_day(db)
+        current = await _rankings_from_db(db, "general")
+        counts = state["source_counts"]
+        return _evolution_payload(
+            current,
+            points_by_day.get(day, {}),
+            day,
+            "finalized" if state["finalized"] else "in_progress",
+            counts.get("match", 0),
+            counts.get("match", 0),
+            source_counts=counts,
+            is_update_day=True,
+        )
+
     states = await get_sporting_day_states(db)
     candidates = [
         day for day, state in states.items()
@@ -472,6 +627,73 @@ async def get_rank_evolution(db) -> dict:
         state["match_count"],
         state["encoded_count"],
     )
+
+
+async def sync_finalized_ranking_update_history(
+    db, from_day: str | None = None
+) -> list[str]:
+    """Fige les journées d'actualisation closes à 9 h, de façon idempotente."""
+    states = await get_ranking_update_day_states(db)
+    finalized_days = sorted(
+        day for day, state in states.items()
+        if state["finalized"] and (from_day is None or day >= from_day)
+    )
+    if not finalized_days:
+        return []
+
+    current = await _rankings_from_db(db, "general")
+    current_points = {row["id"]: row["total_points"] for row in current}
+    all_day_points = await _ranking_update_points_by_day(db)
+    all_days = sorted(all_day_points)
+    changed = []
+
+    for day in finalized_days:
+        exists = await (await db.execute(
+            "SELECT 1 FROM ranking_update_day_evolutions WHERE update_day=? LIMIT 1",
+            (day,),
+        )).fetchone()
+        if exists:
+            continue
+        future_points = {pid: 0 for pid in current_points}
+        for future_day in all_days:
+            if future_day <= day:
+                continue
+            for pid, points in all_day_points[future_day].items():
+                if pid in future_points:
+                    future_points[pid] += points
+        after_points = {
+            pid: points - future_points.get(pid, 0)
+            for pid, points in current_points.items()
+        }
+        day_points = all_day_points.get(day, {})
+        before_points = {
+            pid: points - day_points.get(pid, 0)
+            for pid, points in after_points.items()
+        }
+        before_ranks = _ranks_from_points(before_points)
+        after_ranks = _ranks_from_points(after_points)
+        deltas = {pid: before_ranks[pid] - after_ranks[pid] for pid in current_points}
+        best_delta = max(deltas.values(), default=0)
+        climbers = (
+            {pid for pid, delta in deltas.items() if delta == best_delta}
+            if best_delta >= 2 else set()
+        )
+        await db.executemany(
+            """INSERT INTO ranking_update_day_evolutions
+               (update_day, participant_id, points_before, day_points,
+                points_after, rank_before, rank_after, delta, is_climber)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            [
+                (
+                    day, pid, before_points[pid], day_points.get(pid, 0),
+                    after_points[pid], before_ranks[pid], after_ranks[pid],
+                    deltas[pid], 1 if pid in climbers else 0,
+                )
+                for pid in current_points
+            ],
+        )
+        changed.append(day)
+    return changed
 
 
 async def sync_finalized_evolution_history(db, from_day: str | None = None) -> None:
@@ -530,6 +752,26 @@ async def sync_finalized_evolution_history(db, from_day: str | None = None) -> N
 
 
 async def get_latest_finalized_climbers(db) -> dict:
+    update_row = await db.execute(
+        "SELECT MAX(update_day) AS day FROM ranking_update_day_evolutions"
+    )
+    update_day = (await update_row.fetchone())["day"]
+    if update_day:
+        rows = await db.execute(
+            """SELECT e.*, p.name, p.nickname
+               FROM ranking_update_day_evolutions e
+               JOIN participants p ON p.id=e.participant_id
+               WHERE e.update_day=? AND e.is_climber=1
+               ORDER BY COALESCE(NULLIF(p.nickname, ''), p.name)""",
+            (update_day,),
+        )
+        climbers = [dict(row) for row in await rows.fetchall()]
+        return {
+            "day": update_day,
+            "delta": max((row["delta"] for row in climbers), default=0),
+            "climbers": climbers,
+        }
+
     row = await db.execute(
         "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
     )
@@ -1209,8 +1451,24 @@ async def calculate_bonus_scores(question_id: int):
                 )
 
         await _log_scoring_point_events(db, "bonus", str(question_id), old_points, new_points)
+        if question["correct_answer"] is not None or old_points:
+            await _record_ranking_update_event(
+                db,
+                "bonus",
+                str(question_id),
+                old_points,
+                new_points,
+                {
+                    "correct_answer": question["correct_answer"],
+                    "answer_type": question["answer_type"],
+                    "points_value": question["points_value"],
+                    "scoring_mode": question["scoring_mode"],
+                    "scoring_config": question["scoring_config"],
+                },
+            )
 
         await sync_finalized_evolution_history(db)
+        await sync_finalized_ranking_update_history(db)
         from app.trophies import refresh_trophy_awards
         await refresh_trophy_awards(db)
         await db.commit()
@@ -1325,8 +1583,22 @@ async def recalculate_pre_tournament_scores():
                 db, "pre_tournament", key,
                 old_points.get(key, {}), new_points.get(key, {}),
             )
+            question = next((item for item in questions if item["key"] == key), None)
+            if question and (question.get("correct_answer") or "").strip():
+                await _record_ranking_update_event(
+                    db,
+                    "pre_tournament",
+                    key,
+                    old_points.get(key, {}),
+                    new_points.get(key, {}),
+                    {
+                        "correct_answer": question.get("correct_answer"),
+                        "points_value": question.get("points_value"),
+                    },
+                )
 
         await sync_finalized_evolution_history(db)
+        await sync_finalized_ranking_update_history(db)
         from app.trophies import refresh_trophy_awards
         await refresh_trophy_awards(db)
         await db.commit()

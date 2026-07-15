@@ -210,8 +210,16 @@
     {% if view == 'general' and evolution_day_label %}
     <div class="evo-ref {{ 'is-progress' if evolution_status == 'in_progress' else '' }}">
       {% if evolution_status == 'in_progress' %}
-        <span class="evo-ref-status"><span class="evo-ref-ico" aria-hidden="true">📈</span><span>Évolution en cours</span></span>
-        {% if evolution_last_match %}
+        <span class="evo-ref-status"><span class="evo-ref-ico" aria-hidden="true">📈</span><span>{{ 'Actualisation' if evolution_is_update_day else 'Évolution' }} en cours</span></span>
+        {% if evolution_is_update_day %}
+        {% set update_matches = evolution_source_counts.get('match', 0) %}
+        {% set update_bonus = evolution_source_counts.get('bonus', 0) + evolution_source_counts.get('pre_tournament', 0) %}
+        <span class="evo-ref-last">
+          {% if update_matches %}{{ update_matches }} match{{ 's' if update_matches > 1 else '' }}{% endif %}
+          {% if update_matches and update_bonus %} · {% endif %}
+          {% if update_bonus %}{{ update_bonus }} bonus pris en compte{% endif %}
+        </span>
+        {% elif evolution_last_match %}
         <span class="evo-ref-last">
           Actualisé après
           <b>{{ evolution_last_match.team1_name|team }}{% if evolution_last_match.score_team1 is not none and evolution_last_match.score_team2 is not none %} {{ evolution_last_match|result_score }}{% endif %} {{ evolution_last_match.team2_name|team }}</b>
@@ -222,7 +230,7 @@
         {% endif %}
       {% else %}
         <span class="evo-ref-ico" aria-hidden="true">📈</span>
-        <span>Évolution sur la journée sportive du <b>{{ evolution_day_label }}</b></span>
+        <span>Évolution {{ "de l’actualisation" if evolution_is_update_day else 'sur la journée sportive' }} du <b>{{ evolution_day_label }}</b></span>
       {% endif %}
     </div>
     {% endif %}

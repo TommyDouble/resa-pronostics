@@ -124,7 +124,7 @@ TROPHIES = [
      "secret": False, "repeatable": True, "timing": "continu",
      "icon_key": "rocket", "rarity": "common",
      "caption": "Du sous-sol au penthouse en une soirée.",
-     "desc": "Meilleur grimpeur au classement sur une journée sportive."},
+     "desc": "Meilleur grimpeur au classement sur une journée d’actualisation."},
     # — Département —
     {"key": "champion_poules", "icon": "🏰", "label": "Champion des Poules",
      "category": "departement", "secret": False, "repeatable": False, "timing": "fin_poules",
@@ -224,10 +224,7 @@ async def refresh_trophy_awards(db) -> None:
         default=None,
     )
     tournament_final_day = max(match_sdays.values(), default=None)
-    finalized_row = await db.execute(
-        "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
-    )
-    latest_finalized_day = (await finalized_row.fetchone())["day"]
+    latest_finalized_day, _ = await _latest_evolution_reference(db)
 
     # --- Pronostics joués (match avec résultat) ---
     played_rows = await db.execute(
@@ -380,7 +377,16 @@ async def refresh_trophy_awards(db) -> None:
 
     # --- Le Grimpeur (répétable, une par journée où l'on est meilleur grimpeur) ---
     cl_rows = await db.execute(
-        "SELECT participant_id, sporting_day FROM sporting_day_rank_evolutions WHERE is_climber=1"
+        """SELECT participant_id, update_day AS sporting_day
+           FROM ranking_update_day_evolutions WHERE is_climber=1
+           UNION ALL
+           SELECT legacy.participant_id, legacy.sporting_day
+           FROM sporting_day_rank_evolutions legacy
+           WHERE legacy.is_climber=1
+             AND NOT EXISTS (
+               SELECT 1 FROM ranking_update_day_evolutions current
+               WHERE current.update_day=legacy.sporting_day
+             )"""
     )
     for r in await cl_rows.fetchall():
         if r["participant_id"] in participants:
@@ -489,12 +495,18 @@ async def _upsert_trophy_awards(
                 participant_id, trophy_key, detail,
             ),
         )
+    from app.timeutils import current_sporting_day
+    publication_day = current_sporting_day()
     await db.executemany(
-        "INSERT INTO trophy_awards (participant_id, trophy_key, detail, sporting_day) "
-        "VALUES (?,?,?,?) "
+        "INSERT INTO trophy_awards "
+        "(participant_id, trophy_key, detail, sporting_day, published_update_day) "
+        "VALUES (?,?,?,?,?) "
         "ON CONFLICT(participant_id, trophy_key, detail) DO UPDATE SET "
         "sporting_day=COALESCE(excluded.sporting_day, trophy_awards.sporting_day)",
-        inserts,
+        [
+            (*row, row[3] if row[1] == "grimpeur" and row[3] else publication_day)
+            for row in inserts
+        ],
     )
 
 
@@ -651,6 +663,19 @@ async def build_cabinet(db, participant_id: int) -> dict:
     }
 
 
+async def _latest_evolution_reference(db) -> tuple[str | None, bool]:
+    row = await db.execute(
+        "SELECT MAX(update_day) AS day FROM ranking_update_day_evolutions"
+    )
+    day = (await row.fetchone())["day"]
+    if day:
+        return day, True
+    row = await db.execute(
+        "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
+    )
+    return (await row.fetchone())["day"], False
+
+
 async def latest_ephemeral_badges(db) -> dict[int, dict]:
     """Badge par joueur pour le classement : un trophée dont la date MÉTIER est
     exactement la dernière journée sportive finalisée.
@@ -666,9 +691,7 @@ async def latest_ephemeral_badges(db) -> dict[int, dict]:
     """
     from app.timeutils import format_local_datetime, format_sporting_day_fr
 
-    day = (await (await db.execute(
-        "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
-    )).fetchone())["day"]
+    day, is_update_day = await _latest_evolution_reference(db)
     if not day:
         return {}
 
@@ -677,9 +700,10 @@ async def latest_ephemeral_badges(db) -> dict[int, dict]:
     )
     holders = {r["trophy_key"]: r["c"] for r in await holders_rows.fetchall()}
 
+    day_column = "published_update_day" if is_update_day else "sporting_day"
     rows = await db.execute(
         "SELECT participant_id, trophy_key, detail, sporting_day, awarded_at "
-        "FROM trophy_awards WHERE sporting_day=?",
+        f"FROM trophy_awards WHERE {day_column}=?",
         (day,),
     )
     candidates = [dict(r) for r in await rows.fetchall()]
@@ -730,9 +754,7 @@ async def all_ephemeral_badges(
     """
     from app.timeutils import format_local_datetime, format_sporting_day_fr
 
-    day = (await (await db.execute(
-        "SELECT MAX(sporting_day) AS day FROM sporting_day_rank_evolutions"
-    )).fetchone())["day"]
+    day, is_update_day = await _latest_evolution_reference(db)
     if not day:
         return [], {}
 
@@ -742,7 +764,7 @@ async def all_ephemeral_badges(
         "p.department "
         "FROM trophy_awards ta "
         "JOIN participants p ON p.id = ta.participant_id "
-        "WHERE ta.sporting_day = ?",
+        f"WHERE ta.{'published_update_day' if is_update_day else 'sporting_day'} = ?",
         (day,),
     )
     candidates = [dict(r) for r in await rows.fetchall()]
@@ -751,11 +773,18 @@ async def all_ephemeral_badges(
 
     match_names, participant_names = await _load_detail_context(db, candidates)
 
-    climber_rows = await db.execute(
-        "SELECT participant_id, delta FROM sporting_day_rank_evolutions "
-        "WHERE sporting_day = ? AND is_climber = 1",
-        (day,),
-    )
+    if is_update_day:
+        climber_rows = await db.execute(
+            """SELECT participant_id, delta FROM ranking_update_day_evolutions
+               WHERE update_day=? AND is_climber=1""",
+            (day,),
+        )
+    else:
+        climber_rows = await db.execute(
+            """SELECT participant_id, delta FROM sporting_day_rank_evolutions
+               WHERE sporting_day=? AND is_climber=1""",
+            (day,),
+        )
     climber_deltas = {r["participant_id"]: r["delta"] for r in await climber_rows.fetchall()}
 
     grouped: dict[str, dict] = {}
@@ -798,7 +827,11 @@ async def all_ephemeral_badges(
         })
 
     day_label = format_sporting_day_fr(day)
-    carousel_label = f"Trophées de la dernière journée finalisée · {day_label}"
+    reference_label = (
+        "dernière actualisation finalisée"
+        if is_update_day else "dernière journée finalisée"
+    )
+    carousel_label = f"Trophées de la {reference_label} · {day_label}"
 
     for slide in grouped.values():
         key = slide["key"]
