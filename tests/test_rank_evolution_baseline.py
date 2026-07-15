@@ -25,12 +25,15 @@ from tests.conftest import run
 # Tout ce qui alimente le classement général : on repart d'une base vierge
 # le temps du test pour que les flèches ne dépendent que de nos fixtures.
 _ISOLATED = (
-    "sporting_day_rank_evolutions", "scores", "predictions", "matches",
+    "ranking_update_deltas", "ranking_update_events",
+    "ranking_update_day_evolutions", "sporting_day_rank_evolutions",
+    "scores", "predictions", "matches",
     "pre_tournament_scores", "trophy_awards",
 )
 _RESTORE_ORDER = (
     "matches", "predictions", "scores", "pre_tournament_scores",
-    "sporting_day_rank_evolutions", "trophy_awards",
+    "ranking_update_events", "ranking_update_deltas",
+    "ranking_update_day_evolutions", "sporting_day_rank_evolutions", "trophy_awards",
 )
 
 

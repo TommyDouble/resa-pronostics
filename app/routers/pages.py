@@ -51,6 +51,7 @@ from app.pre_tournament import (
 from app.prizes import get_prize_info
 from app.result_display import qualified_team_name, result_full_label
 from app.scoring import (
+    _ranking_update_points_by_day,
     _scoring_points_by_day,
     actual_match_winner,
     bonus_number_is_integer,
@@ -62,6 +63,7 @@ from app.scoring import (
     get_latest_finalized_climbers,
     get_rank_evolution,
     get_rankings,
+    get_ranking_update_day_states,
     get_remontada,
     get_sporting_day_states,
     is_match_prediction_correct,
@@ -685,7 +687,8 @@ async def _get_participant_context(token: str, db, active_nav: str = "home") -> 
 
 
 async def _reveal_rank_evolution(db, participant_id: int, selected_days: list,
-                                 through_day: str | None = None) -> dict:
+                                 through_day: str | None = None,
+                                 ranking_update_days: set[str] | None = None) -> dict:
     """Évolution de rang provoquée par la fenêtre (matchs + bonus + pré-tournoi),
     focus participant.
 
@@ -698,6 +701,10 @@ async def _reveal_rank_evolution(db, participant_id: int, selected_days: list,
     if not current or not selected_days:
         return {}
     points_by_day = await _scoring_points_by_day(db)
+    if ranking_update_days:
+        update_points = await _ranking_update_points_by_day(db)
+        for day in ranking_update_days:
+            points_by_day[day] = update_points.get(day, {})
     selected = set(selected_days)
     win_pts: dict[int, int] = {}
     for day in selected:
@@ -804,7 +811,8 @@ async def _register_daily_connection(db, participant_id: int) -> str:
 
 
 async def _bonus_pretournament_window_items(
-    db, participant_id: int, selected_days: list
+    db, participant_id: int, selected_days: list,
+    use_ranking_updates: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """Cartes bonus/pré-tournoi de la fenêtre, sourcées de `scoring_point_events`
     (le delta réel de l'événement, pas la valeur absolue courante de la question
@@ -814,16 +822,30 @@ async def _bonus_pretournament_window_items(
     dans la fenêtre, même si le delta du participant est nul (symétrie avec les
     cartes de match, toujours affichées même à 0 pt / sans prono)."""
     selected = set(selected_days)
-    rows = await db.execute(
-        "SELECT source, source_key, participant_id, delta, occurred_at FROM scoring_point_events"
-    )
+    if use_ranking_updates:
+        rows = await db.execute(
+            """SELECT e.source, e.source_key, d.participant_id,
+                      COALESCE(d.delta, 0) AS delta, e.update_day
+               FROM ranking_update_events e
+               LEFT JOIN ranking_update_deltas d ON d.event_id=e.id
+               WHERE e.source IN ('bonus','pre_tournament')"""
+        )
+    else:
+        rows = await db.execute(
+            """SELECT source, source_key, participant_id, delta, occurred_at
+               FROM scoring_point_events"""
+        )
     by_source_key: dict[tuple[str, str], dict[int, int]] = defaultdict(dict)
     for r in await rows.fetchall():
-        day = sporting_day_for_timestamp(r["occurred_at"])
+        day = (
+            r["update_day"] if use_ranking_updates
+            else sporting_day_for_timestamp(r["occurred_at"])
+        )
         if day not in selected:
             continue
         bucket = by_source_key[(r["source"], r["source_key"])]
-        bucket[r["participant_id"]] = bucket.get(r["participant_id"], 0) + r["delta"]
+        if r["participant_id"] is not None:
+            bucket[r["participant_id"]] = bucket.get(r["participant_id"], 0) + r["delta"]
 
     bonus_items: list[dict] = []
     pretournament_items: list[dict] = []
@@ -873,11 +895,7 @@ async def _bonus_pretournament_window_items(
 
 
 async def _reveal_window_data(db, participant_id: int) -> dict | None:
-    """Journées finalisées depuis la connexion précédente, dernière garantie.
-
-    Une journée peut désormais être "finalisée" par une activité bonus/pré-tournoi
-    seule (aucun match ce jour) — cf. `get_sporting_day_states`.
-    """
+    """Actualisations finalisées depuis la connexion précédente."""
     prow = await (await db.execute(
         """SELECT last_revealed_date, reveal_connection_baseline_day,
                   last_connected_sporting_day
@@ -892,7 +910,19 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
     for m in all_matches:
         m["sd"] = sporting_day(m)
 
-    states = await get_sporting_day_states(db)
+    update_states = await get_ranking_update_day_states(db)
+    legacy_states = await get_sporting_day_states(db)
+    cutover_row = await db.execute(
+        "SELECT value FROM app_settings WHERE key='ranking_update_cutover_day'"
+    )
+    cutover = (await cutover_row.fetchone())
+    cutover_day = cutover["value"] if cutover else min(update_states, default="")
+    ranking_update_days = {
+        day for day in update_states if not cutover_day or day >= cutover_day
+    }
+    states = dict(legacy_states)
+    for day in ranking_update_days:
+        states[day] = update_states[day]
     finalized_days = sorted(day for day, state in states.items() if state["finalized"])
     if not finalized_days:
         return None
@@ -908,10 +938,33 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
     if not selected_days:
         return None
 
-    window = sorted(
-        [m for m in all_matches if m["sd"] in selected_days],
-        key=lambda m: (m["match_date"], m["kickoff_time"], m["match_number"]),
-    )
+    selected_update_days = sorted(set(selected_days) & ranking_update_days)
+    selected_legacy_days = sorted(set(selected_days) - set(selected_update_days))
+    match_update_days = {}
+    if selected_update_days:
+        placeholders = ",".join("?" for _ in selected_update_days)
+        event_rows = await db.execute(
+            f"""SELECT source_key, update_day FROM ranking_update_events
+                WHERE source='match' AND update_day IN ({placeholders})
+                ORDER BY id""",
+            selected_update_days,
+        )
+        match_update_days = {
+            int(row["source_key"]): row["update_day"]
+            for row in await event_rows.fetchall()
+        }
+    window_by_id = {
+        match["id"]: match
+        for match in all_matches
+        if match["sd"] in selected_legacy_days
+    }
+    for match in all_matches:
+        if match["id"] in match_update_days:
+            window_by_id[match["id"]] = match
+    window = list(window_by_id.values())
+    for match in window:
+        match["update_day"] = match_update_days.get(match["id"], match["sd"])
+    window.sort(key=lambda m: (m["match_date"], m["kickoff_time"], m["match_number"]))
     window_ids = [m["id"] for m in window]
     extra = {}
     if window_ids:
@@ -947,7 +1000,7 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
 
     day_groups = []
     for day in selected_days:
-        day_matches = [m for m in matches if m["sd"] == day]
+        day_matches = [m for m in matches if m["update_day"] == day]
         day_groups.append({
             "sporting_day": day,
             "day_label": format_sporting_day_fr(day),
@@ -956,9 +1009,20 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
             "total_points": sum(m["points"] for m in day_matches),
             "exact_count": sum(1 for m in day_matches if m["tier"] == "exact"),
         })
-    bonus_items, pretournament_items = await _bonus_pretournament_window_items(
-        db, participant_id, selected_days
-    )
+    bonus_items = []
+    pretournament_items = []
+    if selected_legacy_days:
+        legacy_bonus, legacy_pre = await _bonus_pretournament_window_items(
+            db, participant_id, selected_legacy_days, False
+        )
+        bonus_items.extend(legacy_bonus)
+        pretournament_items.extend(legacy_pre)
+    if selected_update_days:
+        update_bonus, update_pre = await _bonus_pretournament_window_items(
+            db, participant_id, selected_update_days, True
+        )
+        bonus_items.extend(update_bonus)
+        pretournament_items.extend(update_pre)
     bonus_points = sum(item["points"] for item in bonus_items)
     pretournament_points = sum(item["points"] for item in pretournament_items)
 
@@ -977,7 +1041,8 @@ async def _reveal_window_data(db, participant_id: int) -> dict | None:
         "exact_count": exact_count,
         "match_count": len(matches),
         "evolution": await _reveal_rank_evolution(
-            db, participant_id, selected_days, through_day=reveal_sd
+            db, participant_id, selected_days, through_day=reveal_sd,
+            ranking_update_days=ranking_update_days,
         ),
     }
 
@@ -1784,6 +1849,8 @@ async def ranking_page(
         evolution_match_count = 0
         evolution_encoded_count = 0
         evolution_last_match = None
+        evolution_source_counts = {}
+        evolution_is_update_day = False
         climber_ids = set()
         carousel_items: list[dict] = []
         badges_by_participant: dict[int, list[dict]] = {}
@@ -1810,7 +1877,13 @@ async def ranking_page(
                 evolution_status = evo["status"]
                 evolution_match_count = evo["match_count"]
                 evolution_encoded_count = evo["encoded_count"]
-                if evolution_status == "in_progress" and evolution_day:
+                evolution_source_counts = evo.get("source_counts", {})
+                evolution_is_update_day = bool(evo.get("is_update_day"))
+                if (
+                    evolution_status == "in_progress"
+                    and evolution_day
+                    and not evolution_is_update_day
+                ):
                     encoded_matches = await _sporting_day_match_details(db, evolution_day)
                     evolution_last_match = encoded_matches[-1] if encoded_matches else None
                 finalized_climbers = await get_latest_finalized_climbers(db)
@@ -1847,6 +1920,8 @@ async def ranking_page(
             "evolution_match_count": evolution_match_count,
             "evolution_encoded_count": evolution_encoded_count,
             "evolution_last_match": evolution_last_match,
+            "evolution_source_counts": evolution_source_counts,
+            "evolution_is_update_day": evolution_is_update_day,
             "carousel_items": carousel_items,
             "knockout_started": knockout_started,
             "prize_info": prize_info,

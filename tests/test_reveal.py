@@ -5,7 +5,7 @@ from app.database import get_db, _migrate_reveal_sporting_day
 import app.routers.pages as pages
 from app.routers.pages import _register_daily_connection, _reveal_window_data
 from app.scoring import calculate_bonus_scores
-from app.timeutils import now_utc, sporting_day
+from app.timeutils import now_utc, sporting_day, sporting_day_for_timestamp
 from tests.conftest import run
 
 
@@ -19,6 +19,9 @@ def _reset_matches():
         async with get_db() as db:
             await db.execute("DELETE FROM matches")
             await db.execute("DELETE FROM scoring_point_events")
+            await db.execute("DELETE FROM ranking_update_deltas")
+            await db.execute("DELETE FROM ranking_update_events")
+            await db.execute("DELETE FROM ranking_update_day_evolutions")
             await db.commit()
     run(_c())
 
@@ -148,6 +151,12 @@ def _correct_bonus(question_id, correct_answer, occurred_at):
             await db.execute(
                 "UPDATE scoring_point_events SET occurred_at=? WHERE source='bonus' AND source_key=?",
                 (occurred_at, str(question_id)),
+            )
+            await db.execute(
+                """UPDATE ranking_update_events
+                   SET occurred_at=?, update_day=?
+                   WHERE source='bonus' AND source_key=?""",
+                (occurred_at, sporting_day_for_timestamp(occurred_at), str(question_id)),
             )
             await db.commit()
     run(_backdate())
@@ -364,10 +373,11 @@ def test_reveal_uses_connection_baseline_but_guarantees_latest_finalized_day(
     assert _window(participant["id"]) is None
 
 
-def test_bonus_only_correction_opens_a_reveal_window(client, participant):
+def test_bonus_only_correction_opens_a_reveal_window(client, participant, monkeypatch):
     """Un encodage bonus sans AUCUN match doit quand même déclencher un Reveal,
     avec la carte bonus et le mouvement de classement correspondant."""
     _reset_matches()
+    monkeypatch.setenv("FAKE_NOW_UTC", "2035-06-02T08:00:00")
     other = run(_create_other_participant("BonusRevealOther"))
 
     async def _set(baseline="", seen=""):

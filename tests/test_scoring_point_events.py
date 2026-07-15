@@ -20,7 +20,7 @@ Règle métier vérifiée ici (cf. plan de correction) :
 import contextlib
 import uuid
 
-from app.database import get_db
+from app.database import get_db, _migrate_ranking_update_events
 from app.scoring import (
     _log_scoring_point_events,
     _scoring_points_by_day,
@@ -28,14 +28,19 @@ from app.scoring import (
     calculate_bonus_scores,
     get_rank_evolution,
     get_rankings,
+    recalculate_match_scores,
     recalculate_pre_tournament_scores,
+    sync_finalized_ranking_update_history,
     sync_finalized_evolution_history,
 )
 from app.trophies import refresh_trophy_awards
+from app.timeutils import sporting_day_for_timestamp
 from tests.conftest import run
 
 _ISOLATED = (
-    "sporting_day_rank_evolutions", "scoring_point_events", "trophy_awards",
+    "ranking_update_deltas", "ranking_update_events",
+    "ranking_update_day_evolutions", "sporting_day_rank_evolutions",
+    "scoring_point_events", "trophy_awards",
     "scores", "predictions", "matches",
     "bonus_answers", "bonus_questions",
     "pre_tournament_scores", "pre_tournament_predictions",
@@ -44,7 +49,8 @@ _RESTORE_ORDER = (
     "matches", "predictions", "scores",
     "bonus_questions", "bonus_answers",
     "pre_tournament_predictions", "pre_tournament_scores",
-    "scoring_point_events", "sporting_day_rank_evolutions", "trophy_awards",
+    "scoring_point_events", "ranking_update_events", "ranking_update_deltas",
+    "ranking_update_day_evolutions", "sporting_day_rank_evolutions", "trophy_awards",
 )
 
 
@@ -157,6 +163,45 @@ def _award_match(pid, mid, points):
     run(_create())
 
 
+def _predict_match(pid, mid, score_team1, score_team2):
+    prediction = "team1" if score_team1 > score_team2 else "team2" if score_team2 > score_team1 else "draw"
+
+    async def _create():
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO predictions
+                   (participant_id, match_id, prediction,
+                    exact_score_team1, exact_score_team2)
+                   VALUES (?,?,?,?,?)""",
+                (pid, mid, prediction, score_team1, score_team2),
+            )
+            await db.commit()
+
+    run(_create())
+
+
+def _set_match_result(mid, result="team1", score_team1=1, score_team2=0):
+    async def _set():
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE matches SET result=?, score_team1=?, score_team2=?
+                   WHERE id=?""",
+                (result, score_team1, score_team2, mid),
+            )
+            await db.commit()
+
+    run(_set())
+
+
+def _participant_token(pid):
+    async def _get():
+        async with get_db() as db:
+            row = await db.execute("SELECT token FROM participants WHERE id=?", (pid,))
+            return (await row.fetchone())["token"]
+
+    return run(_get())
+
+
 def _make_bonus_question(points_value=5, answer_type="choice", scoring_mode="exact",
                           options=None, deadline="2020-01-01T00:00:00"):
     async def _create():
@@ -222,6 +267,12 @@ def _backdate_events(source, source_key, occurred_at):
             await db.execute(
                 "UPDATE scoring_point_events SET occurred_at=? WHERE source=? AND source_key=?",
                 (occurred_at, source, source_key),
+            )
+            await db.execute(
+                """UPDATE ranking_update_events
+                   SET occurred_at=?, update_day=?
+                   WHERE source=? AND source_key=?""",
+                (occurred_at, sporting_day_for_timestamp(occurred_at), source, source_key),
             )
             await db.commit()
 
@@ -382,6 +433,156 @@ def test_bonus_correction_no_rank_change_but_points_registered(client):
         assert any(pts.get(a) == 6 and pts.get(b) == 6 for pts in by_day.values())
 
 
+def test_halftime_bonus_opens_new_update_then_match_joins_same_baseline(client, monkeypatch):
+    """Cas production : hier match+bonus, aujourd'hui bonus à la mi-temps,
+    puis résultat du second match. Les anciennes flèches doivent céder la
+    place dès le bonus, et le match doit ensuite rejoindre la même baseline.
+    """
+    with isolated_scoring_state():
+        a = _make_participant("Semi Alpha")
+        b = _make_participant("Semi Beta")
+        c = _make_participant("Semi Gamma")
+
+        first = _make_match(980101, "2026-07-14", result="team1", s1=1, s2=0)
+        second = _make_match(980102, "2026-07-15", result=None, s1=None, s2=None)
+        _predict_match(a, first, 1, 0)  # +4
+        _predict_match(b, first, 0, 1)
+        _predict_match(c, first, 0, 1)
+        _predict_match(a, second, 0, 1)
+        _predict_match(b, second, 1, 0)  # +4 après encodage
+        _predict_match(c, second, 0, 1)
+
+        monkeypatch.setenv("FAKE_NOW_UTC", "2026-07-14T10:00:00")
+        run(recalculate_match_scores(first))
+        yesterday_bonus = _make_bonus_question(
+            points_value=3, answer_type="choice", options='["A","B"]'
+        )
+        _answer_bonus(yesterday_bonus, a, "B")
+        _answer_bonus(yesterday_bonus, b, "A")
+        _answer_bonus(yesterday_bonus, c, "B")
+        _set_bonus_correct_answer(yesterday_bonus, "A")
+        _calculate_bonus(yesterday_bonus)
+        # Fin mardi : A=4 (1er), B=3 (2e), C=0 (3e).
+
+        monkeypatch.setenv("FAKE_NOW_UTC", "2026-07-15T10:00:00")
+        halftime_bonus = _make_bonus_question(
+            points_value=6, answer_type="choice", options='["A","B"]'
+        )
+        _answer_bonus(halftime_bonus, a, "B")
+        _answer_bonus(halftime_bonus, b, "B")
+        _answer_bonus(halftime_bonus, c, "A")
+        _set_bonus_correct_answer(halftime_bonus, "A")
+        _calculate_bonus(halftime_bonus)
+
+        halftime = _evolution()
+        assert halftime["day"] == "2026-07-15"
+        assert halftime["status"] == "in_progress"
+        assert halftime["source_counts"] == {
+            "match": 0, "bonus": 1, "pre_tournament": 0,
+        }
+        assert {pid: halftime["ranks_before"][pid] for pid in (a, b, c)} == {
+            a: 1, b: 2, c: 3,
+        }
+        assert halftime["deltas"][c] == 2
+        assert halftime["deltas"][a] == halftime["deltas"][b] == -1
+
+        html = client.get(f"/p/{_participant_token(a)}/classement").text
+        assert "Actualisation en cours" in html
+        assert "1 bonus pris en compte" in html
+        assert "mardi 14 juillet" not in html[html.index('class="evo-ref'):html.index("</div>", html.index('class="evo-ref'))]
+
+        monkeypatch.setenv("FAKE_NOW_UTC", "2026-07-15T10:30:00")
+        _set_match_result(second)
+        run(recalculate_match_scores(second))
+
+        combined = _evolution()
+        assert combined["day"] == "2026-07-15"
+        assert combined["source_counts"] == {
+            "match": 1, "bonus": 1, "pre_tournament": 0,
+        }
+        # La référence reste le classement final du mardi.
+        assert {pid: combined["ranks_before"][pid] for pid in (a, b, c)} == {
+            a: 1, b: 2, c: 3,
+        }
+        assert combined["deltas"][b] == 1
+        assert combined["deltas"][c] == 1
+        assert combined["deltas"][a] == -2
+
+        # À la coupure suivante, l'actualisation est figée une seule fois.
+        monkeypatch.setenv("FAKE_NOW_UTC", "2026-07-16T08:00:00")
+
+        async def _finalize():
+            async with get_db() as db:
+                changed = await sync_finalized_ranking_update_history(db)
+                await db.commit()
+                return changed
+
+        assert "2026-07-15" in run(_finalize())
+        assert run(_finalize()) == []
+
+
+def test_zero_point_bonus_still_opens_update_day(client, monkeypatch):
+    with isolated_scoring_state():
+        a = _make_participant("Zero Bonus A")
+        b = _make_participant("Zero Bonus B")
+        monkeypatch.setenv("FAKE_NOW_UTC", "2026-07-15T11:00:00")
+        question = _make_bonus_question(
+            points_value=5, answer_type="choice", options='["A","B"]'
+        )
+        _answer_bonus(question, a, "B")
+        _answer_bonus(question, b, "B")
+        _set_bonus_correct_answer(question, "A")
+        _calculate_bonus(question)
+
+        evolution = _evolution()
+        assert evolution["day"] == "2026-07-15"
+        assert evolution["source_counts"]["bonus"] == 1
+        assert evolution["day_points"][a] == evolution["day_points"][b] == 0
+        assert evolution["deltas"][a] == evolution["deltas"][b] == 0
+
+
+def test_match_then_bonus_uses_same_combined_baseline(client, monkeypatch):
+    """L'ordre inverse produit la même évolution finale cumulée."""
+    with isolated_scoring_state():
+        a = _make_participant("Order Alpha")
+        b = _make_participant("Order Beta")
+        c = _make_participant("Order Gamma")
+        baseline = _make_match(980103, "2026-07-14")
+        _award_match(a, baseline, 4)
+        _award_match(b, baseline, 3)
+        _award_match(c, baseline, 0)
+
+        current_match = _make_match(
+            980104, "2026-07-15", result=None, s1=None, s2=None
+        )
+        _predict_match(a, current_match, 0, 1)
+        _predict_match(b, current_match, 1, 0)
+        _predict_match(c, current_match, 0, 1)
+        bonus = _make_bonus_question(
+            points_value=6, answer_type="choice", options='["A","B"]'
+        )
+        _answer_bonus(bonus, a, "B")
+        _answer_bonus(bonus, b, "B")
+        _answer_bonus(bonus, c, "A")
+
+        monkeypatch.setenv("FAKE_NOW_UTC", "2026-07-15T10:00:00")
+        _set_match_result(current_match)
+        run(recalculate_match_scores(current_match))
+        _set_bonus_correct_answer(bonus, "A")
+        _calculate_bonus(bonus)
+
+        evolution = _evolution()
+        assert evolution["source_counts"] == {
+            "match": 1, "bonus": 1, "pre_tournament": 0,
+        }
+        assert {pid: evolution["ranks_before"][pid] for pid in (a, b, c)} == {
+            a: 1, b: 2, c: 3,
+        }
+        assert evolution["deltas"][b] == 1
+        assert evolution["deltas"][c] == 1
+        assert evolution["deltas"][a] == -2
+
+
 async def _scoring_points_by_day_call():
     async with get_db() as db:
         return await _scoring_points_by_day(db)
@@ -529,6 +730,66 @@ def _seed_scoring_event(source, source_key, pid, delta, occurred_at):
             await db.commit()
 
     run(_c())
+
+
+def test_unjournaled_scored_bonus_is_reconciled_idempotently(client):
+    """Répare le cas réel : les totaux ont bougé mais la flèche est restée sur
+    la veille parce qu'aucun événement source n'accompagnait les scores."""
+    with isolated_scoring_state():
+        winner = _make_participant("Reconcile Winner")
+        follower = _make_participant("Reconcile Follower")
+        question = _make_bonus_question(
+            points_value=10, answer_type="choice", options='["A","B"]'
+        )
+        calculated_at = "2026-07-15T10:00:00"
+        _seed_legacy_score(
+            "scores", ["participant_id", "bonus_question_id", "points", "calculated_at"],
+            (winner, question, 10, calculated_at),
+        )
+        _seed_legacy_score(
+            "scores", ["participant_id", "bonus_question_id", "points", "calculated_at"],
+            (follower, question, 0, calculated_at),
+        )
+
+        async def _migrate():
+            async with get_db() as db:
+                await db.execute(
+                    "DELETE FROM app_settings WHERE key='migr_ranking_update_events_v1'"
+                )
+                await _migrate_ranking_update_events(db)
+                await db.commit()
+                events = await db.execute(
+                    """SELECT id, update_day FROM ranking_update_events
+                       WHERE source='bonus' AND source_key=?""",
+                    (str(question),),
+                )
+                event_rows = await events.fetchall()
+                deltas = await db.execute(
+                    """SELECT d.participant_id, d.delta
+                       FROM ranking_update_deltas d
+                       JOIN ranking_update_events e ON e.id=d.event_id
+                       WHERE e.source='bonus' AND e.source_key=?""",
+                    (str(question),),
+                )
+                return [dict(row) for row in event_rows], [dict(row) for row in await deltas.fetchall()]
+
+        events, deltas = run(_migrate())
+        assert len(events) == 1
+        assert events[0]["update_day"] == "2026-07-15"
+        assert deltas == [{"participant_id": winner, "delta": 10}]
+
+        evolution = _evolution()
+        assert evolution["day"] == "2026-07-15"
+        assert evolution["deltas"][follower] < 0
+
+        # La clé de migration empêche tout second rapprochement.
+        async def _rerun():
+            async with get_db() as db:
+                await _migrate_ranking_update_events(db)
+                row = await db.execute("SELECT COUNT(*) AS count FROM ranking_update_events")
+                return (await row.fetchone())["count"]
+
+        assert run(_rerun()) == 1
 
 
 def test_backfill_reconstructs_preexisting_bonus_points_and_is_idempotent(client):
