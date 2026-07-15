@@ -11,6 +11,7 @@ from app.scoring import (
     compose_minute_notation,
     format_minute_notation,
     normalize_closest_config,
+    parse_finalist_answers,
     parse_revelation_winners,
     serialize_closest_config,
     split_minute_notation,
@@ -184,26 +185,26 @@ class TestPreTournamentPoints:
 
     def test_two_finalists_score_even_when_ordered_normally(self):
         prediction = {"winner": "Argentine", "finalist": "France"}
-        correct = {"winner": "Argentine", "finalist": "France"}
+        correct = {"winner": "Argentine", "finalist": json.dumps(["Argentine", "France"])}
 
         assert calculate_finalists_points(prediction, correct) == 14
 
     def test_two_finalists_score_even_when_champion_is_inverted(self):
         prediction = {"winner": "France", "finalist": "Argentine"}
-        correct = {"winner": "Argentine", "finalist": "France"}
+        correct = {"winner": "Argentine", "finalist": json.dumps(["Argentine", "France"])}
 
         assert calculate_finalists_points(prediction, correct) == 14
 
     def test_one_finalist_scores_seven_points(self):
         prediction = {"winner": "Argentine", "finalist": "Brésil"}
-        correct = {"winner": "Argentine", "finalist": "France"}
+        correct = {"winner": "Argentine", "finalist": json.dumps(["Argentine", "France"])}
 
         assert calculate_finalists_points(prediction, correct) == 7
 
     def test_finalist_question_uses_both_finalist_picks(self):
-        question = self.question("finalist", 7, answer="France")
+        question = self.question("finalist", 7, answer=json.dumps(["Argentine", "France"]))
         prediction = {"winner": "France", "finalist": "Argentine"}
-        correct = {"winner": "Argentine", "finalist": "France"}
+        correct = {"winner": "Argentine", "finalist": json.dumps(["Argentine", "France"])}
 
         assert (
             calculate_pre_tournament_points(
@@ -214,6 +215,15 @@ class TestPreTournamentPoints:
             )
             == 14
         )
+
+    def test_finalists_score_without_tournament_winner(self):
+        prediction = {"winner": "France", "finalist": "Argentine"}
+        correct = {"winner": "", "finalist": json.dumps(["Argentine", "France"])}
+
+        assert calculate_finalists_points(prediction, correct) == 14
+
+    def test_legacy_other_finalist_answer_still_includes_winner(self):
+        assert parse_finalist_answers("France", "Argentine") == {"Argentine", "France"}
 
     def test_revelation_pick_in_winning_set_scores(self):
         question = self.question("revelation", 5, answer=json.dumps(["Maroc", "Japon"]))

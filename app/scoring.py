@@ -54,6 +54,27 @@ def parse_revelation_winners(correct_answer) -> set:
     return parse_team_set(correct_answer)
 
 
+def parse_finalist_answers(correct_answer, legacy_winner=None) -> set:
+    """Return the two actual finalists stored for the finalist question.
+
+    The canonical format is a JSON list, independent from the tournament
+    winner. Older data stored only the "other finalist" and reused the winner
+    answer as the first finalist, so that representation remains supported.
+    """
+    finalists = parse_team_set(correct_answer)
+    if not correct_answer or isinstance(correct_answer, (list, tuple, set)):
+        return finalists
+    try:
+        parsed = json.loads(str(correct_answer).strip())
+    except (ValueError, TypeError):
+        parsed = None
+    if not isinstance(parsed, list):
+        winner = str(legacy_winner or "").strip()
+        if winner:
+            finalists.add(winner)
+    return finalists
+
+
 def _winner_from_scores(score_team1, score_team2) -> str:
     if score_team1 is None or score_team2 is None:
         return ""
@@ -1486,12 +1507,11 @@ def calculate_finalists_points(prediction: dict, correct_answers: dict) -> int:
         (prediction.get("winner") or "").strip(),
         (prediction.get("finalist") or "").strip(),
     }
-    correct_finalists = {
-        (correct_answers.get("winner") or "").strip(),
-        (correct_answers.get("finalist") or "").strip(),
-    }
+    correct_finalists = parse_finalist_answers(
+        correct_answers.get("finalist"),
+        legacy_winner=correct_answers.get("winner"),
+    )
     predicted_finalists.discard("")
-    correct_finalists.discard("")
     return len(predicted_finalists & correct_finalists) * FINALIST_POINTS
 
 
