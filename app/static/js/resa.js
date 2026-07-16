@@ -1242,12 +1242,12 @@ function initBonusForms() {
           setError('Indique un nombre entier.');
           return;
         }
-        if (numberMin !== '' && !isNaN(numberValue) && numberValue < parseInt(numberMin, 10)) {
+        if (numberMin !== null && numberMin !== '' && !isNaN(numberValue) && numberValue < Number(numberMin)) {
           e.preventDefault();
           setError('Indique un nombre à partir de ' + numberMin + '.');
           return;
         }
-        if (numberMax !== '' && !isNaN(numberValue) && numberValue > parseInt(numberMax, 10)) {
+        if (numberMax !== null && numberMax !== '' && !isNaN(numberValue) && numberValue > Number(numberMax)) {
           e.preventDefault();
           setError('Indique un nombre jusqu’à ' + numberMax + '.');
           return;
@@ -1268,10 +1268,15 @@ function initAdminBonusQuestionForms() {
   document.querySelectorAll('[data-admin-bonus-form]').forEach(function(form) {
     var typeSelect = form.querySelector('select[name="answer_type"]');
     var presetSelect = form.querySelector('select[name="closest_preset_key"]');
+    var numberModeSelect = form.querySelector('[name="number_scoring_mode"]');
     var preview = form.querySelector('[data-bonus-preview]');
 
     function currentType() {
       return typeSelect ? typeSelect.value : (form.dataset.bonusInitialType || 'choice');
+    }
+
+    function currentNumberMode() {
+      return numberModeSelect ? numberModeSelect.value : 'closest_podium';
     }
 
     function activeField(name) {
@@ -1302,7 +1307,7 @@ function initAdminBonusQuestionForms() {
     }
 
     function previewPointsLabel(type) {
-      if (type === 'number' && presetSelect) {
+      if (type === 'number' && currentNumberMode() === 'closest_podium' && presetSelect) {
         var preset = presetSelect.value;
         if (preset === 'custom') {
           var rank1 = activeField('closest_rank1_points');
@@ -1400,22 +1405,27 @@ function initAdminBonusQuestionForms() {
       form.querySelectorAll(selector).forEach(function(section) {
         section.style.display = visible ? '' : 'none';
         section.querySelectorAll('input, select, textarea, button').forEach(function(control) {
-          control.disabled = !visible;
+          control.disabled = !visible || control.hasAttribute('data-bonus-static-disabled');
         });
       });
     }
 
     function update() {
       var isNumber = currentType() === 'number';
-      var isCustom = isNumber && presetSelect && presetSelect.value === 'custom';
+      var isClosest = isNumber && currentNumberMode() === 'closest_podium';
+      var isExact = isNumber && !isClosest;
+      var isCustom = isClosest && presetSelect && presetSelect.value === 'custom';
       setSection('[data-bonus-choice-only]', !isNumber);
       setSection('[data-bonus-number-only]', isNumber);
+      setSection('[data-bonus-number-exact-only]', isExact);
+      setSection('[data-bonus-number-closest-only]', isClosest);
       setSection('[data-bonus-custom-only]', isCustom);
       updatePreview();
     }
 
     if (typeSelect) typeSelect.addEventListener('change', update);
     if (presetSelect) presetSelect.addEventListener('change', update);
+    if (numberModeSelect) numberModeSelect.addEventListener('change', update);
     form.querySelectorAll('input, select, textarea').forEach(function(control) {
       control.addEventListener('input', updatePreview);
       control.addEventListener('change', updatePreview);

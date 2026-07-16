@@ -12,13 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 
 from app.auth import require_admin, verify_password, hash_password
 from app.config import settings
-from app.database import (
-    ROUND32_FAVORITE_CONCEDE_TEXT,
-    ROUND32_FAVORITE_EXACT_CONFIG,
-    ROUND32_TIEBREAK_COUNT_TEXT,
-    ROUND32_TIEBREAK_EXACT_CONFIG,
-    get_db,
-)
+from app.database import get_db
 from app.knockout import (
     confirm_match_side,
     confirm_match_teams,
@@ -309,12 +303,53 @@ def _closest_form_config(
     )
 
 
-def _exact_numeric_bonus_config(question_text: str) -> dict | None:
-    if question_text == ROUND32_TIEBREAK_COUNT_TEXT:
-        return ROUND32_TIEBREAK_EXACT_CONFIG
-    if question_text == ROUND32_FAVORITE_CONCEDE_TEXT:
-        return ROUND32_FAVORITE_EXACT_CONFIG
-    return None
+NUMBER_SCORING_MODES = {"exact", "closest_podium"}
+
+
+def _json_number(value):
+    """Return a JSON-friendly int/float from a parsed Decimal."""
+    return int(value) if bonus_number_is_integer(value) else float(value)
+
+
+def _number_bounds_from_form(
+    min_value: str,
+    max_value: str,
+    integer_only: int,
+) -> tuple[dict, str | None]:
+    config = {"integer_only": bool(integer_only)}
+    parsed_min = None
+    parsed_max = None
+    if (min_value or "").strip():
+        parsed_min = parse_bonus_number(min_value)
+        if parsed_min is None:
+            return {}, "La valeur minimale doit être un nombre."
+        config["min_value"] = _json_number(parsed_min)
+    if (max_value or "").strip():
+        parsed_max = parse_bonus_number(max_value)
+        if parsed_max is None:
+            return {}, "La valeur maximale doit être un nombre."
+        config["max_value"] = _json_number(parsed_max)
+    if parsed_min is not None and parsed_max is not None and parsed_min > parsed_max:
+        return {}, "La valeur minimale doit être inférieure ou égale au maximum."
+    if config["integer_only"]:
+        if parsed_min is not None and not bonus_number_is_integer(parsed_min):
+            return {}, "La valeur minimale doit être entière."
+        if parsed_max is not None and not bonus_number_is_integer(parsed_max):
+            return {}, "La valeur maximale doit être entière."
+    return config, None
+
+
+def _merge_number_bounds(scoring_config: str | None, bounds: dict) -> str:
+    try:
+        config = json.loads(scoring_config) if scoring_config else {}
+    except (TypeError, ValueError):
+        config = {}
+    if not isinstance(config, dict):
+        config = {}
+    for key in ("min_value", "max_value", "integer_only"):
+        config.pop(key, None)
+    config.update(bounds)
+    return json.dumps(config, ensure_ascii=False, separators=(",", ":"))
 
 
 def _ordered_team_list(options: list[str], selected: set[str]) -> list[str]:
@@ -2403,6 +2438,11 @@ async def create_bonus(request: Request,
                        correct_answer: str = Form(default=""),
                        help_text: str = Form(default=""),
                        is_published: int = Form(default=0),
+                       number_scoring_mode: str = Form(default=""),
+                       number_config_present: int = Form(default=0),
+                       number_min_value: str = Form(default=""),
+                       number_max_value: str = Form(default=""),
+                       number_integer_only: int = Form(default=0),
                        closest_preset_key: str = Form(default="fun_balanced"),
                        closest_award_mode: str = Form(default="podium_custom"),
                        closest_tie_policy: str = Form(default="full_skip"),
@@ -2422,13 +2462,16 @@ async def create_bonus(request: Request,
     except Exception:
         _flash(request, "Deadline invalide.", "err")
         return RedirectResponse("/admin/bonus", status_code=303)
-    exact_numeric_config = _exact_numeric_bonus_config(question_text)
     if answer_type == "multi_choice":
         scoring_mode = "multi_select"
     elif answer_type == "number_multi":
         scoring_mode = "number_multi"
-    elif answer_type == "number" and exact_numeric_config is None:
-        scoring_mode = "closest_podium"
+    elif answer_type == "number":
+        scoring_mode = (
+            number_scoring_mode
+            if number_scoring_mode in NUMBER_SCORING_MODES
+            else "closest_podium"
+        )
     else:
         scoring_mode = "exact"
     submitted_points_value = points_value
@@ -2442,9 +2485,19 @@ async def create_bonus(request: Request,
         closest_rank2_points,
         closest_rank3_points,
     )
-    if answer_type == "number" and exact_numeric_config is not None:
+    if answer_type == "number" and scoring_mode == "exact":
         points_value = submitted_points_value
-        scoring_config = json.dumps(exact_numeric_config, ensure_ascii=False, separators=(",", ":"))
+        scoring_config = None
+    if answer_type == "number" and number_config_present:
+        bounds, error = _number_bounds_from_form(
+            number_min_value,
+            number_max_value,
+            number_integer_only,
+        )
+        if error:
+            _flash(request, error, "err")
+            return RedirectResponse("/admin/bonus", status_code=303)
+        scoring_config = _merge_number_bounds(scoring_config, bounds)
     options = _normalize_bonus_options(answer_type, options_text)
     if answer_type == "multi_choice":
         scoring_config = json.dumps({"error_step": 2}, ensure_ascii=False)
@@ -2509,6 +2562,11 @@ async def update_bonus_question(
     correct_answer: str = Form(default=""),
     help_text: str = Form(default=""),
     is_published: int = Form(default=0),
+    number_scoring_mode: str = Form(default=""),
+    number_config_present: int = Form(default=0),
+    number_min_value: str = Form(default=""),
+    number_max_value: str = Form(default=""),
+    number_integer_only: int = Form(default=0),
     closest_preset_key: str = Form(default="custom"),
     closest_award_mode: str = Form(default="podium_custom"),
     closest_tie_policy: str = Form(default="full_skip"),
@@ -2542,16 +2600,32 @@ async def update_bonus_question(
         if answer_type not in {"choice", "number", "multi_choice", "number_multi"}:
             _flash(request, "Type de question bonus invalide.", "err")
             return RedirectResponse("/admin/bonus", status_code=303)
-        exact_numeric_config = (
-            _exact_numeric_bonus_config(question_text)
-            or _exact_numeric_bonus_config(existing["question_text"])
-        )
         if answer_type == "multi_choice":
             scoring_mode = "multi_select"
         elif answer_type == "number_multi":
             scoring_mode = "number_multi"
-        elif answer_type == "number" and exact_numeric_config is None:
-            scoring_mode = "closest_podium"
+        elif answer_type == "number":
+            existing_number_mode = (
+                existing["scoring_mode"]
+                if existing["answer_type"] == "number"
+                and existing["scoring_mode"] in NUMBER_SCORING_MODES
+                else "closest_podium"
+            )
+            requested_number_mode = (
+                number_scoring_mode
+                if number_scoring_mode in NUMBER_SCORING_MODES
+                else existing_number_mode
+            )
+            minute_notation = normalize_closest_config(
+                existing["points_value"], existing["scoring_config"]
+            ).get("minute_notation", False)
+            scoring_mode = (
+                existing_number_mode
+                if not type_can_change
+                else requested_number_mode
+            )
+            if minute_notation:
+                scoring_mode = "closest_podium"
         else:
             scoring_mode = "exact"
         submitted_points_value = points_value
@@ -2565,14 +2639,24 @@ async def update_bonus_question(
             closest_rank2_points,
             closest_rank3_points,
         )
-        if answer_type == "number" and exact_numeric_config is not None:
+        if answer_type == "number" and scoring_mode == "exact":
             points_value = submitted_points_value
-            scoring_config = json.dumps(exact_numeric_config, ensure_ascii=False, separators=(",", ":"))
+            scoring_config = existing["scoring_config"] if existing["answer_type"] == "number" else None
         if answer_type == "number":
             scoring_config = _preserve_closest_value_bounds(
                 scoring_config,
                 existing["scoring_config"],
             )
+            if number_config_present and type_can_change:
+                bounds, error = _number_bounds_from_form(
+                    number_min_value,
+                    number_max_value,
+                    number_integer_only,
+                )
+                if error:
+                    _flash(request, error, "err")
+                    return RedirectResponse("/admin/bonus", status_code=303)
+                scoring_config = _merge_number_bounds(scoring_config, bounds)
         options = _normalize_bonus_options(answer_type, options_text)
         if answer_type in ("choice", "multi_choice", "number_multi") and (not options or len(json.loads(options)) < 2):
             _flash(request, "Ajoute au moins deux options de réponse.", "err")

@@ -169,7 +169,7 @@
               <option value="choice">Choix unique</option>
               <option value="multi_choice">Choix multiple</option>
               <option value="number_multi">Nombre + équipes</option>
-              <option value="number">Nombre le plus proche</option>
+              <option value="number">Nombre</option>
             </select>
           </div>
         </div>
@@ -196,7 +196,7 @@
       <div data-bonus-number-only>
         <div class="banner soft">
           <span>Nombre libre</span>
-          <span>Les participants saisiront une valeur numérique. Les options sont ignorées.</span>
+          <span>Les participants saisiront une valeur numérique dans les limites définies au barème.</span>
         </div>
       </div>
     </section>
@@ -208,24 +208,51 @@
         <div class="field field-sm"><input type="number" name="points_value" min="1" max="50" value="6" required></div>
       </div>
       <div data-bonus-number-only>
-        <input type="hidden" name="points_value" value="6">
-        <div class="banner soft" style="margin-bottom:10px;">
-          <span>Astuce</span>
-          <span>
-            Recommandé pour une question fun : <b>Fun équilibré</b>,
-            <b>plein palier, rangs sautés</b>, puis <b>6 / 4 / 2 pts</b>.
-          </span>
+        <input type="hidden" name="number_config_present" value="1">
+        <div class="grid3 stack-sm" style="margin-bottom:12px;">
+          <div>
+            <div class="lbl" style="margin-bottom:5px;">Minimum</div>
+            <div class="field"><input type="number" name="number_min_value" value="0" step="any"></div>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:5px;">Maximum <span class="muted">(optionnel)</span></div>
+            <div class="field"><input type="number" name="number_max_value" step="any"></div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;min-height:44px;margin-top:20px;">
+            <input type="checkbox" name="number_integer_only" value="1" checked>
+            <span>Entier uniquement</span>
+          </label>
         </div>
         <div>
-          <div class="lbl" style="margin-bottom:5px;">Preset de répartition</div>
+          <div class="lbl" style="margin-bottom:5px;">Mode de notation</div>
           <div class="field">
-            <select name="closest_preset_key">
-              {{ closest_preset_options('fun_balanced') }}
+            <select name="number_scoring_mode" data-bonus-number-mode-select>
+              <option value="exact">Réponse exacte</option>
+              <option value="closest_podium" selected>Classement au plus proche</option>
             </select>
           </div>
-          <p class="muted helper-text">Choisis un preset pour aller vite, ou “Avancé personnalisé” pour régler les rangs et les ex aequo.</p>
         </div>
-        <div data-bonus-custom-only style="margin-top:10px;border-top:1px dashed var(--n300);padding-top:10px;">
+        <div data-bonus-number-exact-only style="margin-top:10px;">
+          <div class="lbl" style="margin-bottom:5px;">Points si réponse exacte</div>
+          <div class="field field-sm"><input type="number" name="points_value" min="1" max="50" value="6" required></div>
+          <p class="muted helper-text">La réponse exacte marque les points indiqués, toutes les autres marquent 0.</p>
+        </div>
+        <div data-bonus-number-closest-only style="margin-top:10px;">
+          <input type="hidden" name="points_value" value="6">
+          <div class="banner soft" style="margin-bottom:10px;">
+            <span>Recommandé pour une question fun</span>
+            <span>Le preset peut être remplacé par un podium personnalisé.</span>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:5px;">Preset de répartition</div>
+            <div class="field">
+              <select name="closest_preset_key">
+                {{ closest_preset_options('fun_balanced') }}
+              </select>
+            </div>
+            <p class="muted helper-text">Choisis un preset pour aller vite, ou “Avancé personnalisé” pour régler les rangs et les ex aequo.</p>
+          </div>
+          <div data-bonus-custom-only style="margin-top:10px;border-top:1px dashed var(--n300);padding-top:10px;">
           <div class="grid2 stack-sm" style="margin-bottom:10px;">
             <div>
               <div class="muted" style="font-size:11px;margin-bottom:5px;">
@@ -257,6 +284,7 @@
             </div>
           </div>
           <p class="muted helper-text" style="margin-bottom:0;">Le score du 1er rang devient les points max affichés sur la question.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -364,7 +392,7 @@
               <option value="choice" {{ 'selected' if q.answer_type == 'choice' else '' }}>Choix unique</option>
               <option value="multi_choice" {{ 'selected' if q.answer_type == 'multi_choice' else '' }}>Choix multiple</option>
               <option value="number_multi" {{ 'selected' if q.answer_type == 'number_multi' else '' }}>Nombre + équipes</option>
-              <option value="number" {{ 'selected' if q.answer_type == 'number' else '' }}>Nombre le plus proche</option>
+              <option value="number" {{ 'selected' if q.answer_type == 'number' else '' }}>Nombre</option>
             </select>
           </div>
           {% else %}
@@ -398,7 +426,7 @@
             {% if is_closest %}
             Les participants saisissent un nombre. Le classement dépend de l'écart à la réponse correcte.
             {% else %}
-            Les participants saisissent un nombre. Seule la réponse exacte marque les points.
+            Cette question numérique est corrigée en exact : seule la réponse exacte marque les points.
             {% endif %}
           </span>
         </div>
@@ -412,13 +440,42 @@
         <div class="field field-sm"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
       </div>
       <div data-bonus-number-only>
-        {% if not is_closest %}
-        <div class="lbl" style="margin-bottom:5px;">Points si réponse exacte</div>
-        <div class="field field-sm"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
-        <p class="muted helper-text">
-          Cette question numérique est corrigée en exact : les points indiqués si la réponse correspond, 0 sinon.
-        </p>
-        {% else %}
+        {% set number_config_locked = q.is_published or q.answer_count or q.minute_notation %}
+        <input type="hidden" name="number_config_present" value="1" {{ 'disabled data-bonus-static-disabled' if number_config_locked else '' }}>
+        <div class="grid3 stack-sm" style="margin-bottom:12px;">
+          <div>
+            <div class="lbl" style="margin-bottom:5px;">Minimum</div>
+            <div class="field"><input type="number" name="number_min_value" value="{{ q.answer_min if q.answer_min is not none else '' }}" step="any" {{ 'readonly' if number_config_locked else '' }}></div>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:5px;">Maximum <span class="muted">(optionnel)</span></div>
+            <div class="field"><input type="number" name="number_max_value" value="{{ q.answer_max if q.answer_max is not none else '' }}" step="any" {{ 'readonly' if number_config_locked else '' }}></div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;min-height:44px;margin-top:20px;">
+            <input type="checkbox" name="number_integer_only" value="1" {{ 'checked' if q.integer_only else '' }} {{ 'disabled data-bonus-static-disabled' if number_config_locked else '' }}>
+            <span>Entier uniquement</span>
+          </label>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:5px;">Mode de notation{% if number_config_locked %} (figé){% endif %}</div>
+          {% if not number_config_locked %}
+          <div class="field">
+            <select name="number_scoring_mode" data-bonus-number-mode-select>
+              <option value="exact" {{ 'selected' if not is_closest else '' }}>Réponse exacte</option>
+              <option value="closest_podium" {{ 'selected' if is_closest else '' }}>Classement au plus proche</option>
+            </select>
+          </div>
+          {% else %}
+          <input type="hidden" name="number_scoring_mode" value="{{ q.scoring_mode }}">
+          <div class="field readonly"><input type="text" value="{{ 'Classement au plus proche' if is_closest else 'Réponse exacte' }}" readonly tabindex="-1"></div>
+          {% endif %}
+        </div>
+        <div data-bonus-number-exact-only style="margin-top:10px;">
+          <div class="lbl" style="margin-bottom:5px;">Points si réponse exacte</div>
+          <div class="field field-sm"><input type="number" name="points_value" min="1" max="50" value="{{ q.points_value }}" required></div>
+          <p class="muted helper-text">La réponse exacte marque les points indiqués, toutes les autres marquent 0.</p>
+        </div>
+        <div data-bonus-number-closest-only style="margin-top:10px;">
         <input type="hidden" name="points_value" value="{{ q.points_value }}">
         <div class="stack-sm" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.35fr);gap:10px;align-items:end;">
           <div>
@@ -470,7 +527,7 @@
           </div>
           <p class="muted helper-text" style="margin-bottom:0;">Le score du 1er rang devient les points max affichés sur la question.</p>
         </div>
-        {% endif %}
+        </div>
       </div>
     </section>
 

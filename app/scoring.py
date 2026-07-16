@@ -833,13 +833,14 @@ def answers_match(answer_type: str, given: str, correct: str) -> bool:
 
 def parse_bonus_number(value) -> Decimal | None:
     """Parse a bonus numeric answer with comma/dot tolerance."""
-    raw = str(value or "").strip().replace(",", ".")
+    raw = str("" if value is None else value).strip().replace(",", ".")
     if not raw:
         return None
     try:
-        return Decimal(raw)
+        parsed = Decimal(raw)
     except (InvalidOperation, ValueError):
         return None
+    return parsed if parsed.is_finite() else None
 
 
 def bonus_number_is_integer(value: Decimal) -> bool:
@@ -983,16 +984,12 @@ def normalize_closest_config(points_value: int, raw_config=None) -> dict:
         else:
             preset_key = "custom"
 
-    def _optional_int(value):
-        if value is None or value == "":
-            return None
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
+    def _optional_number(value):
+        parsed = parse_bonus_number(value)
+        return parsed if parsed is not None else None
 
-    min_value = _optional_int(config.get("min_value"))
-    max_value = _optional_int(config.get("max_value"))
+    min_value = _optional_number(config.get("min_value"))
+    max_value = _optional_number(config.get("max_value"))
     if min_value is not None and max_value is not None and max_value < min_value:
         max_value = min_value
     integer_only = config.get("integer_only")
