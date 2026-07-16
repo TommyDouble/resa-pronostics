@@ -263,6 +263,92 @@ SEMIFINAL_FRANCE_SPAIN_HELP = (
     "pas. Barème : 3 points pour l'option exacte, 0 sinon."
 )
 
+FINAL_WEEKEND_FIRST_SCORER_TEXT = (
+    "Premier héros — Qui ouvrira le score dans France–Angleterre ?"
+)
+FINAL_WEEKEND_HALFTIME_TEXT = (
+    "Premier round — Quel sera le scénario à la mi-temps de France–Angleterre ?"
+)
+FINAL_WEEKEND_CARDED_PLAYERS_TEXT = (
+    "Week-end sous tension — Combien de joueurs différents recevront au moins "
+    "un carton sur l’ensemble de France–Angleterre et Espagne–Argentine ?"
+)
+FINAL_WEEKEND_ARGENTINA_GOAL_TEXT = (
+    "Le mur contre la vague — L’Argentine a marqué dans chacun de ses sept "
+    "matchs, tandis que l’Espagne n’a encaissé qu’un seul but. Quand tombera "
+    "le premier but argentin ?"
+)
+FINAL_WEEKEND_FINAL_SCORERS_TEXT = (
+    "Les héros de la finale — Combien de joueurs différents marqueront dans "
+    "Espagne–Argentine ?"
+)
+FINAL_WEEKEND_FIRST_SCORER_OPTIONS = [
+    "Kylian Mbappé",
+    "Harry Kane",
+    "La France, par un autre buteur",
+    "L’Angleterre, par un autre buteur",
+    "Aucun but avant une éventuelle séance de tirs au but",
+]
+FINAL_WEEKEND_HALFTIME_OPTIONS = [
+    "La France mène",
+    "L’Angleterre mène",
+    "0–0",
+    "Égalité avec des buts",
+]
+FINAL_WEEKEND_ARGENTINA_GOAL_OPTIONS = [
+    "De la 1re à la 30e minute",
+    "De la 31e à la 60e minute",
+    "De la 61e à la 90e minute, arrêts de jeu inclus",
+    "Pendant la prolongation",
+    "L’Argentine ne marquera pas avant une éventuelle séance de tirs au but",
+]
+FINAL_WEEKEND_CARDS_CONFIG = {
+    "preset_key": "custom",
+    "award_mode": "podium_custom",
+    "tie_policy": "full_dense",
+    "rank_points": [3, 2, 1],
+    "min_value": 0,
+    "max_value": 40,
+    "integer_only": True,
+    "max_points": 3,
+}
+FINAL_WEEKEND_FINAL_SCORERS_CONFIG = {
+    "min_value": 0,
+    "max_value": 30,
+    "integer_only": True,
+}
+FINAL_WEEKEND_FIRST_SCORER_HELP = (
+    "Le temps réglementaire et la prolongation sont inclus, les tirs au but "
+    "sont exclus. Un but contre son camp est rattaché à l’équipe qui en "
+    "bénéficie. Mbappé ou Kane ne sont retenus que si le but leur est "
+    "officiellement attribué. Barème : 3 points pour l’option exacte, 0 sinon."
+)
+FINAL_WEEKEND_HALFTIME_HELP = (
+    "On relève le score officiel au coup de sifflet de la mi-temps, temps "
+    "additionnel inclus. La question est neutralisée si aucun score officiel "
+    "à la pause n’est disponible. Barème : 3 points pour l’option exacte, 0 sinon."
+)
+FINAL_WEEKEND_CARDED_PLAYERS_HELP = (
+    "On compte chaque joueur une seule fois, qu’il reçoive un jaune, deux "
+    "jaunes ou un rouge. Les joueurs remplaçants officiellement avertis "
+    "comptent, les membres du staff ne comptent pas. La prolongation est "
+    "incluse ; la séance de tirs au but et les sanctions postérieures au coup "
+    "de sifflet final sont exclues. Les rapports FIFA font foi. Barème : "
+    "3 points pour le meilleur écart, 2 pour le deuxième écart distinct et "
+    "1 pour le troisième."
+)
+FINAL_WEEKEND_ARGENTINA_GOAL_HELP = (
+    "On utilise la minute officielle. Un but noté 45+N appartient à la tranche "
+    "31–60 et un but noté 90+N à la tranche 61–90. Les tirs au but ne comptent "
+    "pas. Barème : 3 points pour l’option exacte, 0 sinon."
+)
+FINAL_WEEKEND_FINAL_SCORERS_HELP = (
+    "Un doublé ou un triplé ne compte que pour un seul buteur. Un but contre "
+    "son camp compte comme un joueur distinct selon l’attribution officielle "
+    "FIFA. Le temps réglementaire et la prolongation sont inclus, les tirs au "
+    "but sont exclus. Barème : 3 points si le nombre est exact, 0 sinon."
+)
+
 
 async def _normalize_existing_participant_names(db):
     rows = await db.execute("SELECT id, name, first_name, last_name FROM participants")
@@ -794,6 +880,7 @@ ALTER TABLE bonus_questions_new RENAME TO bonus_questions;
         await ensure_round_of_16_bonus_drafts(db)
         await ensure_quarter_bonus_drafts(db)
         await ensure_semifinal_bonus_questions(db)
+        await ensure_final_weekend_bonus_questions(db)
 
         # Les anciens brouillons comptent désormais comme des réponses valides.
         await db.execute(
@@ -1589,6 +1676,135 @@ async def ensure_semifinal_bonus_questions(db):
                 question["scoring_config"],
                 question["help_text"],
                 semifinal_deadline,
+            ),
+        )
+
+    await db.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, datetime('now'))",
+        (key,),
+    )
+
+
+async def ensure_final_weekend_bonus_questions(db):
+    """Prépare en brouillon les cinq bonus du dernier week-end 2026."""
+    key = "bonus_questions_final_weekend_2026_v1"
+    done = await (await db.execute(
+        "SELECT 1 FROM app_settings WHERE key=?", (key,)
+    )).fetchone()
+    if done:
+        return
+
+    # Ces horaires sont volontairement figés : la question globale est rangée
+    # en finale mais ferme avant le coup d'envoi de la petite finale.
+    third_place_deadline = "2026-07-18T20:59:00"
+    final_deadline = "2026-07-19T18:59:00"
+    questions = [
+        {
+            "question_text": FINAL_WEEKEND_FIRST_SCORER_TEXT,
+            "phase": "third_place",
+            "answer_type": "choice",
+            "options": json.dumps(FINAL_WEEKEND_FIRST_SCORER_OPTIONS, ensure_ascii=False),
+            "points_value": 3,
+            "scoring_mode": "exact",
+            "scoring_config": None,
+            "help_text": FINAL_WEEKEND_FIRST_SCORER_HELP,
+            "deadline": third_place_deadline,
+        },
+        {
+            "question_text": FINAL_WEEKEND_HALFTIME_TEXT,
+            "phase": "third_place",
+            "answer_type": "choice",
+            "options": json.dumps(FINAL_WEEKEND_HALFTIME_OPTIONS, ensure_ascii=False),
+            "points_value": 3,
+            "scoring_mode": "exact",
+            "scoring_config": None,
+            "help_text": FINAL_WEEKEND_HALFTIME_HELP,
+            "deadline": third_place_deadline,
+        },
+        {
+            "question_text": FINAL_WEEKEND_CARDED_PLAYERS_TEXT,
+            "phase": "final",
+            "answer_type": "number",
+            "options": None,
+            "points_value": 3,
+            "scoring_mode": "closest_podium",
+            "scoring_config": json.dumps(
+                FINAL_WEEKEND_CARDS_CONFIG,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            "help_text": FINAL_WEEKEND_CARDED_PLAYERS_HELP,
+            "deadline": third_place_deadline,
+        },
+        {
+            "question_text": FINAL_WEEKEND_ARGENTINA_GOAL_TEXT,
+            "phase": "final",
+            "answer_type": "choice",
+            "options": json.dumps(FINAL_WEEKEND_ARGENTINA_GOAL_OPTIONS, ensure_ascii=False),
+            "points_value": 3,
+            "scoring_mode": "exact",
+            "scoring_config": None,
+            "help_text": FINAL_WEEKEND_ARGENTINA_GOAL_HELP,
+            "deadline": final_deadline,
+        },
+        {
+            "question_text": FINAL_WEEKEND_FINAL_SCORERS_TEXT,
+            "phase": "final",
+            "answer_type": "number",
+            "options": None,
+            "points_value": 3,
+            "scoring_mode": "exact",
+            "scoring_config": json.dumps(
+                FINAL_WEEKEND_FINAL_SCORERS_CONFIG,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            "help_text": FINAL_WEEKEND_FINAL_SCORERS_HELP,
+            "deadline": final_deadline,
+        },
+    ]
+    for question in questions:
+        existing = await (await db.execute(
+            "SELECT id FROM bonus_questions WHERE question_text=?",
+            (question["question_text"],),
+        )).fetchone()
+        if existing:
+            await db.execute(
+                """UPDATE bonus_questions
+                   SET phase=?, answer_type=?, options=?, points_value=?,
+                       correct_answer=NULL, scoring_mode=?, scoring_config=?,
+                       help_text=?, is_published=0, deadline=?
+                   WHERE id=?
+                     AND id NOT IN (SELECT question_id FROM bonus_answers)""",
+                (
+                    question["phase"],
+                    question["answer_type"],
+                    question["options"],
+                    question["points_value"],
+                    question["scoring_mode"],
+                    question["scoring_config"],
+                    question["help_text"],
+                    question["deadline"],
+                    existing["id"],
+                ),
+            )
+            continue
+        await db.execute(
+            """INSERT INTO bonus_questions
+               (question_text, phase, answer_type, options, points_value,
+                correct_answer, scoring_mode, scoring_config, help_text,
+                is_published, deadline)
+               VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?)""",
+            (
+                question["question_text"],
+                question["phase"],
+                question["answer_type"],
+                question["options"],
+                question["points_value"],
+                question["scoring_mode"],
+                question["scoring_config"],
+                question["help_text"],
+                question["deadline"],
             ),
         )
 

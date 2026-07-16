@@ -2737,16 +2737,18 @@ async def _load_bonus_questions(db, participant_id: int, now: str, *, only_pendi
             q["answer_display"] = q["answer"]
             q["correct_answer_display"] = q["correct_answer"]
             q["locked_teams"] = set()
-            if q["scoring_mode"] == "closest_podium":
-                closest_config = normalize_closest_config(
+            if q["answer_type"] == "number":
+                number_config = normalize_closest_config(
                     q["points_value"],
                     q.get("scoring_config"),
                 )
+                q["answer_min"] = number_config.get("min_value")
+                q["answer_max"] = number_config.get("max_value")
+                q["integer_only"] = number_config.get("integer_only", False)
+            if q["scoring_mode"] == "closest_podium":
+                closest_config = number_config
                 visible_points = [p for p in closest_config["rank_points"] if p > 0]
                 q["points_label"] = f"{' / '.join(str(p) for p in visible_points)} pts"
-                q["answer_min"] = closest_config.get("min_value")
-                q["answer_max"] = closest_config.get("max_value")
-                q["integer_only"] = closest_config.get("integer_only", False)
                 q["minute_notation"] = closest_config.get("minute_notation", False)
                 if q["minute_notation"]:
                     if q["answer"]:
